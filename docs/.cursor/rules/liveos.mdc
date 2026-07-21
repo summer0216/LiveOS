@@ -1,0 +1,48 @@
+# LiveOS Development Rules
+
+## Project
+
+LiveOS MVP
+
+## Principles
+
+- MVP First
+- Feature First
+- Simple First
+- Code First
+
+## Architecture
+
+- Single AI Runtime
+- Multiple Logical Agents
+- No Multi-Agent Framework
+- No LangGraph
+- No CrewAI
+
+## Frontend
+
+Next.js App Router
+
+Tailwind CSS
+
+shadcn/ui
+
+Feature First
+
+## Backend
+
+FastAPI
+
+Single Runtime
+
+OpenAI Compatible API
+
+## Development
+
+Never redesign frozen architecture.
+
+Prefer the simplest working solution.
+
+Keep files small and cohesive.
+
+One feature per Sprint.

@@ -34,3 +34,18 @@ Task 1 完成后立即提交：
 ```bash
 git add .
 git commit -m "chore: initialize LiveOS repository"
+
+
+## Project Structure
+
+apps/
+
+packages/
+
+docs/
+
+## Run
+
+pnpm install
+
+pnpm dev
