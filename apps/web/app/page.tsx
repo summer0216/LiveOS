@@ -1,3 +1,6 @@
+import Welcome from "@/features/ai-entry/components/Welcome";
+
+
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-black text-white">
@@ -6,7 +9,7 @@ export default function HomePage() {
         <AIOrb />
 
         {/* Welcome */}
-        <div id="welcome" />
+        <Welcome />
 
         {/* Prompt */}
         <PromptInput />
