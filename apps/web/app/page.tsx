@@ -1,11 +1,15 @@
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black text-white">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold">LiveOS</h1>
-        <p className="mt-4 text-gray-400">
-          AI Native Living Decision System
-        </p>
+    <main className="min-h-screen bg-black text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center justify-center px-6">
+        {/* AI Core */}
+        <AIOrb />
+
+        {/* Welcome */}
+        <div id="welcome" />
+
+        {/* Prompt */}
+        <PromptInput />
       </div>
     </main>
   );
