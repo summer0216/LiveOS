@@ -1,9 +1,6 @@
 from fastapi import APIRouter
-
-from app.schemas.chat import (
-    ChatRequest,
-    ChatResponse,
-)
+from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.chat_service import chat_service
 
 router = APIRouter(
     prefix="/chat",
@@ -15,13 +12,7 @@ router = APIRouter(
     "",
     response_model=ChatResponse,
 )
-async def chat(
-    request: ChatRequest,
-):
-    """
-    MVP Mock Chat API
-    """
+async def chat(request: ChatRequest):
+    rely = chat_service.chat(request.message)
 
-    return ChatResponse(
-        reply=f"收到：{request.message}"
-    )
+    return ChatResponse(reply=rely)
