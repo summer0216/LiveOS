@@ -1,23 +1,9 @@
-"""
-LiveOS AI Runtime
+from app.core.ai_client import ai_client
 
-Single Runtime
-Multiple Logical Agents (Future)
-"""
-
-import app.core.ai_client as ai_client
 
 class AIRuntime:
-    """
-    LiveOS Single AI Runtime
-    """
-
     def chat(self, message: str) -> str:
-        """
-        MVP Mock Runtime
-        """
-        reply = ai_client.generate(message)
-        return reply
+        return ai_client.generate(message)
 
 
 ai_runtime = AIRuntime()
