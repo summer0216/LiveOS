@@ -5,6 +5,7 @@ Single Runtime
 Multiple Logical Agents (Future)
 """
 
+import app.core.ai_client as ai_client
 
 class AIRuntime:
     """
@@ -15,12 +16,8 @@ class AIRuntime:
         """
         MVP Mock Runtime
         """
-
-        return (
-            "收到你的需求。\n\n"
-            f"你说的是：{message}\n\n"
-            "（Mock Reply，Sprint 3 后续将接入真正的 AI。）"
-        )
+        reply = ai_client.generate(message)
+        return reply
 
 
 ai_runtime = AIRuntime()
