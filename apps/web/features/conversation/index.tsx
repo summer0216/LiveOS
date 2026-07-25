@@ -7,6 +7,7 @@ import { sendMessage } from '@/services/chat';
 
 import ConversationLayout from './components/ConversationLayout';
 import MessageBubble from './components/MessageBubble';
+import ThinkingIndicator from './components/ThinkingIndicator';
 
 export default function ConversationFeature() {
   const searchParams = useSearchParams();
@@ -17,6 +18,9 @@ export default function ConversationFeature() {
   const userMessage = searchParams.get('message') ?? '';
 
   const [reply, setReply] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const hasSentRef = useRef(false);
 
   useEffect(() => {
@@ -25,6 +29,8 @@ export default function ConversationFeature() {
     }
 
     hasSentRef.current = true;
+    setIsThinking(true);
+    setErrorMessage('');
 
     sendMessage(conversationId, userMessage)
       .then((response) => {
@@ -32,7 +38,13 @@ export default function ConversationFeature() {
       })
       .catch((error: unknown) => {
         console.error('Failed to send message:', error);
-        setReply('抱歉，AI 服务暂时不可用，请稍后重试。');
+
+        setErrorMessage(
+          '抱歉，LiveOS 暂时无法完成回复，请稍后重试。',
+        );
+      })
+      .finally(() => {
+        setIsThinking(false);
       });
   }, [conversationId, userMessage]);
 
@@ -42,8 +54,17 @@ export default function ConversationFeature() {
         <MessageBubble role="user" content={userMessage} />
       )}
 
+      {isThinking && <ThinkingIndicator />}
+
       {reply && (
         <MessageBubble role="assistant" content={reply} />
+      )}
+
+      {errorMessage && (
+        <MessageBubble
+          role="assistant"
+          content={errorMessage}
+        />
       )}
     </ConversationLayout>
   );
