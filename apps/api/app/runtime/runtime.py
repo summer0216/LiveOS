@@ -13,5 +13,13 @@ class AIRuntime:
 
         return ai_client.generate(message)
 
+    def chat_stream(
+        self,
+        conversation_id: str,
+        message: str,
+    ):
+
+        yield from ai_client.generate_stream(message)
+
 
 ai_runtime = AIRuntime()

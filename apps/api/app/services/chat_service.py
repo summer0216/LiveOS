@@ -12,5 +12,15 @@ class ChatService:
             message=message,
         )
 
+    def chat_stream(
+        self,
+        conversation_id: str,
+        message: str,
+    ):
+        return ai_runtime.chat_stream(
+            conversation_id,
+            message,
+        )
+
 
 chat_service = ChatService()
