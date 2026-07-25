@@ -22,6 +22,8 @@ export default function ConversationFeature() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const hasSentRef = useRef(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     if (!conversationId || !userMessage || hasSentRef.current) {
@@ -54,6 +56,12 @@ export default function ConversationFeature() {
       });
   }, [conversationId, userMessage]);
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: reply ? "smooth" : "auto",
+    });
+  }, [reply, isThinking]);
+
   return (
     <ConversationLayout>
       {userMessage && (
@@ -67,11 +75,10 @@ export default function ConversationFeature() {
       )}
 
       {errorMessage && (
-        <MessageBubble
-          role="assistant"
-          content={errorMessage}
-        />
+        <MessageBubble role="assistant" content={errorMessage} />
       )}
+      <div ref={bottomRef} />
     </ConversationLayout>
+
   );
 }
