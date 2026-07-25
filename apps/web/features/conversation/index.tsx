@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import { sendMessage } from '@/services/chat';
+import { streamMessage } from '@/services/chat';
 
 import ConversationLayout from './components/ConversationLayout';
 import MessageBubble from './components/MessageBubble';
@@ -29,15 +29,21 @@ export default function ConversationFeature() {
     }
 
     hasSentRef.current = true;
-    setIsThinking(true);
-    setErrorMessage('');
 
-    sendMessage(conversationId, userMessage)
-      .then((response) => {
-        setReply(response.reply);
-      })
+    setReply('');
+    setErrorMessage('');
+    setIsThinking(true);
+
+    streamMessage({
+      conversationId,
+      message: userMessage,
+      onChunk: (chunk) => {
+        setIsThinking(false);
+        setReply((currentReply) => currentReply + chunk);
+      },
+    })
       .catch((error: unknown) => {
-        console.error('Failed to send message:', error);
+        console.error('Failed to stream message:', error);
 
         setErrorMessage(
           '抱歉，LiveOS 暂时无法完成回复，请稍后重试。',
