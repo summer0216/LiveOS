@@ -1,48 +1,50 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
-import ConversationLayout from "./components/ConversationLayout";
-import MessageBubble from "./components/MessageBubble";
+import { sendMessage } from '@/services/chat';
 
-import { sendMessage } from "@/services/chat";
+import ConversationLayout from './components/ConversationLayout';
+import MessageBubble from './components/MessageBubble';
 
 export default function ConversationFeature() {
   const searchParams = useSearchParams();
 
-  const userMessage =
-    searchParams.get("message") ?? "";
+  const conversationId =
+    searchParams.get('conversation_id') ?? '';
 
-  const [reply, setReply] =
-    useState("");
+  const userMessage = searchParams.get('message') ?? '';
+
+  const [reply, setReply] = useState('');
+  const hasSentRef = useRef(false);
 
   useEffect(() => {
-    if (!userMessage) return;
+    if (!conversationId || !userMessage || hasSentRef.current) {
+      return;
+    }
 
-    sendMessage(userMessage)
-      .then((res) => {
-        setReply(res.reply);
+    hasSentRef.current = true;
+
+    sendMessage(conversationId, userMessage)
+      .then((response) => {
+        setReply(response.reply);
       })
-      .catch(console.error);
-
-  }, [userMessage]);
+      .catch((error: unknown) => {
+        console.error('Failed to send message:', error);
+        setReply('抱歉，AI 服务暂时不可用，请稍后重试。');
+      });
+  }, [conversationId, userMessage]);
 
   return (
     <ConversationLayout>
-
-      <MessageBubble
-        role="user"
-        content={userMessage}
-      />
-
-      {reply && (
-        <MessageBubble
-          role="assistant"
-          content={reply}
-        />
+      {userMessage && (
+        <MessageBubble role="user" content={userMessage} />
       )}
 
+      {reply && (
+        <MessageBubble role="assistant" content={reply} />
+      )}
     </ConversationLayout>
   );
 }

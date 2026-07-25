@@ -1,23 +1,17 @@
-import { apiFetch } from "./api";
-
-export interface ChatRequest {
-    message: string;
-}
-
-export interface ChatResponse {
-    reply: string;
-}
+import { apiFetch } from './api';
+import type { ChatRequest, ChatResponse } from '@/types/chat';
 
 export async function sendMessage(
-    message: string
+    conversationId: string,
+    message: string,
 ): Promise<ChatResponse> {
-    return apiFetch<ChatResponse>(
-        "/chat",
-        {
-            method: "POST",
-            body: JSON.stringify({
-                message,
-            }),
-        }
-    );
+    const request: ChatRequest = {
+        conversation_id: conversationId,
+        message,
+    };
+
+    return apiFetch<ChatResponse>('/chat', {
+        method: 'POST',
+        body: JSON.stringify(request),
+    });
 }

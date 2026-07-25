@@ -2,12 +2,16 @@ from app.core.ai_client import ai_client
 
 
 class AIRuntime:
-    def chat(self, message: str) -> str:
-        try:
-            return ai_client.generate(message)
+    def chat(
+        self,
+        conversation_id: str,
+        message: str,
+    ) -> str:
+        # Sprint 4 后续将使用 conversation_id
+        # 加载会话历史和 Memory。
+        _ = conversation_id
 
-        except Exception:
-            return "抱歉,AI 服务暂时不可用，请稍后重试。"
+        return ai_client.generate(message)
 
 
 ai_runtime = AIRuntime()
