@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "check": "pnpm lint && pnpm type-check"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
