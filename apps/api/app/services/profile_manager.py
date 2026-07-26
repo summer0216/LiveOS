@@ -38,12 +38,8 @@ class ProfileManager:
     def delete(
         self,
         conversation_id: str,
-    ) -> bool:
-        if conversation_id not in self._profiles:
-            return False
-
-        del self._profiles[conversation_id]
-        return True
+    ) -> None:
+        self._profiles.pop(conversation_id, None)
 
 
 profile_manager = ProfileManager()
