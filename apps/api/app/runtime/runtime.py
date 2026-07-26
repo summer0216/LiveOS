@@ -18,7 +18,6 @@ class AIRuntime:
         conversation_id: str,
         message: str,
     ):
-
         yield from ai_client.generate_stream(message)
 
 
