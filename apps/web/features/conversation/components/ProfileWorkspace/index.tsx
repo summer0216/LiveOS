@@ -11,7 +11,7 @@ interface ProfileItem {
     icon: string;
 }
 
-const LEARNING_TEXT = 'Still learning...';
+const LEARNING_TEXT = '持续了解中…';
 
 function getProfileItems(
     profile: LivingProfile | null,
@@ -19,12 +19,12 @@ function getProfileItems(
     return [
         {
             icon: '📍',
-            label: 'Work',
+            label: '工作地点',
             value: profile?.work_location || LEARNING_TEXT,
         },
         {
             icon: '💰',
-            label: 'Budget',
+            label: '预算',
             value:
                 profile?.budget !== null &&
                     profile?.budget !== undefined
@@ -33,37 +33,37 @@ function getProfileItems(
         },
         {
             icon: '🚇',
-            label: 'Commute',
+            label: '通勤要求',
             value:
                 profile?.commute_minutes !== null &&
                     profile?.commute_minutes !== undefined
-                    ? `≤ ${profile.commute_minutes} min`
+                    ? `不超过 ${profile.commute_minutes} 分钟`
                     : LEARNING_TEXT,
         },
         {
             icon: '🏙️',
-            label: 'Preferred City',
+            label: '意向城市',
             value: profile?.preferred_city || LEARNING_TEXT,
         },
         {
             icon: '👥',
-            label: 'Household',
+            label: '家庭人数',
             value:
                 profile?.family_size !== null &&
                     profile?.family_size !== undefined
-                    ? `${profile.family_size} people`
+                    ? `${profile.family_size} 人`
                     : LEARNING_TEXT,
         },
         {
             icon: '🐾',
-            label: 'Lifestyle',
+            label: '宠物情况',
             value:
                 profile?.has_pet === null ||
                     profile?.has_pet === undefined
                     ? LEARNING_TEXT
                     : profile.has_pet
-                        ? 'Pet owner'
-                        : 'No pets',
+                        ? '有宠物'
+                        : '无宠物',
         },
     ];
 }
@@ -79,23 +79,22 @@ export default function ProfileWorkspace({
             <header className="border-b border-white/10 pb-5">
                 <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-500">
-                        AI Understanding
+                        AI 理解
                     </p>
 
                     {!isLoading && profile && (
                         <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-neutral-400">
-                            Updated
+                            已更新
                         </span>
                     )}
                 </div>
 
                 <h2 className="mt-3 text-xl font-medium tracking-tight text-white">
-                    Your Living Profile
+                    你的居住画像
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-neutral-400">
-                    LiveOS is building an understanding of your living
-                    needs as the conversation develops.
+                    LiveOS 会随着对话持续理解你的居住需求、约束与偏好。
                 </p>
             </header>
 
@@ -114,8 +113,7 @@ export default function ProfileWorkspace({
 
             <footer className="border-t border-white/10 pt-4">
                 <p className="text-xs leading-5 text-neutral-500">
-                    Your profile will continue to evolve as LiveOS learns
-                    more about your priorities.
+                    随着对话继续，你的居住画像会逐步补充和更新。
                 </p>
             </footer>
         </aside>
@@ -163,7 +161,7 @@ function ProfileItemRow({
 function ProfileLoadingState() {
     return (
         <div
-            aria-label="Loading living profile"
+            aria-label="正在读取居住画像"
             className="space-y-4 py-5"
         >
             {[0, 1, 2, 3].map((item) => (

@@ -90,13 +90,23 @@ export default function ConversationFeature() {
 
       setIsThinking(true);
       setIsStreaming(true);
-
       try {
+        let hasRefreshedProfile = false;
+
         await streamMessage({
           conversationId,
           message,
           onChunk: (chunk) => {
             setIsThinking(false);
+
+            /*
+             * 后端在开始 Streaming 前已经完成 Profile 更新。
+             * 因此首个 Chunk 到达时即可刷新 Workspace。
+             */
+            if (!hasRefreshedProfile) {
+              hasRefreshedProfile = true;
+              void loadProfile();
+            }
 
             setMessages((currentMessages) => {
               const assistantMessageExists =
@@ -126,6 +136,13 @@ export default function ConversationFeature() {
             });
           },
         });
+
+        /*
+         * 若模型没有返回任何 Chunk，也做一次兜底刷新。
+         */
+        if (!hasRefreshedProfile) {
+          await loadProfile();
+        }
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
 
@@ -140,9 +157,8 @@ export default function ConversationFeature() {
       } finally {
         setIsThinking(false);
         setIsStreaming(false);
-
-        await loadProfile();
       }
+
     },
     [conversationId, isStreaming, loadProfile],
   );
