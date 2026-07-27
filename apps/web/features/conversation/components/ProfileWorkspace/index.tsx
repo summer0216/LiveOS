@@ -5,106 +5,180 @@ interface ProfileWorkspaceProps {
     isLoading: boolean;
 }
 
-function displayValue(
-    value: string | number | null,
-    suffix = '',
-) {
-    if (value === null || value === '') {
-        return 'Unknown';
-    }
+interface ProfileItem {
+    label: string;
+    value: string;
+    icon: string;
+}
 
-    return `${value}${suffix}`;
+const LEARNING_TEXT = 'Still learning...';
+
+function getProfileItems(
+    profile: LivingProfile | null,
+): ProfileItem[] {
+    return [
+        {
+            icon: '📍',
+            label: 'Work',
+            value: profile?.work_location || LEARNING_TEXT,
+        },
+        {
+            icon: '💰',
+            label: 'Budget',
+            value:
+                profile?.budget !== null &&
+                    profile?.budget !== undefined
+                    ? `¥${profile.budget.toLocaleString('zh-CN')}`
+                    : LEARNING_TEXT,
+        },
+        {
+            icon: '🚇',
+            label: 'Commute',
+            value:
+                profile?.commute_minutes !== null &&
+                    profile?.commute_minutes !== undefined
+                    ? `≤ ${profile.commute_minutes} min`
+                    : LEARNING_TEXT,
+        },
+        {
+            icon: '🏙️',
+            label: 'Preferred City',
+            value: profile?.preferred_city || LEARNING_TEXT,
+        },
+        {
+            icon: '👥',
+            label: 'Household',
+            value:
+                profile?.family_size !== null &&
+                    profile?.family_size !== undefined
+                    ? `${profile.family_size} people`
+                    : LEARNING_TEXT,
+        },
+        {
+            icon: '🐾',
+            label: 'Lifestyle',
+            value:
+                profile?.has_pet === null ||
+                    profile?.has_pet === undefined
+                    ? LEARNING_TEXT
+                    : profile.has_pet
+                        ? 'Pet owner'
+                        : 'No pets',
+        },
+    ];
 }
 
 export default function ProfileWorkspace({
     profile,
     isLoading,
 }: ProfileWorkspaceProps) {
-    return (
-        <aside className="rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div className="mb-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-                    AI Understanding
-                </p>
+    const items = getProfileItems(profile);
 
-                <h2 className="mt-2 text-lg font-medium text-white">
-                    Living Profile
+    return (
+        <aside className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+            <header className="border-b border-white/10 pb-5">
+                <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-500">
+                        AI Understanding
+                    </p>
+
+                    {!isLoading && profile && (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-neutral-400">
+                            Updated
+                        </span>
+                    )}
+                </div>
+
+                <h2 className="mt-3 text-xl font-medium tracking-tight text-white">
+                    Your Living Profile
                 </h2>
-            </div>
+
+                <p className="mt-2 text-sm leading-6 text-neutral-400">
+                    LiveOS is building an understanding of your living
+                    needs as the conversation develops.
+                </p>
+            </header>
 
             {isLoading ? (
-                <p className="text-sm text-neutral-500">
-                    Reading profile...
-                </p>
+                <ProfileLoadingState />
             ) : (
-                <div className="space-y-4">
-                    <ProfileRow
-                        label="Work Location"
-                        value={displayValue(profile?.work_location ?? null)}
-                    />
-
-                    <ProfileRow
-                        label="Budget"
-                        value={
-                            profile?.budget !== null &&
-                                profile?.budget !== undefined
-                                ? `¥${profile.budget}`
-                                : 'Unknown'
-                        }
-                    />
-
-                    <ProfileRow
-                        label="Commute"
-                        value={displayValue(
-                            profile?.commute_minutes ?? null,
-                            ' min',
-                        )}
-                    />
-
-                    <ProfileRow
-                        label="Preferred City"
-                        value={displayValue(
-                            profile?.preferred_city ?? null,
-                        )}
-                    />
-
-                    <ProfileRow
-                        label="Family Size"
-                        value={displayValue(
-                            profile?.family_size ?? null,
-                        )}
-                    />
-
-                    <ProfileRow
-                        label="Pet"
-                        value={
-                            profile?.has_pet === null ||
-                                profile?.has_pet === undefined
-                                ? 'Unknown'
-                                : profile.has_pet
-                                    ? 'Yes'
-                                    : 'No'
-                        }
-                    />
+                <div className="divide-y divide-white/10">
+                    {items.map((item) => (
+                        <ProfileItemRow
+                            key={item.label}
+                            item={item}
+                        />
+                    ))}
                 </div>
             )}
+
+            <footer className="border-t border-white/10 pt-4">
+                <p className="text-xs leading-5 text-neutral-500">
+                    Your profile will continue to evolve as LiveOS learns
+                    more about your priorities.
+                </p>
+            </footer>
         </aside>
     );
 }
 
-interface ProfileRowProps {
-    label: string;
-    value: string;
+interface ProfileItemRowProps {
+    item: ProfileItem;
 }
 
-function ProfileRow({
-    label,
-    value,
-}: ProfileRowProps) {
+function ProfileItemRow({
+    item,
+}: ProfileItemRowProps) {
+    const isLearning = item.value === LEARNING_TEXT;
+
     return (
-        <div className="border-b border-white/10 pb-3 last:border-b-0 last:pb-0">
-            <p className="text-xs text-neutral-500">{label}</p>
-            <p className="mt-1 text-sm text-neutral-200">{value}</p>
+        <div className="flex gap-3 py-4">
+            <div
+                aria-hidden="true"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-base"
+            >
+                {item.icon}
+            </div>
+
+            <div className="min-w-0 flex-1">
+                <p className="text-xs text-neutral-500">
+                    {item.label}
+                </p>
+
+                <p
+                    className={[
+                        'mt-1 truncate text-sm',
+                        isLearning
+                            ? 'italic text-neutral-600'
+                            : 'font-medium text-neutral-200',
+                    ].join(' ')}
+                >
+                    {item.value}
+                </p>
+            </div>
+        </div>
+    );
+}
+
+function ProfileLoadingState() {
+    return (
+        <div
+            aria-label="Loading living profile"
+            className="space-y-4 py-5"
+        >
+            {[0, 1, 2, 3].map((item) => (
+                <div
+                    key={item}
+                    className="flex animate-pulse gap-3"
+                >
+                    <div className="h-9 w-9 rounded-xl bg-white/5" />
+
+                    <div className="flex-1 space-y-2">
+                        <div className="h-3 w-20 rounded bg-white/5" />
+                        <div className="h-4 w-32 rounded bg-white/10" />
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
