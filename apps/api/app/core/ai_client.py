@@ -66,5 +66,38 @@ class AIClient:
                 f"LLM streaming request failed: {error}",
             ) from error
 
+    def generate_json(
+        self,
+        prompt: str,
+    ) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                response_format={
+                    "type": "json_object",
+                },
+                temperature=0,
+            )
+
+            content = response.choices[0].message.content
+
+            if not content:
+                raise RuntimeError(
+                    "LLM returned an empty JSON response.",
+                )
+
+            return content
+
+        except OpenAIError as error:
+            raise RuntimeError(
+                f"LLM JSON request failed: {error}",
+            ) from error
+
 
 ai_client = AIClient()
