@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 
 from app.models.conversation import (
@@ -6,6 +7,10 @@ from app.models.conversation import (
 )
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
+from app.services.profile_intelligence import profile_intelligence
+from app.services.profile_manager import profile_manager
+
+logger = logging.getLogger(__name__)
 
 
 class ChatService:
@@ -14,12 +19,6 @@ class ChatService:
         conversation_id: str,
         message: str,
     ) -> tuple[Conversation, list[ConversationMessage]]:
-        """
-        获取或创建 Conversation,
-        保存当前用户消息，
-        并返回本次请求所需的完整会话历史。
-        """
-
         conversation = conversation_manager.get_or_create(
             conversation_id,
         )
@@ -30,6 +29,32 @@ class ChatService:
 
         return conversation, history
 
+    def _update_profile(
+        self,
+        conversation_id: str,
+        history: list[ConversationMessage],
+    ) -> None:
+        """
+        从当前会话历史中提取 Profile Patch，
+        并合并到对应的 Living Profile。
+
+        Profile 更新失败时不阻断正常聊天。
+        """
+
+        try:
+            patch = profile_intelligence.extract(history)
+
+            profile_manager.merge(
+                conversation_id=conversation_id,
+                patch=patch,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to update living profile. " "conversation_id=%s",
+                conversation_id,
+            )
+
     def chat(
         self,
         conversation_id: str,
@@ -38,6 +63,11 @@ class ChatService:
         conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
+        )
+
+        self._update_profile(
+            conversation_id=conversation_id,
+            history=history,
         )
 
         reply = ai_runtime.chat(history)
@@ -55,6 +85,11 @@ class ChatService:
         conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
+        )
+
+        self._update_profile(
+            conversation_id=conversation_id,
+            history=history,
         )
 
         assistant_reply_parts: list[str] = []
