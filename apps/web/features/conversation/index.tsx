@@ -9,6 +9,12 @@ import ConversationComposer from './components/ConversationComposer';
 import ConversationLayout from './components/ConversationLayout';
 import MessageBubble from './components/MessageBubble';
 import ThinkingIndicator from './components/ThinkingIndicator';
+import ProfileWorkspace from './components/ProfileWorkspace';
+
+import type { LivingProfile } from '@/services/profile';
+import { getLivingProfile } from '@/services/profile';
+
+
 
 type MessageRole = 'user' | 'assistant';
 
@@ -35,8 +41,31 @@ export default function ConversationFeature() {
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
 
+  const [profile, setProfile] = useState<LivingProfile | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+
   const initialMessageSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadProfile = useCallback(async () => {
+    if (!conversationId) {
+      return;
+    }
+    setIsProfileLoading(true);
+    try {
+      const livingProfile =
+        await getLivingProfile(conversationId);
+
+      setProfile(livingProfile);
+    } catch (error: unknown) {
+      console.error(
+        'Failed to load living profile:',
+        error,
+      );
+    } finally {
+      setIsProfileLoading(false);
+    }
+  }, [conversationId]);
 
   const sendConversationMessage = useCallback(
     async (content: string) => {
@@ -111,9 +140,11 @@ export default function ConversationFeature() {
       } finally {
         setIsThinking(false);
         setIsStreaming(false);
+
+        await loadProfile();
       }
     },
-    [conversationId, isStreaming],
+    [conversationId, isStreaming, loadProfile],
   );
 
   useEffect(() => {
@@ -142,27 +173,36 @@ export default function ConversationFeature() {
 
   return (
     <ConversationLayout>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto pr-2">
-          {messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              role={message.role}
-              content={message.content}
-            />
-          ))}
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="flex min-h-0 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                role={message.role}
+                content={message.content}
+              />
+            ))}
 
-          {isThinking && <ThinkingIndicator />}
+            {isThinking && <ThinkingIndicator />}
 
-          <div ref={bottomRef} />
+            <div ref={bottomRef} />
+          </div>
+
+          <ConversationComposer
+            disabled={isStreaming}
+            onSubmit={(message) => {
+              void sendConversationMessage(message);
+            }}
+          />
         </div>
 
-        <ConversationComposer
-          disabled={isStreaming}
-          onSubmit={(message) => {
-            void sendConversationMessage(message);
-          }}
-        />
+        <div className="min-h-0 overflow-y-auto">
+          <ProfileWorkspace
+            profile={profile}
+            isLoading={isProfileLoading}
+          />
+        </div>
       </div>
     </ConversationLayout>
   );
