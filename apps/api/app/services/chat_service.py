@@ -35,18 +35,18 @@ class ChatService:
         history: list[ConversationMessage],
     ) -> None:
         """
-        从当前会话历史中提取 Profile Patch，
+        从当前会话历史中提取 Profile Analysis,
         并合并到对应的 Living Profile。
 
         Profile 更新失败时不阻断正常聊天。
         """
 
         try:
-            patch = profile_intelligence.extract(history)
+            analysis = profile_intelligence.extract(history)
 
             profile_manager.merge(
                 conversation_id=conversation_id,
-                patch=patch,
+                patch=analysis.patch,
             )
 
         except Exception:
