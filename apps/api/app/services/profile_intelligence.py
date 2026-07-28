@@ -3,6 +3,7 @@ import json
 from app.core.ai_client import ai_client
 from app.models.conversation import ConversationMessage
 from app.models.profile_patch import LivingProfilePatch
+from app.models.profile_analysis import ProfileAnalysis
 from app.runtime.prompt import build_profile_extraction_prompt
 
 
@@ -23,7 +24,7 @@ class ProfileIntelligence:
     def extract(
         self,
         history: list[ConversationMessage],
-    ) -> LivingProfilePatch:
+    ) -> ProfileAnalysis:
         """
         根据 Conversation History,
         生成结构化 LivingProfilePatch。
@@ -31,7 +32,23 @@ class ProfileIntelligence:
 
         json_text = self.extract_json(history)
 
-        return self._build_patch(json_text)
+        return self._build_analysis(json_text)
+
+    def _build_analysis(
+        self,
+        json_text: str,
+    ) -> ProfileAnalysis:
+        """
+        将 LLM 返回的 JSON 字符串转换为
+        ProfileAnalysis。
+        """
+
+        patch = self._build_patch(json_text)
+
+        return ProfileAnalysis(
+            patch=patch,
+            insights=[],
+        )
 
     def _build_patch(
         self,
