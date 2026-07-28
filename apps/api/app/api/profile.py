@@ -32,4 +32,5 @@ async def get_living_profile(
         preferred_city=profile.preferred_city,
         family_size=profile.family_size,
         has_pet=profile.has_pet,
+        latest_insights=profile.latest_insights,
     )

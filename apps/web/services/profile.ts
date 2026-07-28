@@ -6,6 +6,7 @@ export interface LivingProfile {
     preferred_city: string | null;
     family_size: number | null;
     has_pet: boolean | null;
+    latest_insights: string[];
 }
 
 const API_BASE_URL =

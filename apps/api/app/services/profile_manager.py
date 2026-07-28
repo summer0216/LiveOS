@@ -1,3 +1,5 @@
+import profile
+
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 
@@ -28,18 +30,24 @@ class ProfileManager:
         self,
         conversation_id: str,
         patch: LivingProfilePatch,
+        latest_insights: list[str],
     ) -> LivingProfile:
         profile = self.get_or_create(conversation_id)
 
         profile.apply_patch(patch)
+        profile.latest_insights = latest_insights.copy()
 
         return profile
 
     def delete(
         self,
         conversation_id: str,
-    ) -> None:
-        self._profiles.pop(conversation_id, None)
+    ) -> bool:
+        if conversation_id not in self._profiles:
+            return False
+
+        del self._profiles[conversation_id]
+        return True
 
 
 profile_manager = ProfileManager()

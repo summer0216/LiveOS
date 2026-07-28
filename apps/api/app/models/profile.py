@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.models.profile_patch import LivingProfilePatch
 
@@ -11,6 +11,7 @@ class LivingProfile:
     preferred_city: str | None = None
     family_size: int | None = None
     has_pet: bool | None = None
+    latest_insights: list[str] = field(default_factory=list)
 
     def apply_patch(
         self,

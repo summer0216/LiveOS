@@ -9,13 +9,9 @@ profile = profile_manager.merge(
     ),
 )
 
-print(profile)
-
 profile = profile_manager.merge(
     "demo",
     LivingProfilePatch(
         commute_minutes=30,
     ),
 )
-
-print(profile)

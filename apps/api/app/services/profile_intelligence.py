@@ -2,8 +2,8 @@ import json
 
 from app.core.ai_client import ai_client
 from app.models.conversation import ConversationMessage
-from app.models.profile_patch import LivingProfilePatch
 from app.models.profile_analysis import ProfileAnalysis
+from app.models.profile_patch import LivingProfilePatch
 from app.runtime.prompt import build_profile_extraction_prompt
 
 
@@ -21,13 +21,13 @@ class ProfileIntelligence:
 
         return ai_client.generate_json(prompt)
 
-    def extract(
+    def analyze(
         self,
         history: list[ConversationMessage],
     ) -> ProfileAnalysis:
         """
         根据 Conversation History,
-        生成结构化 LivingProfilePatch。
+        生成 ProfileAnalysis。
         """
 
         json_text = self.extract_json(history)
@@ -43,20 +43,22 @@ class ProfileIntelligence:
         ProfileAnalysis。
         """
 
-        patch = self._build_patch(json_text)
+        data = self._parse_json(json_text)
+
+        patch = self._build_patch(data)
+        insights = self._build_insights(data)
 
         return ProfileAnalysis(
             patch=patch,
-            insights=[],
+            insights=insights,
         )
 
-    def _build_patch(
+    def _parse_json(
         self,
         json_text: str,
-    ) -> LivingProfilePatch:
+    ) -> dict:
         """
-        将 LLM 返回的 JSON 字符串转换为
-        LivingProfilePatch。
+        解析并验证 Profile Intelligence 返回的 JSON。
         """
 
         data = json.loads(json_text)
@@ -66,6 +68,16 @@ class ProfileIntelligence:
                 "Profile Intelligence response must be a JSON object.",
             )
 
+        return data
+
+    def _build_patch(
+        self,
+        data: dict,
+    ) -> LivingProfilePatch:
+        """
+        将解析后的数据转换为 LivingProfilePatch。
+        """
+
         return LivingProfilePatch(
             work_location=data.get("work_location"),
             budget=data.get("budget"),
@@ -74,6 +86,29 @@ class ProfileIntelligence:
             family_size=data.get("family_size"),
             has_pet=data.get("has_pet"),
         )
+
+    def _build_insights(
+        self,
+        data: dict,
+    ) -> list[str]:
+        """
+        根据已经识别出的 Profile 字段生成用户可见 Insights。
+        """
+
+        insight_labels = {
+            "work_location": "已识别工作地点",
+            "budget": "已识别预算",
+            "commute_minutes": "已识别通勤要求",
+            "preferred_city": "已识别意向城市",
+            "family_size": "已识别家庭人数",
+            "has_pet": "已识别宠物情况",
+        }
+
+        return [
+            label
+            for field, label in insight_labels.items()
+            if data.get(field) is not None
+        ]
 
 
 profile_intelligence = ProfileIntelligence()

@@ -5,8 +5,13 @@ interface ProfileWorkspaceProps {
     isLoading: boolean;
 }
 
+type ProfileFieldKey = keyof Omit<
+    LivingProfile,
+    'conversation_id' | 'latest_insights'
+>;
+
 interface ProfileItem {
-    key: keyof Omit<LivingProfile, 'conversation_id'>;
+    key: ProfileFieldKey;
     label: string;
     value: string;
     icon: string;
@@ -100,6 +105,9 @@ export default function ProfileWorkspace({
         (knownCount / items.length) * 100,
     );
 
+    const latestInsights = profile?.latest_insights ?? [];
+    const hasLatestInsights = latestInsights.length > 0;
+
     return (
         <aside className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
             <header className="border-b border-white/10 p-5">
@@ -166,6 +174,37 @@ export default function ProfileWorkspace({
                         />
                     ))}
                 </div>
+            )}
+
+            {hasLatestInsights && (
+                <section
+                    aria-live="polite"
+                    aria-label="AI 刚刚理解到"
+                    className="border-t border-white/10 px-5 py-5"
+                >
+                    <h3 className="flex items-center gap-1.5 text-xs font-medium text-neutral-400">
+                        <span aria-hidden="true">✨</span>
+                        <span>AI 刚刚理解到</span>
+                    </h3>
+
+                    <ul className="mt-3 space-y-1.5">
+                        {latestInsights.map((insight, index) => (
+                            <li
+                                key={`${insight}-${index}`}
+                                className="flex items-start gap-2 text-sm leading-5 text-neutral-300"
+                            >
+                                <span
+                                    aria-hidden="true"
+                                    className="w-3 shrink-0 text-neutral-400"
+                                >
+                                    ✓
+                                </span>
+
+                                <span>{insight}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
             )}
 
             <footer className="border-t border-white/10 px-5 py-4">

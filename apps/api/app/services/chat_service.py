@@ -35,25 +35,30 @@ class ChatService:
         history: list[ConversationMessage],
     ) -> None:
         """
-        从当前会话历史中提取 Profile Analysis,
+        从当前会话历史中生成 Profile Analysis，
         并合并到对应的 Living Profile。
 
         Profile 更新失败时不阻断正常聊天。
         """
 
         try:
-            analysis = profile_intelligence.extract(history)
+            analysis = profile_intelligence.analyze(history)
 
             profile_manager.merge(
                 conversation_id=conversation_id,
                 patch=analysis.patch,
+                latest_insights=analysis.insights,
             )
+
+            return analysis.insights
 
         except Exception:
             logger.exception(
-                "Failed to update living profile. " "conversation_id=%s",
+                "Failed to update living profile. conversation_id=%s",
                 conversation_id,
             )
+
+            return []
 
     def chat(
         self,
