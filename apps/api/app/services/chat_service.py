@@ -10,6 +10,10 @@ from app.services.conversation_manager import conversation_manager
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 
+from app.models.property import Property
+from app.services.property_intelligence import property_intelligence
+from app.services.property_manager import property_manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -112,6 +116,24 @@ class ChatService:
             conversation.add_assistant_message(
                 assistant_reply,
             )
+
+    def update_property(
+        self,
+        conversation_id: str,
+        description: str,
+    ) -> Property:
+        """
+        理解房源描述，并更新当前会话的 Property State。
+        """
+
+        analysis = property_intelligence.analyze(
+            description,
+        )
+
+        return property_manager.set(
+            conversation_id=conversation_id,
+            property_=analysis.property,
+        )
 
 
 chat_service = ChatService()

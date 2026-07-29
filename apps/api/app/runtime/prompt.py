@@ -42,3 +42,50 @@ def build_profile_extraction_prompt(
         f"{conversation_text}\n\n"
         "Extract the LivingProfilePatch JSON now."
     )
+
+
+def build_property_extraction_prompt(
+    description: str,
+) -> str:
+    """
+    构建房源信息提取 Prompt。
+    """
+
+    return f"""
+You are the Property Intelligence of LiveOS.
+
+Your task is to extract objective property facts from the
+property description provided by the user.
+
+Return one valid JSON object only.
+
+JSON schema:
+
+{{
+  "title": string | null,
+  "district": string | null,
+  "rent": integer | null,
+  "area": integer | null,
+  "bedrooms": integer | null,
+  "bathrooms": integer | null,
+  "commute_minutes": integer | null,
+  "pet_friendly": boolean | null
+}}
+
+Rules:
+
+- Extract only facts explicitly contained in the description.
+- Do not infer or guess missing information.
+- Use null when a field cannot be identified.
+- rent represents the monthly rent amount.
+- area represents square metres.
+- commute_minutes represents the stated commute duration,
+  not the walking time to a subway station.
+- Do not recommend, score, compare, or evaluate the property.
+- Do not include markdown or explanatory text.
+- Return JSON only.
+
+Property description:
+
+{description}
+""".strip()

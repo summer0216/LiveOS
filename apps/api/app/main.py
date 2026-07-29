@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import chat_router
 from app.api.conversation import router as conversation_router
 from app.api.profile import router as profile_router
+from app.api.properties import router as properties_router
 
 app = FastAPI(
     title="LiveOS API",
@@ -22,6 +23,7 @@ app.add_middleware(
 app.include_router(chat_router, prefix="/api")
 app.include_router(conversation_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(properties_router, prefix="/api")
 
 
 @app.get("/")
