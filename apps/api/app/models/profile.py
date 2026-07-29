@@ -2,6 +2,20 @@ from dataclasses import dataclass, field
 
 from app.models.profile_patch import LivingProfilePatch
 
+PREFERENCE_TAG_CATEGORIES = (
+    "preference",
+    "commute",
+    "lifestyle",
+    "budget",
+)
+
+
+def create_empty_preference_tags() -> dict[str, list[str]]:
+    return {
+        category: []
+        for category in PREFERENCE_TAG_CATEGORIES
+    }
+
 
 @dataclass
 class LivingProfile:
@@ -12,6 +26,9 @@ class LivingProfile:
     family_size: int | None = None
     has_pet: bool | None = None
     latest_insights: list[str] = field(default_factory=list)
+    preference_tags: dict[str, list[str]] = field(
+        default_factory=create_empty_preference_tags,
+    )
 
     def apply_patch(
         self,

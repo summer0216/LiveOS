@@ -1,96 +1,110 @@
+import Link from 'next/link';
+import {
+    ArrowRight,
+    Building2,
+    CheckCircle2,
+    Clock3,
+    Circle,
+    MapPin,
+    PawPrint,
+    Users,
+    WalletCards,
+    type LucideIcon,
+} from 'lucide-react';
+
 import type { LivingProfile } from '@/services/profile';
 
 interface ProfileWorkspaceProps {
     profile: LivingProfile | null;
     isLoading: boolean;
+    profileHref: string;
 }
 
-type ProfileFieldKey = keyof Omit<
-    LivingProfile,
-    'conversation_id' | 'latest_insights'
->;
-
-interface ProfileItem {
-    key: ProfileFieldKey;
+interface ProfileFieldItem {
+    key: string;
     label: string;
-    value: string;
-    icon: string;
-    isKnown: boolean;
+    value: string | null;
+    isIdentified: boolean;
+    icon: LucideIcon;
 }
 
-const LEARNING_TEXT = '持续了解中…';
+function hasText(
+    value: string | null | undefined,
+): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+}
 
-function getProfileItems(
+function getProfileFieldItems(
     profile: LivingProfile | null,
-): ProfileItem[] {
+): ProfileFieldItem[] {
+    const rawWorkLocation = profile?.work_location;
+    const rawPreferredCity = profile?.preferred_city;
+    const workLocation = hasText(rawWorkLocation)
+        ? rawWorkLocation.trim()
+        : null;
+    const preferredCity = hasText(rawPreferredCity)
+        ? rawPreferredCity.trim()
+        : null;
+    const hasBudget = typeof profile?.budget === 'number';
+    const hasCommute =
+        typeof profile?.commute_minutes === 'number';
+    const hasFamilySize =
+        typeof profile?.family_size === 'number';
+    const hasPet = profile?.has_pet != null;
+
     return [
         {
             key: 'work_location',
-            icon: '📍',
             label: '工作地点',
-            value: profile?.work_location || LEARNING_TEXT,
-            isKnown: Boolean(profile?.work_location),
+            value: workLocation,
+            isIdentified: workLocation !== null,
+            icon: MapPin,
         },
         {
             key: 'budget',
-            icon: '💰',
             label: '预算',
-            value:
-                profile?.budget !== null &&
-                    profile?.budget !== undefined
-                    ? `¥${profile.budget.toLocaleString('zh-CN')}`
-                    : LEARNING_TEXT,
-            isKnown:
-                profile?.budget !== null &&
-                profile?.budget !== undefined,
+            value: hasBudget
+                ? `¥${profile.budget?.toLocaleString('zh-CN')} / 月`
+                : null,
+            isIdentified: hasBudget,
+            icon: WalletCards,
         },
         {
             key: 'commute_minutes',
-            icon: '🚇',
             label: '通勤要求',
-            value:
-                profile?.commute_minutes !== null &&
-                    profile?.commute_minutes !== undefined
-                    ? `不超过 ${profile.commute_minutes} 分钟`
-                    : LEARNING_TEXT,
-            isKnown:
-                profile?.commute_minutes !== null &&
-                profile?.commute_minutes !== undefined,
+            value: hasCommute
+                ? `${profile.commute_minutes} 分钟以内`
+                : null,
+            isIdentified: hasCommute,
+            icon: Clock3,
         },
         {
             key: 'preferred_city',
-            icon: '🏙️',
             label: '意向城市',
-            value: profile?.preferred_city || LEARNING_TEXT,
-            isKnown: Boolean(profile?.preferred_city),
+            value: preferredCity,
+            isIdentified: preferredCity !== null,
+            icon: Building2,
         },
         {
             key: 'family_size',
-            icon: '👥',
-            label: '家庭人数',
-            value:
-                profile?.family_size !== null &&
-                    profile?.family_size !== undefined
-                    ? `${profile.family_size} 人`
-                    : LEARNING_TEXT,
-            isKnown:
-                profile?.family_size !== null &&
-                profile?.family_size !== undefined,
+            label: '居住人数',
+            value: hasFamilySize
+                ? `${profile.family_size} 人`
+                : null,
+            isIdentified: hasFamilySize,
+            icon: Users,
         },
         {
             key: 'has_pet',
-            icon: '🐾',
             label: '宠物情况',
             value:
-                profile?.has_pet === null ||
-                    profile?.has_pet === undefined
-                    ? LEARNING_TEXT
+                profile?.has_pet == null
+                    ? null
                     : profile.has_pet
-                        ? '有宠物'
-                        : '无宠物',
-            isKnown:
-                profile?.has_pet !== null &&
-                profile?.has_pet !== undefined,
+                      ? '有宠物'
+                      : '无宠物',
+            isIdentified: hasPet,
+            icon: PawPrint,
         },
     ];
 }
@@ -98,205 +112,191 @@ function getProfileItems(
 export default function ProfileWorkspace({
     profile,
     isLoading,
+    profileHref,
 }: ProfileWorkspaceProps) {
-    const items = getProfileItems(profile);
-    const knownCount = items.filter((item) => item.isKnown).length;
-    const completion = Math.round(
-        (knownCount / items.length) * 100,
+    const items = getProfileFieldItems(profile);
+    const identifiedItems = items.filter(
+        (item) => item.isIdentified,
+    );
+    const unknownItems = items.filter(
+        (item) => !item.isIdentified,
     );
 
-    const latestInsights = profile?.latest_insights ?? [];
-    const hasLatestInsights = latestInsights.length > 0;
-
     return (
-        <aside className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
-            <header className="border-b border-white/10 p-5">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+        <aside className="flex h-full min-h-0 flex-col border-l border-white/[0.06] bg-[#060a14]">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7">
+                <div className="flex items-center justify-between gap-4">
+                    <h2 className="text-lg font-medium tracking-tight text-slate-100">
+                        Living Profile
+                    </h2>
+                    <span
+                        aria-live="polite"
+                        className={[
+                            'flex min-w-[68px] items-center justify-end gap-1.5 font-mono text-[10px]',
+                            isLoading
+                                ? 'text-violet-400'
+                                : profile
+                                  ? 'text-blue-400'
+                                  : 'text-slate-700',
+                        ].join(' ')}
+                    >
                         <span
-                            aria-hidden="true"
                             className={[
-                                'h-2 w-2 rounded-full',
+                                'h-1.5 w-1.5 rounded-full',
                                 isLoading
-                                    ? 'animate-pulse bg-white/50'
+                                    ? 'animate-pulse bg-violet-400'
                                     : profile
-                                        ? 'bg-white'
-                                        : 'bg-white/20',
+                                      ? 'bg-blue-400'
+                                      : 'bg-slate-800',
                             ].join(' ')}
                         />
-
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-500">
-                            AI 理解
-                        </p>
-                    </div>
-
-                    <ProfileStatus
-                        profile={profile}
-                        isLoading={isLoading}
-                    />
+                        {isLoading
+                            ? '同步中'
+                            : profile
+                              ? '已同步'
+                              : '等待信息'}
+                    </span>
                 </div>
-
-                <h2 className="mt-3 text-xl font-medium tracking-tight text-white">
-                    你的居住画像
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-neutral-400">
-                    LiveOS 会随着对话持续理解你的居住需求、约束与偏好。
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                    AI 正在根据对话持续理解你的居住需求
                 </p>
 
-                {!isLoading && profile && (
-                    <div className="mt-5">
-                        <div className="flex items-center justify-between text-xs text-neutral-500">
-                            <span>画像完整度</span>
-                            <span>{completion}%</span>
-                        </div>
-
-                        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-                            <div
-                                className="h-full rounded-full bg-white/70 transition-[width] duration-500"
-                                style={{
-                                    width: `${completion}%`,
-                                }}
-                            />
-                        </div>
-                    </div>
-                )}
-            </header>
-
-            {isLoading ? (
-                <ProfileLoadingState />
-            ) : (
-                <div className="divide-y divide-white/10 px-5">
+                <div
+                    aria-busy={isLoading}
+                    className="mt-6 divide-y divide-white/[0.06] border-y border-white/[0.06]"
+                >
                     {items.map((item) => (
-                        <ProfileItemRow
+                        <ProfileFieldRow
                             key={item.key}
                             item={item}
                         />
                     ))}
                 </div>
-            )}
 
-            {hasLatestInsights && (
-                <section
-                    aria-live="polite"
-                    aria-label="AI 刚刚理解到"
-                    className="border-t border-white/10 px-5 py-5"
-                >
-                    <h3 className="flex items-center gap-1.5 text-xs font-medium text-neutral-400">
-                        <span aria-hidden="true">✨</span>
-                        <span>AI 刚刚理解到</span>
+                <section className="mt-6 rounded-xl border border-white/[0.08] bg-[#0b1020] p-5">
+                    <h3 className="font-mono text-xs tracking-[0.12em] text-blue-400">
+                        AI Insight
                     </h3>
 
-                    <ul className="mt-3 space-y-1.5">
-                        {latestInsights.map((insight, index) => (
-                            <li
-                                key={`${insight}-${index}`}
-                                className="flex items-start gap-2 text-sm leading-5 text-neutral-300"
-                            >
-                                <span
-                                    aria-hidden="true"
-                                    className="w-3 shrink-0 text-neutral-400"
-                                >
-                                    ✓
-                                </span>
+                    <div className="mt-4 space-y-5">
+                        {identifiedItems.length > 0 && (
+                            <InsightGroup
+                                title="已识别"
+                                items={identifiedItems}
+                                identified
+                            />
+                        )}
 
-                                <span>{insight}</span>
-                            </li>
-                        ))}
-                    </ul>
+                        {unknownItems.length > 0 && (
+                            <InsightGroup
+                                title="仍需了解"
+                                items={unknownItems}
+                                identified={false}
+                            />
+                        )}
+                    </div>
                 </section>
-            )}
+            </div>
 
-            <footer className="border-t border-white/10 px-5 py-4">
-                <p className="text-xs leading-5 text-neutral-500">
-                    {profile
-                        ? '随着对话继续，你的居住画像会逐步补充和更新。'
-                        : '开始对话后，LiveOS 会在这里呈现对你的理解。'}
-                </p>
-            </footer>
+            <div className="shrink-0 border-t border-white/[0.06] bg-[#060a14]/95 p-6">
+                {profile ? (
+                    <Link
+                        href={profileHref}
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-500 text-sm font-medium text-white shadow-[0_10px_30px_rgba(59,105,255,0.22)] transition hover:bg-blue-400"
+                    >
+                        查看居住画像
+                        <ArrowRight size={16} />
+                    </Link>
+                ) : (
+                    <button
+                        type="button"
+                        disabled
+                        className="h-12 w-full cursor-not-allowed rounded-xl bg-slate-900 text-sm text-slate-700"
+                    >
+                        画像生成中
+                    </button>
+                )}
+            </div>
         </aside>
     );
 }
 
-interface ProfileStatusProps {
-    profile: LivingProfile | null;
-    isLoading: boolean;
-}
-
-function ProfileStatus({
-    profile,
-    isLoading,
-}: ProfileStatusProps) {
-    const text = isLoading
-        ? '同步中'
-        : profile
-            ? '已同步'
-            : '等待信息';
-
+function InsightGroup({
+    title,
+    items,
+    identified,
+}: {
+    title: string;
+    items: ProfileFieldItem[];
+    identified: boolean;
+}) {
     return (
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-neutral-400">
-            {text}
-        </span>
-    );
-}
-
-interface ProfileItemRowProps {
-    item: ProfileItem;
-}
-
-function ProfileItemRow({
-    item,
-}: ProfileItemRowProps) {
-    return (
-        <div className="flex gap-3 py-4">
-            <div
-                aria-hidden="true"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-base"
-            >
-                {item.icon}
-            </div>
-
-            <div className="min-w-0 flex-1">
-                <p className="text-xs text-neutral-500">
-                    {item.label}
-                </p>
-
-                <p
-                    className={[
-                        'mt-1 truncate text-sm transition-colors',
-                        item.isKnown
-                            ? 'font-medium text-neutral-200'
-                            : 'italic text-neutral-600',
-                    ].join(' ')}
-                >
-                    {item.value}
-                </p>
-            </div>
+        <div>
+            <p className="text-[10px] font-medium tracking-[0.14em] text-slate-700">
+                {title}
+            </p>
+            <ul className="mt-2 space-y-2">
+                {items.map((item) => (
+                    <li
+                        key={item.key}
+                        className={[
+                            'flex items-center gap-2 text-xs',
+                            identified
+                                ? 'text-slate-400'
+                                : 'text-slate-600',
+                        ].join(' ')}
+                    >
+                        {identified ? (
+                            <CheckCircle2
+                                size={14}
+                                className="shrink-0 text-blue-400"
+                            />
+                        ) : (
+                            <Circle
+                                size={14}
+                                className="shrink-0 text-slate-700"
+                            />
+                        )}
+                        <span>
+                            {identified
+                                ? `已识别${item.label}`
+                                : `仍需了解${item.label}`}
+                        </span>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }
 
-function ProfileLoadingState() {
-    return (
-        <div
-            role="status"
-            aria-live="polite"
-            aria-label="正在同步居住画像"
-            className="space-y-4 px-5 py-5"
-        >
-            {[0, 1, 2, 3].map((item) => (
-                <div
-                    key={item}
-                    className="flex animate-pulse gap-3"
-                >
-                    <div className="h-9 w-9 rounded-xl bg-white/5" />
+function ProfileFieldRow({
+    item,
+}: {
+    item: ProfileFieldItem;
+}) {
+    const Icon = item.icon;
 
-                    <div className="flex-1 space-y-2">
-                        <div className="h-3 w-20 rounded bg-white/5" />
-                        <div className="h-4 w-32 rounded bg-white/10" />
-                    </div>
-                </div>
-            ))}
+    return (
+        <div className="flex items-center gap-3 py-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-blue-400">
+                <Icon size={17} />
+            </span>
+
+            <div className="min-w-0 flex-1">
+                <p className="text-xs text-slate-600">
+                    {item.label}
+                </p>
+                <p
+                    className={[
+                        'mt-1 truncate text-sm',
+                        item.value
+                            ? 'text-slate-300'
+                            : 'text-slate-700',
+                    ].join(' ')}
+                >
+                    {item.value ?? '待了解'}
+                </p>
+            </div>
         </div>
     );
 }

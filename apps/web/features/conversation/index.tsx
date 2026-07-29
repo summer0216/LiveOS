@@ -11,10 +11,10 @@ import MessageBubble from './components/MessageBubble';
 import ThinkingIndicator from './components/ThinkingIndicator';
 import ProfileWorkspace from './components/ProfileWorkspace';
 
-import type { LivingProfile } from '@/services/profile';
-import { getLivingProfile } from '@/services/profile';
-
-
+import {
+  getLivingProfile,
+  type LivingProfile,
+} from '@/services/profile';
 
 type MessageRole = 'user' | 'assistant';
 
@@ -25,7 +25,14 @@ interface ConversationMessage {
 }
 
 const STREAM_ERROR_MESSAGE =
-  '抱歉,LiveOS 暂时无法完成回复，请稍后重试。';
+  '抱歉，LiveOS 暂时无法完成回复，请稍后重试。';
+
+const WELCOME_MESSAGE: ConversationMessage = {
+  id: 'liveos-welcome',
+  role: 'assistant',
+  content:
+    '你好，我是你的 LiveOS 决策助手。告诉我你理想的居住情况——现在对你来说什么最重要？',
+};
 
 export default function ConversationFeature() {
   const searchParams = useSearchParams();
@@ -36,7 +43,7 @@ export default function ConversationFeature() {
   const initialMessage = searchParams.get('message') ?? '';
 
   const [messages, setMessages] = useState<ConversationMessage[]>(
-    [],
+    [WELCOME_MESSAGE],
   );
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -46,6 +53,10 @@ export default function ConversationFeature() {
 
   const initialMessageSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const profileHref = conversationId
+    ? `/profile?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/profile';
 
   const loadProfile = useCallback(async () => {
     if (!conversationId) {
@@ -188,35 +199,43 @@ export default function ConversationFeature() {
   }, [messages, isThinking]);
 
   return (
-    <ConversationLayout>
-      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="flex min-h-0 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto pr-2">
-            {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                role={message.role}
-                content={message.content}
-              />
-            ))}
+    <ConversationLayout
+      profileHref={profileHref}
+      profileReady={Boolean(profile)}
+    >
+      <div className="grid h-full min-h-0 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="flex min-h-0 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 lg:px-12">
+            <div className="mx-auto w-full max-w-5xl">
+              {messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  role={message.role}
+                  content={message.content}
+                />
+              ))}
 
-            {isThinking && <ThinkingIndicator />}
+              {isThinking && <ThinkingIndicator />}
 
-            <div ref={bottomRef} />
+              <div ref={bottomRef} />
+            </div>
           </div>
 
           <ConversationComposer
             disabled={isStreaming}
+            profileHref={profileHref}
+            profileReady={Boolean(profile)}
             onSubmit={(message) => {
               void sendConversationMessage(message);
             }}
           />
-        </div>
+        </section>
 
-        <div className="min-h-0 overflow-y-auto">
+        <div className="hidden min-h-0 xl:block">
           <ProfileWorkspace
             profile={profile}
             isLoading={isProfileLoading}
+            profileHref={profileHref}
           />
         </div>
       </div>

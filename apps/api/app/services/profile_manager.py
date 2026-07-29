@@ -1,5 +1,3 @@
-import profile
-
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 
@@ -48,6 +46,23 @@ class ProfileManager:
 
         del self._profiles[conversation_id]
         return True
+
+    def update_tags(
+        self,
+        conversation_id: str,
+        preference_tags: dict[str, list[str]],
+    ) -> LivingProfile | None:
+        profile = self.get(conversation_id)
+
+        if profile is None:
+            return None
+
+        profile.preference_tags = {
+            category: tags.copy()
+            for category, tags in preference_tags.items()
+        }
+
+        return profile
 
 
 profile_manager = ProfileManager()

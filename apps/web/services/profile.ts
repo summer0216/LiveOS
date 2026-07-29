@@ -1,3 +1,18 @@
+export const PROFILE_TAG_CATEGORIES = [
+    'preference',
+    'commute',
+    'lifestyle',
+    'budget',
+] as const;
+
+export type ProfileTagCategory =
+    (typeof PROFILE_TAG_CATEGORIES)[number];
+
+export type PreferenceTags = Record<
+    ProfileTagCategory,
+    string[]
+>;
+
 export interface LivingProfile {
     conversation_id: string;
     work_location: string | null;
@@ -7,6 +22,33 @@ export interface LivingProfile {
     family_size: number | null;
     has_pet: boolean | null;
     latest_insights: string[];
+    preference_tags: PreferenceTags;
+}
+
+export async function updatePreferenceTags(
+    conversationId: string,
+    preferenceTags: PreferenceTags,
+): Promise<LivingProfile> {
+    const response = await fetch(
+        `${API_BASE_URL}/api/profiles/${conversationId}/tags`,
+        {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                preference_tags: preferenceTags,
+            }),
+        },
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            `Failed to update preference tags: ${response.status}`,
+        );
+    }
+
+    return response.json() as Promise<LivingProfile>;
 }
 
 const API_BASE_URL =
