@@ -31,7 +31,7 @@ const JOURNEY_STEPS = [
   '详情',
   '对比',
   '决策',
-  '记忆',
+  '历史',
 ] as const;
 
 const WAITING_SUMMARY = 'AI 正在等待足够的信息，完成最终分析。';
@@ -122,6 +122,9 @@ export default function DecisionWorkspace() {
   const propertyHref = conversationId
     ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
     : '/workspace/property';
+  const historyHref = conversationId
+    ? `/workspace/history?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/workspace/history';
 
   return (
     <DecisionWorkspaceView
@@ -130,6 +133,7 @@ export default function DecisionWorkspace() {
       bestProperty={bestProperty}
       propertyCount={properties.length}
       propertyHref={propertyHref}
+      historyHref={historyHref}
       onRetry={() => {
         setRequestKey((currentKey) => currentKey + 1);
       }}
@@ -143,6 +147,7 @@ function DecisionWorkspaceView({
   bestProperty,
   propertyCount,
   propertyHref,
+  historyHref,
   onRetry,
 }: {
   status: WorkspaceStatus;
@@ -150,13 +155,17 @@ function DecisionWorkspaceView({
   bestProperty: Property | null;
   propertyCount: number;
   propertyHref: string;
+  historyHref: string;
   onRetry: () => void;
 }) {
   const isLoading = status === 'loading';
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
-      <WorkspaceHeader propertyHref={propertyHref} />
+      <WorkspaceHeader
+        propertyHref={propertyHref}
+        historyHref={historyHref}
+      />
 
       <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
@@ -228,7 +237,13 @@ function DecisionWorkspaceView({
   );
 }
 
-function WorkspaceHeader({ propertyHref }: { propertyHref: string }) {
+function WorkspaceHeader({
+  propertyHref,
+  historyHref,
+}: {
+  propertyHref: string;
+  historyHref: string;
+}) {
   return (
     <header className="border-b border-white/[0.06] bg-[#050812]/95">
       <div className="mx-auto flex h-[72px] max-w-[1480px] items-center gap-8 px-5 sm:px-8">
@@ -253,7 +268,7 @@ function WorkspaceHeader({ propertyHref }: { propertyHref: string }) {
             const isComplete = stepNumber < 7;
             const isCurrent = stepNumber === 7;
 
-            return (
+            const stepContent = (
               <div key={step} className="flex items-center">
                 <div
                   className={[
@@ -284,6 +299,18 @@ function WorkspaceHeader({ propertyHref }: { propertyHref: string }) {
                   <span className="mx-3 h-px w-5 bg-slate-800" />
                 )}
               </div>
+            );
+
+            return stepNumber === 8 ? (
+              <Link
+                key={step}
+                href={historyHref}
+                aria-label="打开决策历史"
+              >
+                {stepContent}
+              </Link>
+            ) : (
+              stepContent
             );
           })}
         </nav>

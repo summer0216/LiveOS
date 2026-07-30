@@ -22,12 +22,14 @@ const API_BASE_URL =
 
 export async function getProperties(
   conversationId: string,
+  signal?: AbortSignal,
 ): Promise<Property[]> {
   const response = await fetch(
     `${API_BASE_URL}/api/properties?conversation_id=${encodeURIComponent(conversationId)}`,
     {
       method: 'GET',
       cache: 'no-store',
+      signal,
     },
   );
 
