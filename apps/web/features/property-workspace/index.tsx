@@ -197,6 +197,9 @@ export default function PropertyWorkspace() {
   const profileHref = conversationId
     ? `/workspace/profile?conversation_id=${encodeURIComponent(conversationId)}`
     : '/workspace/profile';
+  const decisionHref = conversationId
+    ? `/workspace/decision?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/workspace/decision';
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
@@ -204,16 +207,24 @@ export default function PropertyWorkspace() {
 
       <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
-          <section>
-            <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
-              PROPERTY WORKSPACE
-            </p>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Property Workspace
-            </h1>
-            <p className="mt-3 max-w-xl text-base leading-7 text-slate-500">
-              管理你的候选房源，AI 将基于这些房源完成后续分析。
-            </p>
+          <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+            <div>
+              <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
+                PROPERTY WORKSPACE
+              </p>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+                Property Workspace
+              </h1>
+              <p className="mt-3 max-w-xl text-base leading-7 text-slate-500">
+                管理你的候选房源，AI 将基于这些房源完成后续分析。
+              </p>
+            </div>
+            <Link
+              href={decisionHref}
+              className="w-fit rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15"
+            >
+              进入 AI Decision
+            </Link>
           </section>
 
           {hasError && (
@@ -463,12 +474,12 @@ function PropertyListLoading() {
   );
 }
 
-function PropertyCard({
+export function PropertyCard({
   property,
   onDelete,
 }: {
   property: Property;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const fields = getPropertyFields(property);
   const title = hasPropertyValue(property.title)
@@ -487,14 +498,16 @@ function PropertyCard({
             户型：{formatLayout(property)}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="flex shrink-0 items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-300 transition hover:border-red-400/40 hover:bg-red-400/10"
-        >
-          <Trash2 size={14} />
-          Delete
-        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-300 transition hover:border-red-400/40 hover:bg-red-400/10"
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
+        )}
       </div>
 
       <dl className="mt-6 grid gap-3 sm:grid-cols-2">
