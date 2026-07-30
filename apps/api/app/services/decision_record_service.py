@@ -48,15 +48,37 @@ class DecisionRecordService:
 
         return record.model_copy(deep=True)
 
-    def list(
+    def list_by_conversation(
         self,
         conversation_id: str,
     ) -> list[DecisionRecord]:
         with self._lock:
             return [
                 record.model_copy(deep=True)
-                for record in self._records.get(conversation_id, [])
+                for record in sorted(
+                    self._records.get(conversation_id, []),
+                    key=lambda record: record.created_at,
+                    reverse=True,
+                )
             ]
+
+    def list(
+        self,
+        conversation_id: str,
+    ) -> list[DecisionRecord]:
+        return self.list_by_conversation(conversation_id)
+
+    def get_by_id(
+        self,
+        conversation_id: str,
+        record_id: str,
+    ) -> DecisionRecord | None:
+        with self._lock:
+            for record in self._records.get(conversation_id, []):
+                if record.id == record_id:
+                    return record.model_copy(deep=True)
+
+        return None
 
     def delete_conversation(
         self,
