@@ -9,6 +9,7 @@ from app.schemas.decision import (
     LivingProfileDecisionInput,
     PropertyDecisionInput,
 )
+from app.services.decision_record_service import decision_record_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 
@@ -76,6 +77,17 @@ class DecisionService:
                 conversation_id,
             )
             return waiting_decision("AI 暂时无法验证推荐房源，请稍后重试。")
+
+        try:
+            decision_record_service.save(
+                conversation_id=conversation_id,
+                decision=result,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to save Decision Record for conversation %s.",
+                conversation_id,
+            )
 
         return result
 

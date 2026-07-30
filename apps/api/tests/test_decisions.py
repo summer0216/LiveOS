@@ -9,6 +9,7 @@ from app.main import app
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import Property
 from app.services.decision_service import decision_service
+from app.services.decision_record_service import decision_record_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 
@@ -33,12 +34,14 @@ def clean_decision_data() -> Iterator[None]:
     for conversation_id in CONVERSATION_IDS:
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
+        decision_record_service.delete_conversation(conversation_id)
 
     yield
 
     for conversation_id in CONVERSATION_IDS:
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
+        decision_record_service.delete_conversation(conversation_id)
 
 
 def create_profile(conversation_id: str) -> None:
