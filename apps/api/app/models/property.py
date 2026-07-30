@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Property:
+    id: str | None = None
+    conversation_id: str | None = None
     title: str | None = None
     district: str | None = None
     rent: int | None = None

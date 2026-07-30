@@ -16,7 +16,13 @@ import {
   WalletCards,
 } from 'lucide-react';
 
-import { getProperty, type Property } from '@/services/property';
+import {
+  createProperty,
+  deleteProperty,
+  getProperties,
+  type Property,
+  type PropertyInput,
+} from '@/services/property';
 
 const UNKNOWN_VALUE = '仍在了解中';
 
@@ -36,11 +42,6 @@ interface PropertyField {
   value: string | number | boolean | null | undefined;
   icon: typeof MapPin;
   format?: (value: string | number | boolean) => string;
-}
-
-interface WorkspaceProperty {
-  id: string;
-  property: Property;
 }
 
 interface PropertyFormValues {
@@ -130,7 +131,7 @@ function parseOptionalNumber(value: string): number | null {
   return value.trim() === '' ? null : Number(value);
 }
 
-function createProperty(values: PropertyFormValues): Property {
+function createPropertyInput(values: PropertyFormValues): PropertyInput {
   return {
     title: values.title.trim() || null,
     district: values.district.trim() || null,
@@ -146,9 +147,13 @@ function createProperty(values: PropertyFormValues): Property {
 export default function PropertyWorkspace() {
   const searchParams = useSearchParams();
   const conversationId = searchParams.get('conversation_id') ?? '';
-  const [properties, setProperties] = useState<WorkspaceProperty[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(conversationId));
-  const [hasError, setHasError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(
+    null,
+  );
   const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
@@ -156,28 +161,25 @@ export default function PropertyWorkspace() {
 
     async function loadProperty() {
       if (!conversationId) {
+        setLoadError('缺少 conversation_id，无法管理候选房源。');
         setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
-      setHasError(false);
+      setLoadError(null);
 
       try {
-        const nextProperty = await getProperty(conversationId);
+        const nextProperties = await getProperties(conversationId);
 
         if (isActive) {
-          setProperties(
-            nextProperty
-              ? [{ id: 'runtime-property', property: nextProperty }]
-              : [],
-          );
+          setProperties(nextProperties);
         }
       } catch (error: unknown) {
-        console.error('Failed to load property:', error);
+        console.error('Failed to load properties:', error);
 
         if (isActive) {
-          setHasError(true);
+          setLoadError('候选房源加载失败，请稍后重试。');
           setProperties([]);
         }
       } finally {
@@ -227,16 +229,28 @@ export default function PropertyWorkspace() {
             </Link>
           </section>
 
-          {hasError && (
+          {loadError && (
             <p
               role="alert"
               className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200"
             >
-              候选房源暂时无法加载，请稍后重试。
+              {loadError}
             </p>
           )}
 
-          <PropertyOverview count={properties.length} isLoading={isLoading} />
+          {operationError && (
+            <p
+              role="alert"
+              className="mt-6 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200"
+            >
+              {operationError}
+            </p>
+          )}
+
+          <PropertyOverview
+            count={loadError ? null : properties.length}
+            isLoading={isLoading}
+          />
 
           <section aria-labelledby="property-list-title" className="mt-8">
             <div className="flex items-end justify-between gap-4">
@@ -252,15 +266,21 @@ export default function PropertyWorkspace() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {!isLoading && (
+                {!isLoading && !loadError && (
                   <span className="font-mono text-xs text-slate-600">
                     {properties.length} 套
                   </span>
                 )}
                 <button
                   type="button"
-                  disabled={isLoading || isAdding}
+                  disabled={
+                    isLoading ||
+                    isAdding ||
+                    Boolean(loadError) ||
+                    !conversationId
+                  }
                   onClick={() => {
+                    setOperationError(null);
                     setIsAdding(true);
                   }}
                   className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
@@ -274,23 +294,43 @@ export default function PropertyWorkspace() {
             {isAdding && (
               <PropertyForm
                 onCancel={() => {
+                  setOperationError(null);
                   setIsAdding(false);
                 }}
-                onSave={(property) => {
-                  setProperties((currentProperties) => [
-                    ...currentProperties,
-                    {
-                      id: crypto.randomUUID(),
+                onSave={async (property) => {
+                  if (!conversationId) {
+                    setOperationError(
+                      '缺少 conversation_id，无法添加候选房源。',
+                    );
+                    return false;
+                  }
+
+                  setOperationError(null);
+
+                  try {
+                    const createdProperty = await createProperty(
+                      conversationId,
                       property,
-                    },
-                  ]);
-                  setIsAdding(false);
+                    );
+                    setProperties((currentProperties) => [
+                      ...currentProperties,
+                      createdProperty,
+                    ]);
+                    setIsAdding(false);
+                    return true;
+                  } catch (error: unknown) {
+                    console.error('Failed to create property:', error);
+                    setOperationError('候选房源保存失败，请稍后重试。');
+                    return false;
+                  }
                 }}
               />
             )}
 
             {isLoading ? (
               <PropertyListLoading />
+            ) : loadError ? (
+              <PropertyLoadError />
             ) : properties.length === 0 ? (
               <PropertyEmptyState
                 onAdd={() => {
@@ -303,13 +343,25 @@ export default function PropertyWorkspace() {
                 {properties.map((item) => (
                   <PropertyCard
                     key={item.id}
-                    property={item.property}
-                    onDelete={() => {
-                      setProperties((currentProperties) =>
-                        currentProperties.filter(
-                          (currentProperty) => currentProperty.id !== item.id,
-                        ),
-                      );
+                    property={item}
+                    isDeleting={deletingPropertyId === item.id}
+                    onDelete={async () => {
+                      setOperationError(null);
+                      setDeletingPropertyId(item.id);
+
+                      try {
+                        await deleteProperty(item.id);
+                        setProperties((currentProperties) =>
+                          currentProperties.filter(
+                            (currentProperty) => currentProperty.id !== item.id,
+                          ),
+                        );
+                      } catch (error: unknown) {
+                        console.error('Failed to delete property:', error);
+                        setOperationError('候选房源删除失败，请稍后重试。');
+                      } finally {
+                        setDeletingPropertyId(null);
+                      }
                     }}
                   />
                 ))}
@@ -397,7 +449,7 @@ function PropertyOverview({
   count,
   isLoading,
 }: {
-  count: number;
+  count: number | null;
   isLoading: boolean;
 }) {
   return (
@@ -424,6 +476,10 @@ function PropertyOverview({
         <p className="text-sm text-slate-500">候选房源</p>
         {isLoading ? (
           <div className="mt-3 h-8 w-16 animate-pulse rounded bg-white/[0.06]" />
+        ) : count === null ? (
+          <p className="mt-2 font-mono text-lg font-medium text-amber-200">
+            无法读取
+          </p>
         ) : (
           <p className="mt-2 font-mono text-3xl font-medium text-blue-400">
             {count}
@@ -466,6 +522,14 @@ function PropertyEmptyState({
   );
 }
 
+function PropertyLoadError() {
+  return (
+    <div className="mt-5 flex min-h-52 items-center justify-center rounded-2xl border border-dashed border-amber-400/20 bg-amber-400/[0.03] px-6 text-center">
+      <p className="text-sm text-amber-200">候选房源加载失败，请稍后重试。</p>
+    </div>
+  );
+}
+
 function PropertyListLoading() {
   return (
     <div className="mt-5 grid gap-5 md:grid-cols-2">
@@ -477,9 +541,11 @@ function PropertyListLoading() {
 export function PropertyCard({
   property,
   onDelete,
+  isDeleting = false,
 }: {
   property: Property;
-  onDelete?: () => void;
+  onDelete?: () => void | Promise<void>;
+  isDeleting?: boolean;
 }) {
   const fields = getPropertyFields(property);
   const title = hasPropertyValue(property.title)
@@ -501,11 +567,12 @@ export function PropertyCard({
         {onDelete && (
           <button
             type="button"
+            disabled={isDeleting}
             onClick={onDelete}
-            className="flex shrink-0 items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-300 transition hover:border-red-400/40 hover:bg-red-400/10"
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-300 transition hover:border-red-400/40 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 size={14} />
-            Delete
+            {isDeleting ? 'Deleting…' : 'Delete'}
           </button>
         )}
       </div>
@@ -538,10 +605,11 @@ function PropertyForm({
   onSave,
   onCancel,
 }: {
-  onSave: (property: Property) => void;
+  onSave: (property: PropertyInput) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [values, setValues] = useState<PropertyFormValues>(EMPTY_FORM_VALUES);
+  const [isSaving, setIsSaving] = useState(false);
 
   function updateValue(
     field: keyof PropertyFormValues,
@@ -553,9 +621,15 @@ function PropertyForm({
     }));
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSave(createProperty(values));
+    setIsSaving(true);
+
+    try {
+      await onSave(createPropertyInput(values));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -643,16 +717,18 @@ function PropertyForm({
       <div className="mt-6 flex justify-end gap-3">
         <button
           type="button"
+          disabled={isSaving}
           onClick={onCancel}
-          className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
+          className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-400"
+          disabled={isSaving}
+          className="rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save
+          {isSaving ? 'Saving…' : 'Save'}
         </button>
       </div>
     </form>

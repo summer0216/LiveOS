@@ -130,7 +130,7 @@ class ChatService:
             description,
         )
 
-        return property_manager.set(
+        return property_manager.create(
             conversation_id=conversation_id,
             property_=analysis.property,
         )
