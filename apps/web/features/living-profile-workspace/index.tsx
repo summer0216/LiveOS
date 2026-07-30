@@ -9,6 +9,7 @@ import {
   Check,
   CircleDollarSign,
   House,
+  Sparkles,
   Users,
 } from 'lucide-react';
 
@@ -30,6 +31,8 @@ const JOURNEY_STEPS = [
 interface ProfileField {
   label: string;
   value: string | number | boolean | null | undefined;
+  understoodInsight: string;
+  learningInsight: string;
   format?: (value: string | number | boolean) => string;
 }
 
@@ -68,10 +71,14 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
         {
           label: '工作地点',
           value: profile?.work_location,
+          understoodInsight: '已了解到你的工作地点。',
+          learningInsight: '希望继续了解你的工作地点。',
         },
         {
           label: '通勤要求',
           value: profile?.commute_minutes,
+          understoodInsight: '已了解到你的通勤需求。',
+          learningInsight: '希望继续了解你的通勤需求。',
           format: (value) => `${value} 分钟以内`,
         },
       ],
@@ -84,6 +91,8 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
         {
           label: '月租预算',
           value: profile?.budget,
+          understoodInsight: '已了解到你的租房预算。',
+          learningInsight: '希望继续了解你的租房预算。',
           format: (value) => `$${Number(value).toLocaleString('en-US')}/月`,
         },
       ],
@@ -96,6 +105,8 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
         {
           label: '意向城市',
           value: profile?.preferred_city,
+          understoodInsight: '已了解到你的目标城市。',
+          learningInsight: '希望继续了解你的目标城市。',
         },
       ],
     },
@@ -107,11 +118,15 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
         {
           label: '居住人数',
           value: profile?.family_size,
+          understoodInsight: '已了解到你的居住人数。',
+          learningInsight: '希望继续了解你的家庭居住人数。',
           format: (value) => `${value} 人`,
         },
         {
           label: '是否养宠物',
           value: profile?.has_pet,
+          understoodInsight: '已了解到你的宠物生活情况。',
+          learningInsight: '希望继续了解你的宠物生活情况。',
           format: (value) => (value === true ? '是' : '否'),
         },
       ],
@@ -174,6 +189,9 @@ export default function LivingProfileWorkspace() {
   const conversationHref = conversationId
     ? `/conversation?conversation_id=${encodeURIComponent(conversationId)}`
     : '/conversation';
+  const propertyHref = conversationId
+    ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/workspace/property';
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
@@ -181,16 +199,24 @@ export default function LivingProfileWorkspace() {
 
       <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
-          <section>
-            <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
-              LIVING PROFILE
-            </p>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Living Profile
-            </h1>
-            <p className="mt-3 text-base text-slate-500">
-              AI 正在持续建立你的居住模型。
-            </p>
+          <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+            <div>
+              <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
+                LIVING PROFILE
+              </p>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+                Living Profile
+              </h1>
+              <p className="mt-3 text-base text-slate-500">
+                AI 正在持续建立你的居住模型。
+              </p>
+            </div>
+            <Link
+              href={propertyHref}
+              className="w-fit rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15"
+            >
+              进入 Property Workspace
+            </Link>
           </section>
 
           {hasError && (
@@ -220,6 +246,8 @@ export default function LivingProfileWorkspace() {
               />
             ))}
           </section>
+
+          <AIInsightCard fields={fields} isLoading={isLoading} />
         </div>
       </div>
     </main>
@@ -410,5 +438,123 @@ function LivingSection({
         ))}
       </dl>
     </article>
+  );
+}
+
+function AIInsightCard({
+  fields,
+  isLoading,
+}: {
+  fields: ProfileField[];
+  isLoading: boolean;
+}) {
+  const understoodInsights = fields
+    .filter((field) => hasProfileValue(field.value))
+    .map((field) => field.understoodInsight);
+  const learningInsights = fields
+    .filter((field) => !hasProfileValue(field.value))
+    .map((field) => field.learningInsight);
+  const isEmpty = understoodInsights.length === 0;
+  const isComplete = learningInsights.length === 0;
+
+  return (
+    <section
+      aria-labelledby="ai-insight-title"
+      className="mt-8 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-7"
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-500/20 bg-violet-500/10 text-violet-300">
+          <Sparkles size={19} />
+        </span>
+        <div>
+          <h2 id="ai-insight-title" className="font-medium text-slate-200">
+            AI Insight
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            AI 对当前 Living Profile 的理解
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-6 space-y-3">
+          <div className="h-4 w-3/4 animate-pulse rounded bg-white/[0.06]" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-white/[0.06]" />
+        </div>
+      ) : isEmpty ? (
+        <div className="mt-6 rounded-xl border border-white/[0.06] bg-black/10 px-5 py-5">
+          <p className="text-sm font-medium text-slate-300">
+            AI 还没有建立足够的 Living Profile。
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            继续与 AI 对话后，这里会逐步展示它对你的理解。
+          </p>
+        </div>
+      ) : isComplete ? (
+        <div className="mt-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.04] px-5 py-5">
+          <p className="text-sm font-medium text-slate-300">
+            Living Profile 已建立完成。
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            后续新的对话仍会持续更新你的居住模型。
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <InsightGroup
+            title="已理解"
+            items={understoodInsights}
+            type="understood"
+          />
+          <InsightGroup
+            title="希望继续了解"
+            items={learningInsights}
+            type="learning"
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InsightGroup({
+  title,
+  items,
+  type,
+}: {
+  title: string;
+  items: string[];
+  type: 'understood' | 'learning';
+}) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-black/10 px-5 py-5">
+      <h3
+        className={
+          type === 'understood'
+            ? 'text-sm font-medium text-blue-300'
+            : 'text-sm font-medium text-slate-400'
+        }
+      >
+        {title}
+      </h3>
+      <ul className="mt-4 space-y-3">
+        {items.map((item) => (
+          <li
+            key={item}
+            className="flex gap-3 text-sm leading-6 text-slate-500"
+          >
+            <span
+              aria-hidden="true"
+              className={
+                type === 'understood' ? 'text-blue-400' : 'text-slate-600'
+              }
+            >
+              {type === 'understood' ? '✓' : '•'}
+            </span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
