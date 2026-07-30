@@ -55,8 +55,8 @@ export default function ConversationFeature() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const profileHref = conversationId
-    ? `/profile?conversation_id=${encodeURIComponent(conversationId)}`
-    : '/profile';
+    ? `/workspace/profile?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/workspace/profile';
 
   const loadProfile = useCallback(async () => {
     if (!conversationId) {

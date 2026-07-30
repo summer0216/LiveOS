@@ -15,6 +15,12 @@ apps/api/.venv/
 .env.*
 !.env.example
 
+
+
+# Virtual Environment
+.venv/
+venv/
+
 # OS
 **/.DS_Store
 

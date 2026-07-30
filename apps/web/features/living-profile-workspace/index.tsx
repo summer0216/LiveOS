@@ -1,0 +1,414 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import {
+  BriefcaseBusiness,
+  Building2,
+  Check,
+  CircleDollarSign,
+  House,
+  Users,
+} from 'lucide-react';
+
+import { getLivingProfile, type LivingProfile } from '@/services/profile';
+
+const UNKNOWN_VALUE = '仍在了解中';
+
+const JOURNEY_STEPS = [
+  '入口',
+  '对话',
+  '画像',
+  '工作台',
+  '详情',
+  '对比',
+  '决策',
+  '记忆',
+] as const;
+
+interface ProfileField {
+  label: string;
+  value: string | number | boolean | null | undefined;
+  format?: (value: string | number | boolean) => string;
+}
+
+interface ProfileSection {
+  title: string;
+  description: string;
+  icon: typeof BriefcaseBusiness;
+  fields: ProfileField[];
+}
+
+function hasProfileValue(
+  value: ProfileField['value'],
+): value is string | number | boolean {
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+
+  return typeof value === 'number' || typeof value === 'boolean';
+}
+
+function formatProfileValue(field: ProfileField): string {
+  if (!hasProfileValue(field.value)) {
+    return UNKNOWN_VALUE;
+  }
+
+  return field.format ? field.format(field.value) : String(field.value);
+}
+
+function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
+  return [
+    {
+      title: 'Work & Commute',
+      description: '工作与日常通勤要求',
+      icon: BriefcaseBusiness,
+      fields: [
+        {
+          label: '工作地点',
+          value: profile?.work_location,
+        },
+        {
+          label: '通勤要求',
+          value: profile?.commute_minutes,
+          format: (value) => `${value} 分钟以内`,
+        },
+      ],
+    },
+    {
+      title: 'Budget',
+      description: '当前住房预算范围',
+      icon: CircleDollarSign,
+      fields: [
+        {
+          label: '月租预算',
+          value: profile?.budget,
+          format: (value) => `$${Number(value).toLocaleString('en-US')}/月`,
+        },
+      ],
+    },
+    {
+      title: 'Housing Preference',
+      description: '理想住房的地点偏好',
+      icon: House,
+      fields: [
+        {
+          label: '意向城市',
+          value: profile?.preferred_city,
+        },
+      ],
+    },
+    {
+      title: 'Family & Lifestyle',
+      description: '家庭结构与生活方式',
+      icon: Users,
+      fields: [
+        {
+          label: '居住人数',
+          value: profile?.family_size,
+          format: (value) => `${value} 人`,
+        },
+        {
+          label: '是否养宠物',
+          value: profile?.has_pet,
+          format: (value) => (value === true ? '是' : '否'),
+        },
+      ],
+    },
+  ];
+}
+
+export default function LivingProfileWorkspace() {
+  const searchParams = useSearchParams();
+  const conversationId = searchParams.get('conversation_id') ?? '';
+  const [profile, setProfile] = useState<LivingProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(conversationId));
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadProfile() {
+      if (!conversationId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setHasError(false);
+
+      try {
+        const nextProfile = await getLivingProfile(conversationId);
+
+        if (isActive) {
+          setProfile(nextProfile);
+        }
+      } catch (error: unknown) {
+        console.error('Failed to load living profile:', error);
+
+        if (isActive) {
+          setHasError(true);
+          setProfile(null);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadProfile();
+
+    return () => {
+      isActive = false;
+    };
+  }, [conversationId]);
+
+  const sections = useMemo(() => getProfileSections(profile), [profile]);
+  const fields = sections.flatMap((section) => section.fields);
+  const understoodCount = fields.filter((field) =>
+    hasProfileValue(field.value),
+  ).length;
+  const unknownCount = fields.length - understoodCount;
+  const conversationHref = conversationId
+    ? `/conversation?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/conversation';
+
+  return (
+    <main className="min-h-screen bg-[#050812] text-slate-100">
+      <WorkspaceHeader conversationHref={conversationHref} />
+
+      <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
+        <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
+          <section>
+            <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
+              LIVING PROFILE
+            </p>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+              Living Profile
+            </h1>
+            <p className="mt-3 text-base text-slate-500">
+              AI 正在持续建立你的居住模型。
+            </p>
+          </section>
+
+          {hasError && (
+            <p
+              role="alert"
+              className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200"
+            >
+              当前资料暂时无法加载，以下内容将在连接恢复后更新。
+            </p>
+          )}
+
+          <Overview
+            isLoading={isLoading}
+            understoodCount={understoodCount}
+            unknownCount={unknownCount}
+          />
+
+          <section
+            aria-label="Living Profile 生活领域"
+            className="mt-8 grid gap-5 md:grid-cols-2"
+          >
+            {sections.map((section) => (
+              <LivingSection
+                key={section.title}
+                section={section}
+                isLoading={isLoading}
+              />
+            ))}
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function WorkspaceHeader({ conversationHref }: { conversationHref: string }) {
+  return (
+    <header className="border-b border-white/[0.06] bg-[#050812]/95">
+      <div className="mx-auto flex h-[72px] max-w-[1480px] items-center gap-8 px-5 sm:px-8">
+        <Link
+          href="/"
+          aria-label="返回 LiveOS 首页"
+          className="flex shrink-0 items-center gap-2.5"
+        >
+          <span className="h-9 w-9 rounded-full bg-[radial-gradient(circle_at_35%_30%,#8d78ff_0,#5265dd_48%,#1a275a_100%)] shadow-[0_0_24px_rgba(93,91,255,0.35)]" />
+          <span className="text-lg font-semibold tracking-tight">
+            Live
+            <span className="text-blue-500">OS</span>
+          </span>
+        </Link>
+
+        <nav
+          aria-label="LiveOS 决策旅程"
+          className="hidden min-w-0 flex-1 items-center justify-center xl:flex"
+        >
+          {JOURNEY_STEPS.map((step, index) => {
+            const stepNumber = index + 1;
+            const isComplete = stepNumber < 3;
+            const isCurrent = stepNumber === 3;
+
+            return (
+              <div key={step} className="flex items-center">
+                <div
+                  className={[
+                    'flex items-center gap-2 text-sm',
+                    isCurrent
+                      ? 'font-medium text-slate-100'
+                      : isComplete
+                        ? 'text-blue-400'
+                        : 'text-slate-600',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'flex h-7 w-7 items-center justify-center rounded-full border text-xs',
+                      isCurrent
+                        ? 'border-blue-500 bg-blue-500 text-white'
+                        : isComplete
+                          ? 'border-blue-500/70 bg-blue-500/10'
+                          : 'border-slate-800 bg-slate-900/70',
+                    ].join(' ')}
+                  >
+                    {isComplete ? <Check size={14} /> : stepNumber}
+                  </span>
+                  <span>{step}</span>
+                </div>
+
+                {index < JOURNEY_STEPS.length - 1 && (
+                  <span className="mx-3 h-px w-5 bg-slate-800" />
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        <Link
+          href={conversationHref}
+          className="ml-auto rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
+        >
+          返回对话
+        </Link>
+      </div>
+    </header>
+  );
+}
+
+function Overview({
+  isLoading,
+  understoodCount,
+  unknownCount,
+}: {
+  isLoading: boolean;
+  understoodCount: number;
+  unknownCount: number;
+}) {
+  return (
+    <section
+      aria-labelledby="profile-overview-title"
+      className="mt-10 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-7"
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+          <Building2 size={19} />
+        </span>
+        <div>
+          <h2
+            id="profile-overview-title"
+            className="font-medium text-slate-200"
+          >
+            Overview
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">当前居住模型完成度</p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <OverviewMetric
+          label="已理解"
+          value={isLoading ? null : understoodCount}
+          tone="blue"
+        />
+        <OverviewMetric
+          label="仍需了解"
+          value={isLoading ? null : unknownCount}
+          tone="slate"
+        />
+      </div>
+    </section>
+  );
+}
+
+function OverviewMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | null;
+  tone: 'blue' | 'slate';
+}) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-black/10 px-5 py-4">
+      <p className="text-sm text-slate-500">{label}</p>
+      {value === null ? (
+        <div className="mt-3 h-8 w-16 animate-pulse rounded bg-white/[0.06]" />
+      ) : (
+        <p
+          className={[
+            'mt-2 font-mono text-3xl font-medium',
+            tone === 'blue' ? 'text-blue-400' : 'text-slate-300',
+          ].join(' ')}
+        >
+          {value}
+          <span className="ml-2 text-sm font-normal text-slate-600">项</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LivingSection({
+  section,
+  isLoading,
+}: {
+  section: ProfileSection;
+  isLoading: boolean;
+}) {
+  const Icon = section.icon;
+
+  return (
+    <article className="rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 sm:p-7">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-slate-400">
+          <Icon size={19} />
+        </span>
+        <div>
+          <h2 className="font-medium text-slate-200">{section.title}</h2>
+          <p className="mt-1 text-sm text-slate-600">{section.description}</p>
+        </div>
+      </div>
+
+      <dl className="mt-6 divide-y divide-white/[0.06]">
+        {section.fields.map((field) => (
+          <div
+            key={field.label}
+            className="flex min-h-14 items-center justify-between gap-6 py-3 first:pt-0 last:pb-0"
+          >
+            <dt className="text-sm text-slate-500">{field.label}</dt>
+            <dd className="text-right text-sm font-medium text-slate-300">
+              {isLoading ? (
+                <span className="block h-4 w-20 animate-pulse rounded bg-white/[0.06]" />
+              ) : (
+                formatProfileValue(field)
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </article>
+  );
+}
