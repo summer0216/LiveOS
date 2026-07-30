@@ -1,12 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Building2, Check, CircleDotDashed, Scale } from 'lucide-react';
+import {
+  AlertTriangle,
+  Building2,
+  Check,
+  CircleDotDashed,
+  Gauge,
+  RefreshCw,
+  Scale,
+  Sparkles,
+} from 'lucide-react';
 
 import { PropertyCard } from '@/features/property-workspace';
-import { getProperty, type Property } from '@/services/property';
+import {
+  getDecision,
+  type DecisionReason,
+  type DecisionResult,
+  type DecisionTradeOff,
+} from '@/services/decision';
+import { getProperties, type Property } from '@/services/property';
 
 const JOURNEY_STEPS = [
   '入口',
@@ -19,51 +34,90 @@ const JOURNEY_STEPS = [
   '记忆',
 ] as const;
 
+const WAITING_SUMMARY = 'AI 正在等待足够的信息，完成最终分析。';
+
+type WorkspaceStatus =
+  | 'loading'
+  | 'waiting'
+  | 'ready'
+  | 'error'
+  | 'invalid-property'
+  | 'missing-conversation';
+
 export default function DecisionWorkspace() {
   const searchParams = useSearchParams();
   const conversationId = searchParams.get('conversation_id') ?? '';
-  const [propertyCount, setPropertyCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(Boolean(conversationId));
-  const [hasError, setHasError] = useState(false);
+  const [status, setStatus] = useState<WorkspaceStatus>(
+    conversationId ? 'loading' : 'missing-conversation',
+  );
+  const [decision, setDecision] = useState<DecisionResult | null>(null);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [bestProperty, setBestProperty] = useState<Property | null>(null);
+  const [requestKey, setRequestKey] = useState(0);
 
   useEffect(() => {
     let isActive = true;
 
-    async function loadPropertyCount() {
+    async function loadDecision() {
       if (!conversationId) {
-        setIsLoading(false);
+        setStatus('missing-conversation');
+        setDecision(null);
+        setProperties([]);
+        setBestProperty(null);
         return;
       }
 
-      setIsLoading(true);
-      setHasError(false);
+      setStatus('loading');
+      setDecision(null);
+      setBestProperty(null);
 
       try {
-        const property = await getProperty(conversationId);
+        const [nextDecision, nextProperties] = await Promise.all([
+          getDecision(conversationId),
+          getProperties(conversationId),
+        ]);
 
-        if (isActive) {
-          setPropertyCount(property ? 1 : 0);
+        if (!isActive) {
+          return;
         }
+
+        setDecision(nextDecision);
+        setProperties(nextProperties);
+
+        if (nextDecision.status === 'waiting') {
+          setStatus('waiting');
+          return;
+        }
+
+        const nextBestProperty = nextProperties.find(
+          (property) => property.id === nextDecision.best_property_id,
+        );
+
+        if (!nextBestProperty) {
+          setStatus('invalid-property');
+          return;
+        }
+
+        setBestProperty(nextBestProperty);
+        setStatus('ready');
       } catch (error: unknown) {
-        console.error('Failed to load property for decision:', error);
+        console.error('Failed to load AI Decision:', error);
 
         if (isActive) {
-          setHasError(true);
-          setPropertyCount(0);
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
+          setStatus('error');
+          setDecision(null);
+          setProperties([]);
+          setBestProperty(null);
         }
       }
     }
 
-    void loadPropertyCount();
+    void loadDecision();
 
     return () => {
       isActive = false;
     };
-  }, [conversationId]);
+  }, [conversationId, requestKey]);
 
   const propertyHref = conversationId
     ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
@@ -71,29 +125,34 @@ export default function DecisionWorkspace() {
 
   return (
     <DecisionWorkspaceView
-      bestProperty={null}
-      propertyCount={propertyCount}
-      isLoading={isLoading}
-      hasError={hasError}
+      status={status}
+      decision={decision}
+      bestProperty={bestProperty}
+      propertyCount={properties.length}
       propertyHref={propertyHref}
+      onRetry={() => {
+        setRequestKey((currentKey) => currentKey + 1);
+      }}
     />
   );
 }
 
 function DecisionWorkspaceView({
+  status,
+  decision,
   bestProperty,
   propertyCount,
-  isLoading,
-  hasError,
   propertyHref,
+  onRetry,
 }: {
+  status: WorkspaceStatus;
+  decision: DecisionResult | null;
   bestProperty: Property | null;
   propertyCount: number;
-  isLoading: boolean;
-  hasError: boolean;
   propertyHref: string;
+  onRetry: () => void;
 }) {
-  const isReady = bestProperty !== null;
+  const isLoading = status === 'loading';
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
@@ -113,43 +172,56 @@ function DecisionWorkspaceView({
             </p>
           </section>
 
-          {hasError && (
-            <p
-              role="alert"
-              className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200"
-            >
-              Decision Workspace 暂时无法加载候选房源状态。
-            </p>
-          )}
-
           <DecisionOverview
             propertyCount={propertyCount}
-            isReady={isReady}
-            isLoading={isLoading}
+            status={status}
           />
-          <DecisionSummary isReady={isReady} isLoading={isLoading} />
+          <DecisionSummary
+            status={status}
+            summary={decision?.summary ?? null}
+          />
 
-          {!isLoading &&
-            (bestProperty ? (
-              <section aria-labelledby="best-property-title" className="mt-8">
-                <div>
-                  <h2
-                    id="best-property-title"
-                    className="text-lg font-medium text-slate-200"
-                  >
-                    Best Property
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    当前 Decision 选出的最佳房源
-                  </p>
-                </div>
-                <div className="mt-5">
-                  <PropertyCard property={bestProperty} />
-                </div>
-              </section>
-            ) : (
-              <DecisionWaitingState />
-            ))}
+          {isLoading && <BestPropertyLoading />}
+
+          {status === 'waiting' && <DecisionWaitingState />}
+
+          {status === 'ready' && bestProperty && decision && (
+            <>
+              <BestProperty property={bestProperty} />
+              {decision.reasons.length > 0 && (
+                <RecommendationReasons reasons={decision.reasons} />
+              )}
+              {decision.trade_offs.length > 0 && (
+                <DecisionTradeOffs tradeOffs={decision.trade_offs} />
+              )}
+              {decision.confidence !== null && (
+                <DecisionConfidence confidence={decision.confidence} />
+              )}
+            </>
+          )}
+
+          {status === 'error' && (
+            <DecisionError
+              title="AI Decision 加载失败。"
+              description="请稍后重试。"
+              onRetry={onRetry}
+            />
+          )}
+
+          {status === 'invalid-property' && (
+            <DecisionError
+              title="AI Decision 暂时无法展示。"
+              description="请重新生成 Decision。"
+              onRetry={onRetry}
+            />
+          )}
+
+          {status === 'missing-conversation' && (
+            <DecisionError
+              title="Conversation 不存在。"
+              description="请从当前对话重新进入 AI Decision。"
+            />
+          )}
         </div>
       </div>
     </main>
@@ -229,13 +301,23 @@ function WorkspaceHeader({ propertyHref }: { propertyHref: string }) {
 
 function DecisionOverview({
   propertyCount,
-  isReady,
-  isLoading,
+  status,
 }: {
   propertyCount: number;
-  isReady: boolean;
-  isLoading: boolean;
+  status: WorkspaceStatus;
 }) {
+  const isLoading = status === 'loading';
+  const statusLabel =
+    status === 'ready'
+      ? 'Ready'
+      : status === 'waiting'
+        ? 'Waiting'
+        : status === 'error' || status === 'invalid-property'
+          ? 'Error'
+          : status === 'missing-conversation'
+            ? 'Unavailable'
+            : null;
+
   return (
     <section
       aria-labelledby="decision-overview-title"
@@ -259,13 +341,15 @@ function DecisionOverview({
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <OverviewMetric
           label="候选房源"
-          value={isLoading ? null : `${propertyCount} 套`}
+          value={
+            isLoading
+              ? null
+              : status === 'ready' || status === 'waiting'
+                ? `${propertyCount} 套`
+                : '无法读取'
+          }
         />
-        <OverviewMetric
-          label="最佳推荐"
-          value={isLoading ? null : isReady ? 'Ready' : 'Waiting'}
-          tone={isReady ? 'blue' : 'slate'}
-        />
+        <OverviewMetric label="最佳推荐" value={statusLabel} />
       </div>
     </section>
   );
@@ -274,11 +358,9 @@ function DecisionOverview({
 function OverviewMetric({
   label,
   value,
-  tone = 'blue',
 }: {
   label: string;
   value: string | null;
-  tone?: 'blue' | 'slate';
 }) {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-black/10 px-5 py-4">
@@ -286,12 +368,7 @@ function OverviewMetric({
       {value === null ? (
         <div className="mt-3 h-8 w-20 animate-pulse rounded bg-white/[0.06]" />
       ) : (
-        <p
-          className={[
-            'mt-2 font-mono text-2xl font-medium',
-            tone === 'blue' ? 'text-blue-400' : 'text-slate-300',
-          ].join(' ')}
-        >
+        <p className="mt-2 font-mono text-2xl font-medium text-blue-400">
           {value}
         </p>
       )}
@@ -300,12 +377,22 @@ function OverviewMetric({
 }
 
 function DecisionSummary({
-  isReady,
-  isLoading,
+  status,
+  summary,
 }: {
-  isReady: boolean;
-  isLoading: boolean;
+  status: WorkspaceStatus;
+  summary: string | null;
 }) {
+  const isLoading = status === 'loading';
+  const statusLabel =
+    status === 'ready'
+      ? 'Ready'
+      : status === 'waiting'
+        ? 'Waiting'
+        : status === 'error' || status === 'invalid-property'
+          ? 'Error'
+          : 'Unavailable';
+
   return (
     <section
       aria-labelledby="decision-summary-title"
@@ -329,25 +416,139 @@ function DecisionSummary({
       <div className="mt-6 rounded-xl border border-white/[0.06] bg-black/10 px-5 py-5">
         <p className="text-sm text-slate-500">当前状态</p>
         {isLoading ? (
-          <div className="mt-3 h-7 w-24 animate-pulse rounded bg-white/[0.06]" />
+          <>
+            <div className="mt-3 h-7 w-24 animate-pulse rounded bg-white/[0.06]" />
+            <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-white/[0.04]" />
+          </>
         ) : (
           <>
-            <p
-              className={[
-                'mt-2 font-mono text-2xl font-medium',
-                isReady ? 'text-blue-400' : 'text-slate-300',
-              ].join(' ')}
-            >
-              {isReady ? 'Ready' : 'Waiting'}
+            <p className="mt-2 font-mono text-2xl font-medium text-blue-400">
+              {statusLabel}
             </p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              {isReady
-                ? 'AI 已完成当前候选房源分析。'
-                : 'AI 正在等待足够的信息，完成最终分析。'}
-            </p>
+            {(status === 'waiting' || status === 'ready') && (
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                {summary?.trim() || WAITING_SUMMARY}
+              </p>
+            )}
           </>
         )}
       </div>
+    </section>
+  );
+}
+
+function BestPropertyLoading() {
+  return (
+    <section aria-label="Best Property Loading" className="mt-8">
+      <div className="h-6 w-36 animate-pulse rounded bg-white/[0.06]" />
+      <div className="mt-5 h-80 animate-pulse rounded-2xl border border-white/[0.06] bg-[#0b1020]/90" />
+    </section>
+  );
+}
+
+function BestProperty({ property }: { property: Property }) {
+  return (
+    <section aria-labelledby="best-property-title" className="mt-8">
+      <h2
+        id="best-property-title"
+        className="text-lg font-medium text-slate-200"
+      >
+        Best Property
+      </h2>
+      <p className="mt-1 text-sm text-slate-600">
+        当前 Decision 选出的最佳房源
+      </p>
+      <div className="mt-5">
+        <PropertyCard property={property} />
+      </div>
+    </section>
+  );
+}
+
+function RecommendationReasons({ reasons }: { reasons: DecisionReason[] }) {
+  return (
+    <DecisionList
+      title="Why this property"
+      description="AI 当前推荐这套房源的主要依据"
+      items={reasons}
+      icon={<Sparkles size={19} />}
+    />
+  );
+}
+
+function DecisionTradeOffs({
+  tradeOffs,
+}: {
+  tradeOffs: DecisionTradeOff[];
+}) {
+  return (
+    <DecisionList
+      title="Trade-offs"
+      description="当前选择仍需留意的真实取舍"
+      items={tradeOffs}
+      icon={<Scale size={19} />}
+    />
+  );
+}
+
+function DecisionList({
+  title,
+  description,
+  items,
+  icon,
+}: {
+  title: string;
+  description: string;
+  items: Array<{ title: string; description: string }>;
+  icon: ReactNode;
+}) {
+  return (
+    <section className="mt-8 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.16)] sm:p-7">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+          {icon}
+        </span>
+        <div>
+          <h2 className="font-medium text-slate-200">{title}</h2>
+          <p className="mt-1 text-sm text-slate-600">{description}</p>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-3">
+        {items.map((item) => (
+          <article
+            key={`${item.title}-${item.description}`}
+            className="rounded-xl border border-white/[0.06] bg-black/10 px-5 py-4"
+          >
+            <h3 className="text-sm font-medium text-slate-300">
+              {item.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {item.description}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DecisionConfidence({ confidence }: { confidence: number }) {
+  return (
+    <section className="mt-8 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.16)] sm:p-7">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+          <Gauge size={19} />
+        </span>
+        <div>
+          <h2 className="font-medium text-slate-200">Confidence</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            当前输入信息对 Decision 的支持程度
+          </p>
+        </div>
+      </div>
+      <p className="mt-6 font-mono text-3xl font-medium text-blue-400">
+        {Math.round(confidence * 100)}%
+      </p>
     </section>
   );
 }
@@ -364,6 +565,41 @@ function DecisionWaitingState() {
       <p className="mt-3 max-w-sm text-sm leading-6 text-slate-500">
         继续完善 Living Profile，并添加候选房源后，AI 将生成最佳居住建议。
       </p>
+    </section>
+  );
+}
+
+function DecisionError({
+  title,
+  description,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <section
+      role="alert"
+      className="mt-8 flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-amber-400/20 bg-amber-400/[0.03] px-6 text-center"
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-400/5 text-amber-300">
+        <AlertTriangle size={24} />
+      </span>
+      <h2 className="mt-6 text-lg font-medium text-amber-100">{title}</h2>
+      <p className="mt-3 text-sm leading-6 text-amber-200/70">
+        {description}
+      </p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-6 flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15"
+        >
+          <RefreshCw size={16} />
+          Retry
+        </button>
+      )}
     </section>
   );
 }
