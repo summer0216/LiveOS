@@ -15,8 +15,11 @@ import {
 } from 'lucide-react';
 
 import { PropertyCard } from '@/features/property-workspace';
+import { DecisionEvolutionCard } from '@/features/decision-workspace/components/DecisionEvolutionCard';
 import {
   getDecision,
+  getDecisionHistory,
+  type DecisionRecord,
   type DecisionReason,
   type DecisionResult,
   type DecisionTradeOff,
@@ -53,6 +56,8 @@ export default function DecisionWorkspace() {
   const [decision, setDecision] = useState<DecisionResult | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [bestProperty, setBestProperty] = useState<Property | null>(null);
+  const [previousDecision, setPreviousDecision] =
+    useState<DecisionRecord | null>(null);
   const [requestKey, setRequestKey] = useState(0);
 
   useEffect(() => {
@@ -64,6 +69,7 @@ export default function DecisionWorkspace() {
         setDecision(null);
         setProperties([]);
         setBestProperty(null);
+        setPreviousDecision(null);
         return;
       }
 
@@ -72,6 +78,18 @@ export default function DecisionWorkspace() {
       setBestProperty(null);
 
       try {
+        let nextPreviousDecision: DecisionRecord | null = null;
+
+        try {
+          const history = await getDecisionHistory(conversationId);
+          nextPreviousDecision = history.items[0] ?? null;
+        } catch (historyError: unknown) {
+          console.error(
+            'Failed to load Decision History for Evolution:',
+            historyError,
+          );
+        }
+
         const [nextDecision, nextProperties] = await Promise.all([
           getDecision(conversationId),
           getProperties(conversationId),
@@ -83,6 +101,7 @@ export default function DecisionWorkspace() {
 
         setDecision(nextDecision);
         setProperties(nextProperties);
+        setPreviousDecision(nextPreviousDecision);
 
         if (nextDecision.status === 'waiting') {
           setStatus('waiting');
@@ -108,6 +127,7 @@ export default function DecisionWorkspace() {
           setDecision(null);
           setProperties([]);
           setBestProperty(null);
+          setPreviousDecision(null);
         }
       }
     }
@@ -131,6 +151,8 @@ export default function DecisionWorkspace() {
       status={status}
       decision={decision}
       bestProperty={bestProperty}
+      previousDecision={previousDecision}
+      properties={properties}
       propertyCount={properties.length}
       propertyHref={propertyHref}
       historyHref={historyHref}
@@ -145,6 +167,8 @@ function DecisionWorkspaceView({
   status,
   decision,
   bestProperty,
+  previousDecision,
+  properties,
   propertyCount,
   propertyHref,
   historyHref,
@@ -153,6 +177,8 @@ function DecisionWorkspaceView({
   status: WorkspaceStatus;
   decision: DecisionResult | null;
   bestProperty: Property | null;
+  previousDecision: DecisionRecord | null;
+  properties: Property[];
   propertyCount: number;
   propertyHref: string;
   historyHref: string;
@@ -206,6 +232,12 @@ function DecisionWorkspaceView({
               {decision.confidence !== null && (
                 <DecisionConfidence confidence={decision.confidence} />
               )}
+              <DecisionEvolutionCard
+                current={decision}
+                previous={previousDecision}
+                properties={properties}
+                onRefresh={onRetry}
+              />
             </>
           )}
 
