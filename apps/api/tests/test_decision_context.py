@@ -194,6 +194,7 @@ def test_history_failure_does_not_stop_decision_runtime(
     conversation_id = "context-failure"
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
+    prompts: list[str] = []
 
     def fail_history(_conversation_id: str) -> list[DecisionRecord]:
         raise RuntimeError("History unavailable")
@@ -206,21 +207,24 @@ def test_history_failure_does_not_stop_decision_runtime(
     monkeypatch.setattr(
         ai_client,
         "generate_json",
-        lambda _prompt: json.dumps(
-            {
-                "status": "ready",
-                "summary": "Context 失败不影响当前决策。",
-                "best_property_id": property_.id,
-                "reasons": [
-                    {
-                        "title": "Context 降级",
-                        "description": "History 失败不影响当前决策。",
-                    },
-                ],
-                "trade_offs": [],
-                "confidence": 0.8,
-            },
-            ensure_ascii=False,
+        lambda prompt: (
+            prompts.append(prompt)
+            or json.dumps(
+                {
+                    "status": "ready",
+                    "summary": "Context 失败不影响当前决策。",
+                    "best_property_id": property_.id,
+                    "reasons": [
+                        {
+                            "title": "Context 降级",
+                            "description": "History 失败不影响当前决策。",
+                        },
+                    ],
+                    "trade_offs": [],
+                    "confidence": 0.8,
+                },
+                ensure_ascii=False,
+            )
         ),
     )
 
@@ -228,3 +232,5 @@ def test_history_failure_does_not_stop_decision_runtime(
 
     assert result.status == "ready"
     assert result.best_property_id == property_.id
+    assert len(prompts) == 1
+    assert "No previous decision records are available." in prompts[0]

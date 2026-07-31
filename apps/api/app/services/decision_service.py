@@ -31,7 +31,9 @@ class DecisionService:
         if not conversation_id:
             return waiting_decision("缺少有效的对话信息，暂时无法生成建议。")
 
-        decision_context_service.build_context(conversation_id)
+        decision_context = decision_context_service.build_context(
+            conversation_id,
+        )
 
         profile = profile_manager.get(conversation_id)
 
@@ -54,7 +56,10 @@ class DecisionService:
                 ],
             )
             json_text = ai_client.generate_json(
-                build_decision_prompt(decision_input),
+                build_decision_prompt(
+                    decision_input,
+                    decision_context,
+                ),
             )
             result = DecisionResult.model_validate_json(json_text)
         except (RuntimeError, ValidationError, ValueError) as error:
