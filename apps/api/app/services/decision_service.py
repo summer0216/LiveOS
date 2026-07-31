@@ -9,7 +9,7 @@ from app.schemas.decision import (
     LivingProfileDecisionInput,
     PropertyDecisionInput,
 )
-from app.services.decision_context_service import decision_context_service
+from app.services.decision_context_builder import decision_context_builder
 from app.services.decision_record_service import decision_record_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -31,7 +31,7 @@ class DecisionService:
         if not conversation_id:
             return waiting_decision("缺少有效的对话信息，暂时无法生成建议。")
 
-        decision_context = decision_context_service.build_context(
+        decision_context = decision_context_builder.build(
             conversation_id,
         )
 
