@@ -33,6 +33,7 @@ const JOURNEY_STEPS = [
   '对比',
   '决策',
   '历史',
+  '记忆',
 ] as const;
 
 const INVALID_TIME_LABEL = '时间信息不可用';
@@ -142,10 +143,16 @@ export default function HistoryWorkspace() {
   const decisionHref = conversationId
     ? `/workspace/decision?conversation_id=${encodeURIComponent(conversationId)}`
     : '/workspace/decision';
+  const memoryHref = conversationId
+    ? `/workspace/memory?conversation_id=${encodeURIComponent(conversationId)}`
+    : '/workspace/memory';
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
-      <WorkspaceHeader decisionHref={decisionHref} />
+      <WorkspaceHeader
+        decisionHref={decisionHref}
+        memoryHref={memoryHref}
+      />
 
       <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
@@ -239,7 +246,13 @@ export default function HistoryWorkspace() {
   );
 }
 
-function WorkspaceHeader({ decisionHref }: { decisionHref: string }) {
+function WorkspaceHeader({
+  decisionHref,
+  memoryHref,
+}: {
+  decisionHref: string;
+  memoryHref: string;
+}) {
   return (
     <header className="border-b border-white/[0.06] bg-[#050812]/95">
       <div className="mx-auto flex h-[72px] max-w-[1480px] items-center gap-8 px-5 sm:px-8">
@@ -270,7 +283,9 @@ function WorkspaceHeader({ decisionHref }: { decisionHref: string }) {
                     'flex items-center gap-2 text-sm',
                     isCurrent
                       ? 'font-medium text-slate-100'
-                      : 'text-blue-400',
+                      : isComplete
+                        ? 'text-blue-400'
+                        : 'text-slate-600',
                   ].join(' ')}
                 >
                   <span
@@ -278,7 +293,9 @@ function WorkspaceHeader({ decisionHref }: { decisionHref: string }) {
                       'flex h-7 w-7 items-center justify-center rounded-full border text-xs',
                       isCurrent
                         ? 'border-blue-500 bg-blue-500 text-white'
-                        : 'border-blue-500/70 bg-blue-500/10',
+                        : isComplete
+                          ? 'border-blue-500/70 bg-blue-500/10'
+                          : 'border-slate-800 bg-slate-900/70',
                     ].join(' ')}
                   >
                     {isComplete ? <Check size={14} /> : stepNumber}
@@ -291,21 +308,39 @@ function WorkspaceHeader({ decisionHref }: { decisionHref: string }) {
               </div>
             );
 
-            return stepNumber === 7 ? (
-              <Link key={step} href={decisionHref} aria-label="返回 AI Decision">
-                {content}
-              </Link>
-            ) : (
-              <div key={step}>{content}</div>
-            );
+            if (stepNumber === 7) {
+              return (
+                <Link
+                  key={step}
+                  href={decisionHref}
+                  aria-label="返回 AI Decision"
+                >
+                  {content}
+                </Link>
+              );
+            }
+
+            if (stepNumber === 9) {
+              return (
+                <Link
+                  key={step}
+                  href={memoryHref}
+                  aria-label="打开决策记忆"
+                >
+                  {content}
+                </Link>
+              );
+            }
+
+            return <div key={step}>{content}</div>;
           })}
         </nav>
 
         <Link
-          href={decisionHref}
+          href={memoryHref}
           className="ml-auto rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
         >
-          返回 AI Decision
+          进入决策记忆
         </Link>
       </div>
     </header>

@@ -4,6 +4,7 @@ from app.api import chat_router
 from app.api.conversation import router as conversation_router
 from app.api.decision_history import router as decision_history_router
 from app.api.decisions import router as decisions_router
+from app.api.memories import router as memories_router
 from app.api.profile import router as profile_router
 from app.api.properties import router as properties_router
 
@@ -28,6 +29,7 @@ app.include_router(profile_router, prefix="/api")
 app.include_router(properties_router, prefix="/api")
 app.include_router(decisions_router, prefix="/api")
 app.include_router(decision_history_router, prefix="/api")
+app.include_router(memories_router, prefix="/api")
 
 
 @app.get("/")
