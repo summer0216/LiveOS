@@ -47,6 +47,8 @@ export default function ConversationFeature() {
   );
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [hasRuntimeError, setHasRuntimeError] = useState(false);
 
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
@@ -99,6 +101,7 @@ export default function ConversationFeature() {
         userMessage,
       ]);
 
+      setHasRuntimeError(false);
       setIsThinking(true);
       setIsStreaming(true);
       try {
@@ -165,6 +168,7 @@ export default function ConversationFeature() {
             content: STREAM_ERROR_MESSAGE,
           },
         ]);
+        setHasRuntimeError(true);
       } finally {
         setIsThinking(false);
         setIsStreaming(false);
@@ -198,10 +202,24 @@ export default function ConversationFeature() {
     });
   }, [messages, isThinking]);
 
+  const isInitialTurnStarting = Boolean(initialMessage)
+    && messages.length === 1;
+
   return (
     <ConversationLayout
       profileHref={profileHref}
       profileReady={Boolean(profile)}
+      coreState={
+        hasRuntimeError
+          ? 'error'
+          : isProfileLoading
+            ? 'understanding'
+            : isInitialTurnStarting || isThinking || isStreaming
+              ? 'thinking'
+              : isListening || messages.length > 0
+                ? 'listening'
+                : 'idle'
+      }
     >
       <div className="grid h-full min-h-0 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="flex min-h-0 flex-col">
@@ -228,6 +246,7 @@ export default function ConversationFeature() {
             onSubmit={(message) => {
               void sendConversationMessage(message);
             }}
+            onListeningChange={setIsListening}
           />
         </section>
 

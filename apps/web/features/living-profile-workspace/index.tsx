@@ -13,6 +13,9 @@ import {
   Users,
 } from 'lucide-react';
 
+import AICore, {
+  type AICoreState,
+} from '@/features/ai-entry/components/AICore';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 const UNKNOWN_VALUE = '仍在了解中';
@@ -195,9 +198,18 @@ export default function LivingProfileWorkspace() {
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
-      <WorkspaceHeader conversationHref={conversationHref} />
+      <WorkspaceHeader
+        conversationHref={conversationHref}
+        coreState={
+          hasError
+            ? 'error'
+            : isLoading
+              ? 'understanding'
+              : 'completed'
+        }
+      />
 
-      <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
+      <div className="runtime-flow min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
           <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
             <div>
@@ -254,7 +266,13 @@ export default function LivingProfileWorkspace() {
   );
 }
 
-function WorkspaceHeader({ conversationHref }: { conversationHref: string }) {
+function WorkspaceHeader({
+  conversationHref,
+  coreState,
+}: {
+  conversationHref: string;
+  coreState: AICoreState;
+}) {
   return (
     <header className="border-b border-white/[0.06] bg-[#050812]/95">
       <div className="mx-auto flex h-[72px] max-w-[1480px] items-center gap-8 px-5 sm:px-8">
@@ -263,7 +281,7 @@ function WorkspaceHeader({ conversationHref }: { conversationHref: string }) {
           aria-label="返回 LiveOS 首页"
           className="flex shrink-0 items-center gap-2.5"
         >
-          <span className="h-9 w-9 rounded-full bg-[radial-gradient(circle_at_35%_30%,#8d78ff_0,#5265dd_48%,#1a275a_100%)] shadow-[0_0_24px_rgba(93,91,255,0.35)]" />
+          <AICore state={coreState} size="runtime" />
           <span className="text-lg font-semibold tracking-tight">
             Live
             <span className="text-blue-500">OS</span>
@@ -409,7 +427,7 @@ function LivingSection({
   const Icon = section.icon;
 
   return (
-    <article className="rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 sm:p-7">
+    <article className="runtime-grow rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 sm:p-7">
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-slate-400">
           <Icon size={19} />
@@ -424,7 +442,7 @@ function LivingSection({
         {section.fields.map((field) => (
           <div
             key={field.label}
-            className="flex min-h-14 items-center justify-between gap-6 py-3 first:pt-0 last:pb-0"
+            className="runtime-grow flex min-h-14 items-center justify-between gap-6 py-3 first:pt-0 last:pb-0"
           >
             <dt className="text-sm text-slate-500">{field.label}</dt>
             <dd className="text-right text-sm font-medium text-slate-300">
@@ -460,7 +478,7 @@ function AIInsightCard({
   return (
     <section
       aria-labelledby="ai-insight-title"
-      className="mt-8 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-7"
+      className="runtime-grow mt-8 rounded-2xl border border-white/[0.08] bg-[#0b1020]/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-7"
     >
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-500/20 bg-violet-500/10 text-violet-300">

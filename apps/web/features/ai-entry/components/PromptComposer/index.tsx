@@ -4,7 +4,15 @@ import type { KeyboardEvent } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function PromptComposer() {
+interface PromptComposerProps {
+  onListeningChange: (isListening: boolean) => void;
+  onSubmitStart: () => void;
+}
+
+export default function PromptComposer({
+  onListeningChange,
+  onSubmitStart,
+}: PromptComposerProps) {
   const router = useRouter();
   const [message, setMessage] = useState('');
 
@@ -21,6 +29,7 @@ export default function PromptComposer() {
       message: value,
     });
 
+    onSubmitStart();
     router.push(`/conversation?${params.toString()}`);
   };
 
@@ -38,7 +47,11 @@ export default function PromptComposer() {
       <textarea
         rows={3}
         value={message}
-        onChange={(event) => setMessage(event.target.value)}
+        onChange={(event) => {
+          const nextMessage = event.target.value;
+          setMessage(nextMessage);
+          onListeningChange(Boolean(nextMessage.trim()));
+        }}
         onKeyDown={handleKeyDown}
         placeholder="Tell me about the life you're looking for..."
         className="w-full resize-none rounded-3xl border border-white/10 bg-white/5 px-6 py-5 text-white outline-none transition placeholder:text-neutral-500 focus:border-white/30 focus:bg-white/10"

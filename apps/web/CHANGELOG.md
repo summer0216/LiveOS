@@ -9,7 +9,7 @@
 - Backend Streaming
 - Frontend Streaming
 - Auto Scroll
-- Animated AI Orb
+- Animated AI Core
 
 ### Changed
 - Unified Development Environment

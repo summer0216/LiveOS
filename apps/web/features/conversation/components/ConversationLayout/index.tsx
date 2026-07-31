@@ -2,6 +2,10 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 
+import AICore, {
+    type AICoreState,
+} from '@/features/ai-entry/components/AICore';
+
 const JOURNEY_STEPS = [
     '入口',
     '对话',
@@ -17,12 +21,14 @@ interface ConversationLayoutProps {
     children: ReactNode;
     profileHref: string;
     profileReady: boolean;
+    coreState: AICoreState;
 }
 
 export default function ConversationLayout({
     children,
     profileHref,
     profileReady,
+    coreState,
 }: ConversationLayoutProps) {
     return (
         <main className="flex h-screen flex-col overflow-hidden bg-[#050812] text-slate-100">
@@ -33,7 +39,7 @@ export default function ConversationLayout({
                         aria-label="返回 LiveOS 首页"
                         className="flex shrink-0 items-center gap-2.5"
                     >
-                        <span className="h-9 w-9 rounded-full bg-[radial-gradient(circle_at_35%_30%,#8d78ff_0,#5265dd_48%,#1a275a_100%)] shadow-[0_0_24px_rgba(93,91,255,0.35)]" />
+                        <AICore state={coreState} size="runtime" />
                         <span className="text-lg font-semibold tracking-tight">
                             Live
                             <span className="text-blue-500">OS</span>
@@ -119,7 +125,7 @@ export default function ConversationLayout({
                 </div>
             </header>
 
-            <div className="min-h-0 flex-1">{children}</div>
+            <div className="runtime-flow min-h-0 flex-1">{children}</div>
         </main>
     );
 }

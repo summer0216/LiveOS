@@ -10,6 +10,7 @@ interface ConversationComposerProps {
     profileHref: string;
     profileReady: boolean;
     onSubmit: (message: string) => void;
+    onListeningChange: (isListening: boolean) => void;
 }
 
 export default function ConversationComposer({
@@ -17,6 +18,7 @@ export default function ConversationComposer({
     profileHref,
     profileReady,
     onSubmit,
+    onListeningChange,
 }: ConversationComposerProps) {
     const [message, setMessage] = useState('');
 
@@ -29,6 +31,7 @@ export default function ConversationComposer({
 
         onSubmit(value);
         setMessage('');
+        onListeningChange(false);
     };
 
     const handleKeyDown = (
@@ -47,9 +50,11 @@ export default function ConversationComposer({
                     rows={1}
                     value={message}
                     disabled={disabled}
-                    onChange={(event) =>
-                        setMessage(event.target.value)
-                    }
+                    onChange={(event) => {
+                        const nextMessage = event.target.value;
+                        setMessage(nextMessage);
+                        onListeningChange(Boolean(nextMessage.trim()));
+                    }}
                     onKeyDown={handleKeyDown}
                     placeholder="继续对话……"
                     className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-3 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"

@@ -165,12 +165,17 @@ export default function ProfileWorkspace({
                     aria-busy={isLoading}
                     className="mt-6 divide-y divide-white/[0.06] border-y border-white/[0.06]"
                 >
-                    {items.map((item) => (
+                    {identifiedItems.map((item) => (
                         <ProfileFieldRow
                             key={item.key}
                             item={item}
                         />
                     ))}
+                    {identifiedItems.length === 0 && (
+                        <p className="py-5 text-sm leading-6 text-slate-700">
+                            对话中识别到的信息会逐步出现在这里。
+                        </p>
+                    )}
                 </div>
 
                 <section className="mt-6 rounded-xl border border-white/[0.08] bg-[#0b1020] p-5">
@@ -277,7 +282,7 @@ function ProfileFieldRow({
     const Icon = item.icon;
 
     return (
-        <div className="flex items-center gap-3 py-4">
+        <div className="runtime-grow flex items-center gap-3 py-4">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-blue-400">
                 <Icon size={17} />
             </span>

@@ -16,6 +16,9 @@ import {
   WalletCards,
 } from 'lucide-react';
 
+import AICore, {
+  type AICoreState,
+} from '@/features/ai-entry/components/AICore';
 import {
   createProperty,
   deleteProperty,
@@ -205,9 +208,18 @@ export default function PropertyWorkspace() {
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
-      <WorkspaceHeader profileHref={profileHref} />
+      <WorkspaceHeader
+        profileHref={profileHref}
+        coreState={
+          loadError || operationError
+            ? 'error'
+            : isLoading || isAdding || deletingPropertyId !== null
+              ? 'understanding'
+              : 'completed'
+        }
+      />
 
-      <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
+      <div className="runtime-flow min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
           <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
             <div>
@@ -374,7 +386,13 @@ export default function PropertyWorkspace() {
   );
 }
 
-function WorkspaceHeader({ profileHref }: { profileHref: string }) {
+function WorkspaceHeader({
+  profileHref,
+  coreState,
+}: {
+  profileHref: string;
+  coreState: AICoreState;
+}) {
   return (
     <header className="border-b border-white/[0.06] bg-[#050812]/95">
       <div className="mx-auto flex h-[72px] max-w-[1480px] items-center gap-8 px-5 sm:px-8">
@@ -383,7 +401,7 @@ function WorkspaceHeader({ profileHref }: { profileHref: string }) {
           aria-label="返回 LiveOS 首页"
           className="flex shrink-0 items-center gap-2.5"
         >
-          <span className="h-9 w-9 rounded-full bg-[radial-gradient(circle_at_35%_30%,#8d78ff_0,#5265dd_48%,#1a275a_100%)] shadow-[0_0_24px_rgba(93,91,255,0.35)]" />
+          <AICore state={coreState} size="runtime" />
           <span className="text-lg font-semibold tracking-tight">
             Live
             <span className="text-blue-500">OS</span>

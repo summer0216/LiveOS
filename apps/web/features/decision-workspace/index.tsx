@@ -14,6 +14,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import AICore, {
+  type AICoreState,
+} from '@/features/ai-entry/components/AICore';
 import { PropertyCard } from '@/features/property-workspace';
 import { DecisionEvolutionCard } from '@/features/decision-workspace/components/DecisionEvolutionCard';
 import {
@@ -46,6 +49,22 @@ type WorkspaceStatus =
   | 'error'
   | 'invalid-property'
   | 'missing-conversation';
+
+function getDecisionCoreState(status: WorkspaceStatus): AICoreState {
+  if (status === 'loading') {
+    return 'decision';
+  }
+
+  if (status === 'ready') {
+    return 'completed';
+  }
+
+  if (status === 'error' || status === 'invalid-property') {
+    return 'error';
+  }
+
+  return 'idle';
+}
 
 export default function DecisionWorkspace() {
   const searchParams = useSearchParams();
@@ -191,9 +210,10 @@ function DecisionWorkspaceView({
       <WorkspaceHeader
         propertyHref={propertyHref}
         historyHref={historyHref}
+        coreState={getDecisionCoreState(status)}
       />
 
-      <div className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
+      <div className="runtime-flow min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(68,82,164,0.12)_0,transparent_42%),radial-gradient(rgba(91,112,180,0.08)_1px,transparent_1px)] bg-[size:auto,28px_28px]">
         <div className="mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 lg:py-14">
           <section>
             <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
@@ -272,9 +292,11 @@ function DecisionWorkspaceView({
 function WorkspaceHeader({
   propertyHref,
   historyHref,
+  coreState,
 }: {
   propertyHref: string;
   historyHref: string;
+  coreState: AICoreState;
 }) {
   return (
     <header className="border-b border-white/[0.06] bg-[#050812]/95">
@@ -284,7 +306,7 @@ function WorkspaceHeader({
           aria-label="返回 LiveOS 首页"
           className="flex shrink-0 items-center gap-2.5"
         >
-          <span className="h-9 w-9 rounded-full bg-[radial-gradient(circle_at_35%_30%,#8d78ff_0,#5265dd_48%,#1a275a_100%)] shadow-[0_0_24px_rgba(93,91,255,0.35)]" />
+          <AICore state={coreState} size="runtime" />
           <span className="text-lg font-semibold tracking-tight">
             Live
             <span className="text-blue-500">OS</span>
