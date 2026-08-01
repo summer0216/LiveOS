@@ -1,6 +1,7 @@
 import json
 
 from app.core.logger import logger
+from app.runtime.decision_intelligence import decision_intelligence
 from app.runtime.living_model import LivingModel
 from app.schemas.decision import DecisionInput
 from app.schemas.decision_context import DecisionContext
@@ -218,6 +219,7 @@ def build_decision_prompt(
     living_model_text = format_living_model_section(
         decision_input.living_model,
     )
+    reasoning_text = decision_intelligence.build(property_count)
 
     return (
         "Decision Task:\n"
@@ -229,6 +231,8 @@ def build_decision_prompt(
         f"{history_text}\n\n"
         "Decision Context Priority Rules:\n"
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"
+        "DECISION REASONING:\n"
+        f"{reasoning_text}\n\n"
         "Output Schema:\n"
         f"{DECISION_OUTPUT_SCHEMA}\n\n"
         "Validation Rules:\n"
