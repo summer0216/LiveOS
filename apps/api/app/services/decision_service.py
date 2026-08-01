@@ -6,11 +6,11 @@ from app.runtime.decision import build_decision_prompt
 from app.schemas.decision import (
     DecisionInput,
     DecisionResult,
-    LivingProfileDecisionInput,
     PropertyDecisionInput,
 )
 from app.services.decision_context_builder import decision_context_builder
 from app.services.decision_record_service import decision_record_service
+from app.services.living_model_builder import living_model_builder
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 
@@ -47,8 +47,10 @@ class DecisionService:
 
         try:
             decision_input = DecisionInput(
-                living_profile=LivingProfileDecisionInput.model_validate(
+                living_model=living_model_builder.build(
+                    conversation_id,
                     profile,
+                    decision_context.memory_context,
                 ),
                 properties=[
                     PropertyDecisionInput.model_validate(property_)

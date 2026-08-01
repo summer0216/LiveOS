@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.runtime.living_model import LivingModel
+
 
 class DecisionReason(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -55,17 +57,6 @@ class DecisionResult(BaseModel):
         return self
 
 
-class LivingProfileDecisionInput(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
-
-    work_location: str | None = None
-    budget: int | None = None
-    commute_minutes: int | None = None
-    preferred_city: str | None = None
-    family_size: int | None = None
-    has_pet: bool | None = None
-
-
 class PropertyDecisionInput(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -83,5 +74,5 @@ class PropertyDecisionInput(BaseModel):
 class DecisionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    living_profile: LivingProfileDecisionInput
+    living_model: LivingModel
     properties: list[PropertyDecisionInput]

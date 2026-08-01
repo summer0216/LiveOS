@@ -7,12 +7,12 @@ from app.core.ai_client import ai_client
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import Property
 from app.runtime.decision import build_decision_prompt
+from app.runtime.living_model import LivingModel, LivingModelProfile
 from app.schemas.decision import (
     DecisionInput,
     DecisionReason,
     DecisionResult,
     DecisionTradeOff,
-    LivingProfileDecisionInput,
     PropertyDecisionInput,
 )
 from app.schemas.decision_context import DecisionContext
@@ -71,9 +71,13 @@ def ready_decision(
 
 def decision_input(property_id: str = "current-property") -> DecisionInput:
     return DecisionInput(
-        living_profile=LivingProfileDecisionInput(
-            budget=6000,
-            preferred_city="深圳",
+        living_model=LivingModel(
+            conversation_id="prompt-context",
+            profile=LivingModelProfile(
+                budget=6000,
+                preferred_city="深圳",
+            ),
+            decision_memory=[],
         ),
         properties=[
             PropertyDecisionInput(
@@ -145,10 +149,10 @@ def test_empty_history_has_deterministic_section_and_priority() -> None:
     )
 
     assert "No previous decision records are available." in prompt
-    assert prompt.index("Current Living Profile:") < prompt.index(
-        "Current Property List:",
-    )
     assert prompt.index("Current Property List:") < prompt.index(
+        "LIVING MODEL:",
+    )
+    assert prompt.index("LIVING MODEL:") < prompt.index(
         "Recent Decision History:",
     )
     assert prompt.index("Recent Decision History:") < prompt.index(
