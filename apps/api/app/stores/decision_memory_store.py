@@ -71,6 +71,26 @@ class DecisionMemoryStore:
                 )
             ]
 
+    def replace_conversation(
+        self,
+        conversation_id: str,
+        memories: list[DecisionMemory],
+    ) -> list[DecisionMemory]:
+        stored_memories = [memory.model_copy(deep=True) for memory in memories]
+
+        with self._lock:
+            retained = {
+                memory_id: memory
+                for memory_id, memory in self._memories.items()
+                if memory.conversation_id != conversation_id
+            }
+            retained.update(
+                {memory.id: memory for memory in stored_memories},
+            )
+            self._memories = retained
+
+        return [memory.model_copy(deep=True) for memory in stored_memories]
+
     def clear(self) -> None:
         with self._lock:
             self._memories.clear()

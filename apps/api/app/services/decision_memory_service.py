@@ -1,4 +1,5 @@
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from threading import RLock
 from uuid import UUID, uuid4
@@ -7,6 +8,7 @@ from app.models.decision_memory import (
     DecisionMemory,
     DecisionMemoryCandidate,
 )
+from app.runtime.memory_evolution import MemoryEvolutionCandidate
 from app.stores.decision_memory_store import (
     DecisionMemoryStore,
     decision_memory_store,
@@ -113,6 +115,106 @@ class DecisionMemoryService:
 
             return self._store.save(memory)
 
+    def evolve_candidates(
+        self,
+        conversation_id: str,
+        candidates: list[MemoryEvolutionCandidate],
+    ) -> list[DecisionMemory]:
+        normalized_conversation_id = self._validate_conversation_id(
+            conversation_id,
+        )
+
+        with self._lock:
+            existing_memories = self._store.list_by_conversation(
+                normalized_conversation_id,
+            )
+            memories_by_id = {
+                memory.id: memory
+                for memory in existing_memories
+            }
+            evolved_by_id = memories_by_id.copy()
+            now = datetime.now(timezone.utc)
+            touched_ids: list[UUID] = []
+
+            for candidate in candidates:
+                content, normalized_content, evidence_ids = (
+                    self._validate_candidate(candidate)
+                )
+                existing = (
+                    evolved_by_id.get(candidate.memory_id)
+                    if candidate.memory_id is not None
+                    else self._find_equivalent(
+                        evolved_by_id.values(),
+                        candidate,
+                        normalized_content,
+                    )
+                )
+
+                if candidate.memory_id is not None and existing is None:
+                    raise DecisionMemoryValidationError(
+                        "Evolution target must be an existing Memory.",
+                    )
+                if (
+                    existing is not None
+                    and existing.category != candidate.category
+                ):
+                    raise DecisionMemoryValidationError(
+                        "Memory category cannot change during evolution.",
+                    )
+
+                if existing is None:
+                    memory = DecisionMemory(
+                        id=uuid4(),
+                        conversation_id=normalized_conversation_id,
+                        category=candidate.category,
+                        content=content,
+                        normalized_content=normalized_content,
+                        confidence=candidate.confidence,
+                        evidence_record_ids=evidence_ids,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                else:
+                    is_reinforcement = (
+                        existing.normalized_content == normalized_content
+                    )
+                    memory = existing.model_copy(
+                        update={
+                            "content": content,
+                            "normalized_content": normalized_content,
+                            "confidence": (
+                                max(
+                                    existing.confidence,
+                                    candidate.confidence,
+                                )
+                                if is_reinforcement
+                                else candidate.confidence
+                            ),
+                            "evidence_record_ids": unique_evidence_ids(
+                                [
+                                    *existing.evidence_record_ids,
+                                    *evidence_ids,
+                                ],
+                            ),
+                            "updated_at": now,
+                        },
+                        deep=True,
+                    )
+
+                evolved_by_id[memory.id] = memory
+                if memory.id not in touched_ids:
+                    touched_ids.append(memory.id)
+
+            self._store.replace_conversation(
+                normalized_conversation_id,
+                list(evolved_by_id.values()),
+            )
+
+            return [
+                evolved_by_id[memory_id].model_copy(deep=True)
+                for memory_id in touched_ids
+            ]
+
     def list_memories(
         self,
         conversation_id: str,
@@ -138,6 +240,46 @@ class DecisionMemoryService:
             return None
 
         return memory
+
+    @staticmethod
+    def _find_equivalent(
+        memories: Iterable[DecisionMemory],
+        candidate: DecisionMemoryCandidate,
+        normalized_content: str,
+    ) -> DecisionMemory | None:
+        for memory in memories:
+            if (
+                memory.category == candidate.category
+                and memory.normalized_content == normalized_content
+            ):
+                return memory
+
+        return None
+
+    @staticmethod
+    def _validate_candidate(
+        candidate: DecisionMemoryCandidate,
+    ) -> tuple[str, str, list[UUID]]:
+        content = candidate.content.strip()
+        if len(content) < MINIMUM_MEMORY_CONTENT_LENGTH:
+            raise DecisionMemoryValidationError(
+                "Memory content must contain at least 3 characters.",
+            )
+        if candidate.confidence < MINIMUM_MEMORY_CONFIDENCE:
+            raise DecisionMemoryValidationError(
+                "Memory confidence must be at least 0.7.",
+            )
+        evidence_ids = unique_evidence_ids(candidate.evidence_record_ids)
+        if len(evidence_ids) < 2:
+            raise DecisionMemoryValidationError(
+                "Memory requires at least 2 distinct evidence record IDs.",
+            )
+        normalized_content = normalize_memory_content(content)
+        if len(normalized_content) < MINIMUM_MEMORY_CONTENT_LENGTH:
+            raise DecisionMemoryValidationError(
+                "Normalized memory content must contain at least 3 characters.",
+            )
+        return content, normalized_content, evidence_ids
 
     @staticmethod
     def _validate_conversation_id(conversation_id: str) -> str:

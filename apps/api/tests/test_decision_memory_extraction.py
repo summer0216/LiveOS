@@ -64,19 +64,19 @@ class FailingRecordSource:
         raise RuntimeError("History unavailable")
 
 
-class SelectiveFailingMemoryService:
-    def save_candidate(
+class FailingEvolutionMemoryService:
+    def list_memories(
         self,
-        conversation_id: str,
-        memory_candidate: DecisionMemoryCandidate,
-    ) -> DecisionMemory:
-        if "保存失败" in memory_candidate.content:
-            raise RuntimeError("Memory store unavailable")
+        _conversation_id: str,
+    ) -> list[DecisionMemory]:
+        return []
 
-        return decision_memory_service.save_candidate(
-            conversation_id,
-            memory_candidate,
-        )
+    def evolve_candidates(
+        self,
+        _conversation_id: str,
+        _candidates: list[object],
+    ) -> list[DecisionMemory]:
+        raise RuntimeError("Memory store unavailable")
 
 
 @pytest.fixture(autouse=True)
@@ -532,7 +532,7 @@ def test_duplicate_candidates_return_one_stored_memory() -> None:
     assert len(decision_memory_service.list_memories("extraction-main")) == 1
 
 
-def test_save_failure_does_not_block_later_candidate() -> None:
+def test_evolution_failure_does_not_write_partial_update() -> None:
     records = [
         save_record("extraction-main", f"Decision {index}")
         for index in range(2)
@@ -554,16 +554,15 @@ def test_save_failure_does_not_block_later_candidate() -> None:
     )
     service = DecisionMemoryExtractionService(
         decision_records=decision_record_service,
-        memory_service=SelectiveFailingMemoryService(),
+        memory_service=FailingEvolutionMemoryService(),
         json_client=client,
     )
 
     result = service.extract("extraction-main")
 
-    assert result.status == DecisionMemoryExtractionStatus.COMPLETED
-    assert result.saved_count == 1
-    assert result.rejected_count == 1
-    assert len(result.memories) == 1
+    assert result.status == DecisionMemoryExtractionStatus.FAILED
+    assert result.saved_count == 0
+    assert result.memories == []
 
 
 def test_existing_memory_is_merged_through_memory_service() -> None:
@@ -646,7 +645,7 @@ def test_deleted_property_snapshot_still_enters_prompt() -> None:
     assert all(record.id in client.prompts[0] for record in records)
 
 
-def test_existing_memory_is_not_included_in_prompt() -> None:
+def test_existing_memory_is_included_for_evolution() -> None:
     records = [
         save_record("extraction-existing", f"Decision {index}")
         for index in range(2)
@@ -668,4 +667,4 @@ def test_existing_memory_is_not_included_in_prompt() -> None:
 
     extraction_service(client).extract("extraction-existing")
 
-    assert existing_content not in client.prompts[0]
+    assert existing_content in client.prompts[0]
