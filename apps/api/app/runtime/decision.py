@@ -1,6 +1,7 @@
 import json
 
 from app.core.logger import logger
+from app.runtime.adaptive_decision import adaptive_decision
 from app.runtime.decision_intelligence import decision_intelligence
 from app.runtime.living_model import LivingModel
 from app.schemas.decision import DecisionInput
@@ -220,6 +221,15 @@ def build_decision_prompt(
         decision_input.living_model,
     )
     reasoning_text = decision_intelligence.build(property_count)
+    adaptive_text = adaptive_decision.build(
+        decision_input.living_model,
+        context,
+    )
+    adaptive_section = (
+        f"ADAPTIVE DECISION:\n{adaptive_text}\n\n"
+        if adaptive_text is not None
+        else ""
+    )
 
     return (
         "Decision Task:\n"
@@ -233,6 +243,7 @@ def build_decision_prompt(
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"
         "DECISION REASONING:\n"
         f"{reasoning_text}\n\n"
+        f"{adaptive_section}"
         "Output Schema:\n"
         f"{DECISION_OUTPUT_SCHEMA}\n\n"
         "Validation Rules:\n"
