@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -51,7 +51,7 @@ def stored_memory(
     updated_at: datetime | None = None,
     evidence_count: int = 2,
 ) -> DecisionMemory:
-    timestamp = updated_at or datetime.now(timezone.utc)
+    timestamp = updated_at or datetime.now(UTC)
 
     return DecisionMemory(
         id=uuid4(),
@@ -60,10 +60,7 @@ def stored_memory(
         content=content,
         normalized_content=content.strip(),
         confidence=confidence,
-        evidence_record_ids=[
-            uuid4()
-            for _ in range(evidence_count)
-        ],
+        evidence_record_ids=[uuid4() for _ in range(evidence_count)],
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -148,7 +145,7 @@ def test_memories_are_sorted_by_confidence_descending() -> None:
 
 
 def test_equal_confidence_is_sorted_by_updated_at_descending() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     memories = [
         stored_memory(content="old", updated_at=now),
         stored_memory(

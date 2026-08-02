@@ -1,3 +1,5 @@
+import { apiRequest } from '@/services/api';
+
 export const PROFILE_TAG_CATEGORIES = [
     'preference',
     'commute',
@@ -29,8 +31,8 @@ export async function updatePreferenceTags(
     conversationId: string,
     preferenceTags: PreferenceTags,
 ): Promise<LivingProfile> {
-    const response = await fetch(
-        `${API_BASE_URL}/api/profiles/${conversationId}/tags`,
+    const response = await apiRequest(
+        `/profiles/${encodeURIComponent(conversationId)}/tags`,
         {
             method: 'PATCH',
             headers: {
@@ -51,15 +53,11 @@ export async function updatePreferenceTags(
     return response.json() as Promise<LivingProfile>;
 }
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-    'http://127.0.0.1:8000';
-
 export async function getLivingProfile(
     conversationId: string,
 ): Promise<LivingProfile | null> {
-    const response = await fetch(
-        `${API_BASE_URL}/api/profiles/${conversationId}`,
+    const response = await apiRequest(
+        `/profiles/${encodeURIComponent(conversationId)}`,
         {
             method: 'GET',
             cache: 'no-store',

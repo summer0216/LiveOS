@@ -1,7 +1,5 @@
-import { apiFetch } from './api';
+import { apiFetch, apiRequest } from './api';
 import type { ChatRequest, ChatResponse } from '@/types/chat';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
 
 export async function sendMessage(
     conversationId: string,
@@ -35,7 +33,7 @@ export async function streamMessage({
         message,
     };
 
-    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    const response = await apiRequest('/chat/stream', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

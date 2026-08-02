@@ -62,7 +62,7 @@ class PropertyIntelligence:
         data = json.loads(json_text)
 
         if not isinstance(data, dict):
-            raise ValueError(
+            raise TypeError(
                 "Property Intelligence response must be a JSON object.",
             )
 

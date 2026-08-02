@@ -123,10 +123,7 @@ def test_more_than_three_records_returns_latest_three() -> None:
     context = decision_context_service.build_context("context-many")
 
     assert len(context.recent_decisions) == 3
-    assert [
-        record.summary
-        for record in context.recent_decisions
-    ] == [
+    assert [record.summary for record in context.recent_decisions] == [
         "Decision 4",
         "Decision 3",
         "Decision 2",
@@ -138,10 +135,7 @@ def test_three_records_returns_all_three() -> None:
 
     context = decision_context_service.build_context("context-three")
 
-    assert [
-        record.summary
-        for record in context.recent_decisions
-    ] == [
+    assert [record.summary for record in context.recent_decisions] == [
         "Decision 2",
         "Decision 1",
         "Decision 0",
@@ -161,14 +155,12 @@ def test_context_is_isolated_by_conversation() -> None:
 
     assert len(context_a.recent_decisions) == 2
     assert len(context_b.recent_decisions) == 1
-    assert {
-        record.conversation_id
-        for record in context_a.recent_decisions
-    } == {"context-isolation-a"}
-    assert {
-        record.conversation_id
-        for record in context_b.recent_decisions
-    } == {"context-isolation-b"}
+    assert {record.conversation_id for record in context_a.recent_decisions} == {
+        "context-isolation-a"
+    }
+    assert {record.conversation_id for record in context_b.recent_decisions} == {
+        "context-isolation-b"
+    }
 
 
 def test_history_failure_returns_empty_context(

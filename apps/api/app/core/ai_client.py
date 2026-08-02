@@ -1,8 +1,8 @@
 from collections.abc import Iterator
 from typing import Literal, TypedDict
 
-
 from openai import OpenAI, OpenAIError
+
 from app.core.config import settings
 
 MessageRole = Literal["system", "user", "assistant"]
@@ -44,7 +44,6 @@ class AIClient:
     ) -> Iterator[str]:
 
         try:
-
             stream = self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=messages,

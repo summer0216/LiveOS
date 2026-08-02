@@ -8,21 +8,21 @@ from app.core.logger import logger
 from app.models.decision_memory import (
     DecisionMemory,
 )
-from app.models.profile import LivingProfile
-from app.models.property import Property
 from app.models.decision_memory_extraction import (
     DecisionMemoryExtractionOutput,
     DecisionMemoryExtractionResult,
     DecisionMemoryExtractionStatus,
 )
+from app.models.profile import LivingProfile
+from app.models.property import Property
 from app.runtime.memory_evolution import (
     MemoryEvolutionCandidate,
     build_memory_evolution_prompt,
 )
 from app.schemas.decision_record import DecisionRecord
 from app.services.decision_memory_service import (
-    DecisionMemoryValidationError,
     MINIMUM_MEMORY_CONFIDENCE,
+    DecisionMemoryValidationError,
     decision_memory_service,
 )
 from app.services.decision_record_service import (
@@ -36,41 +36,35 @@ MAXIMUM_HISTORY_RECORDS = 10
 
 
 class JSONGeneratingClient(Protocol):
-    def generate_json(self, prompt: str) -> str:
-        ...
+    def generate_json(self, prompt: str) -> str: ...
 
 
 class DecisionRecordSource(Protocol):
     def list_by_conversation(
         self,
         conversation_id: str,
-    ) -> list[DecisionRecord]:
-        ...
+    ) -> list[DecisionRecord]: ...
 
 
 class MemoryCandidateService(Protocol):
     def list_memories(
         self,
         conversation_id: str,
-    ) -> list[DecisionMemory]:
-        ...
+    ) -> list[DecisionMemory]: ...
 
     def evolve_candidates(
         self,
         conversation_id: str,
         candidates: list[MemoryEvolutionCandidate],
-    ) -> list[DecisionMemory]:
-        ...
+    ) -> list[DecisionMemory]: ...
 
 
 class ProfileSource(Protocol):
-    def get(self, conversation_id: str) -> LivingProfile | None:
-        ...
+    def get(self, conversation_id: str) -> LivingProfile | None: ...
 
 
 class PropertySource(Protocol):
-    def list(self, conversation_id: str) -> list[Property]:
-        ...
+    def list(self, conversation_id: str) -> list[Property]: ...
 
 
 def validate_candidate_evidence(
@@ -115,7 +109,7 @@ class DecisionMemoryExtractionService:
             records_desc = self._decision_records.list_by_conversation(
                 normalized_conversation_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - History read failure returns the defined failed result.
             logger.exception(
                 "Failed to read Decision History for Memory Extraction "
                 "in conversation %s.",
@@ -129,9 +123,7 @@ class DecisionMemoryExtractionService:
         if history_record_count < MINIMUM_HISTORY_RECORDS:
             return DecisionMemoryExtractionResult(
                 conversation_id=normalized_conversation_id,
-                status=(
-                    DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY
-                ),
+                status=(DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY),
                 history_record_count=history_record_count,
                 candidate_count=0,
                 saved_count=0,
@@ -142,10 +134,7 @@ class DecisionMemoryExtractionService:
         records_asc = list(reversed(recent_records))
 
         try:
-            allowed_record_ids = {
-                UUID(record.id)
-                for record in records_asc
-            }
+            allowed_record_ids = {UUID(record.id) for record in records_asc}
             existing_memories = self._memory_service.list_memories(
                 normalized_conversation_id,
             )
@@ -169,7 +158,7 @@ class DecisionMemoryExtractionService:
             output = DecisionMemoryExtractionOutput.model_validate_json(
                 response,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - AI extraction failure returns the defined failed result.
             logger.exception(
                 "Decision Memory Extraction failed for conversation %s.",
                 normalized_conversation_id,
@@ -198,12 +187,14 @@ class DecisionMemoryExtractionService:
                     rejected_count += 1
                     continue
 
-                validated_candidates.append(candidate.model_copy(
-                    update={
-                        "evidence_record_ids": evidence_ids,
-                    },
-                    deep=True,
-                ))
+                validated_candidates.append(
+                    candidate.model_copy(
+                        update={
+                            "evidence_record_ids": evidence_ids,
+                        },
+                        deep=True,
+                    )
+                )
             except (ValidationError, DecisionMemoryValidationError):
                 rejected_count += 1
                 continue
@@ -213,7 +204,7 @@ class DecisionMemoryExtractionService:
                 normalized_conversation_id,
                 validated_candidates,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Evolution failure preserves existing memory.
             logger.exception(
                 "Memory Evolution failed; existing Memory was retained.",
             )

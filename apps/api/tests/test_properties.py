@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.property_manager import property_manager
+from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
@@ -11,6 +12,9 @@ def test_property_crud_and_conversation_isolation() -> None:
     conversation_b = "property-list-b"
     property_manager.delete_conversation(conversation_a)
     property_manager.delete_conversation(conversation_b)
+
+    create_owned_conversation(client, conversation_a)
+    create_owned_conversation(client, conversation_b)
 
     empty_response = client.get(
         "/api/properties",

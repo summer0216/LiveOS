@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.core.logger import logger
 from app.schemas.decision_record import (
     DecisionHistoryResponse,
@@ -28,7 +29,10 @@ def ensure_conversation_exists(conversation_id: str) -> None:
 )
 def list_decision_history(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> DecisionHistoryResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     ensure_conversation_exists(conversation_id)
 
     try:
@@ -59,7 +63,10 @@ def list_decision_history(
 def get_decision_record(
     conversation_id: str,
     record_id: str,
+    request: Request,
+    response: Response,
 ) -> DecisionRecord:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     ensure_conversation_exists(conversation_id)
 
     try:

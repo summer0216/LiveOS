@@ -14,7 +14,7 @@ class DecisionContextService:
             records = decision_record_service.list_by_conversation(
                 conversation_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - History failure must degrade Decision Context safely.
             logger.exception(
                 "Failed to build Decision Context for conversation %s.",
                 conversation_id,

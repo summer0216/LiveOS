@@ -1,28 +1,20 @@
 from app.models.conversation import Conversation, ConversationMessage
+from app.stores.runtime import DEFAULT_ANONYMOUS_USER_ID, conversation_store
 
 
 class ConversationManager:
-    def __init__(self) -> None:
-        self._conversations: dict[str, Conversation] = {}
-
     def get_or_create(
         self,
         conversation_id: str,
+        user_id: str = DEFAULT_ANONYMOUS_USER_ID,
     ) -> Conversation:
-        conversation = self._conversations.get(conversation_id)
-
-        if conversation is None:
-            conversation = Conversation(
-                conversation_id=conversation_id,
-            )
-            self._conversations[conversation_id] = conversation
-        return conversation
+        return conversation_store.get_or_create(conversation_id, user_id)
 
     def get(
         self,
         conversation_id: str,
     ) -> Conversation | None:
-        return self._conversations.get(conversation_id)
+        return conversation_store.get(conversation_id)
 
     def get_history(
         self,
@@ -39,12 +31,16 @@ class ConversationManager:
         self,
         conversation_id: str,
     ) -> bool:
+        return conversation_store.delete(conversation_id)
 
-        if conversation_id not in self._conversations:
-            return False
+    def belongs_to(self, conversation_id: str, user_id: str) -> bool:
+        return conversation_store.belongs_to(conversation_id, user_id)
 
-        del self._conversations[conversation_id]
-        return True
+    def append_user_message(self, conversation_id: str, content: str) -> None:
+        conversation_store.append(conversation_id, "user", content)
+
+    def append_assistant_message(self, conversation_id: str, content: str) -> None:
+        conversation_store.append(conversation_id, "assistant", content)
 
 
 conversation_manager = ConversationManager()

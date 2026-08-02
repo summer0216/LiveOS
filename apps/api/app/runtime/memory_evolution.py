@@ -88,8 +88,7 @@ def build_memory_evolution_prompt(
     latest_decision = history_data[-1] if history_data else None
     older_history = history_data[:-1]
     existing_memory_data = [
-        memory.model_dump(mode="json")
-        for memory in existing_memories
+        memory.model_dump(mode="json") for memory in existing_memories
     ]
 
     return (

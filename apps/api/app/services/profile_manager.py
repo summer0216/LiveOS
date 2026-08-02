@@ -1,28 +1,25 @@
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
+from app.services.conversation_manager import conversation_manager
+from app.stores.runtime import profile_store
 
 
 class ProfileManager:
-    def __init__(self) -> None:
-        self._profiles: dict[str, LivingProfile] = {}
-
     def get_or_create(
         self,
         conversation_id: str,
     ) -> LivingProfile:
-        profile = self._profiles.get(conversation_id)
-
-        if profile is None:
-            profile = LivingProfile()
-            self._profiles[conversation_id] = profile
-
-        return profile
+        profile = profile_store.get(conversation_id)
+        if profile is not None:
+            return profile
+        conversation_manager.get_or_create(conversation_id)
+        return profile_store.save(conversation_id, LivingProfile())
 
     def get(
         self,
         conversation_id: str,
     ) -> LivingProfile | None:
-        return self._profiles.get(conversation_id)
+        return profile_store.get(conversation_id)
 
     def merge(
         self,
@@ -35,17 +32,13 @@ class ProfileManager:
         profile.apply_patch(patch)
         profile.latest_insights = latest_insights.copy()
 
-        return profile
+        return profile_store.save(conversation_id, profile)
 
     def delete(
         self,
         conversation_id: str,
     ) -> bool:
-        if conversation_id not in self._profiles:
-            return False
-
-        del self._profiles[conversation_id]
-        return True
+        return profile_store.delete(conversation_id)
 
     def update_tags(
         self,
@@ -58,11 +51,10 @@ class ProfileManager:
             return None
 
         profile.preference_tags = {
-            category: tags.copy()
-            for category, tags in preference_tags.items()
+            category: tags.copy() for category, tags in preference_tags.items()
         }
 
-        return profile
+        return profile_store.save(conversation_id, profile)
 
 
 profile_manager = ProfileManager()

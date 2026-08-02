@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.core.logger import logger
 from app.models.decision_memory import DecisionMemory
 from app.models.decision_memory_extraction import (
@@ -58,7 +59,10 @@ def to_memory_response(
 )
 def list_memories(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> DecisionMemoryListResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     normalized_conversation_id = require_conversation_id(conversation_id)
 
     try:
@@ -82,10 +86,7 @@ def list_memories(
 
     return DecisionMemoryListResponse(
         conversation_id=normalized_conversation_id,
-        memories=[
-            to_memory_response(memory)
-            for memory in memories
-        ],
+        memories=[to_memory_response(memory) for memory in memories],
     )
 
 
@@ -95,7 +96,10 @@ def list_memories(
 )
 def refresh_memories(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> DecisionMemoryRefreshResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     normalized_conversation_id = require_conversation_id(conversation_id)
 
     try:
@@ -104,8 +108,7 @@ def refresh_memories(
         )
     except Exception as error:
         logger.exception(
-            "Unexpected Decision Memory refresh failure "
-            "for conversation %s.",
+            "Unexpected Decision Memory refresh failure for conversation %s.",
             normalized_conversation_id,
         )
         raise HTTPException(
@@ -126,8 +129,5 @@ def refresh_memories(
         candidate_count=result.candidate_count,
         saved_count=result.saved_count,
         rejected_count=result.rejected_count,
-        memories=[
-            to_memory_response(memory)
-            for memory in result.memories
-        ],
+        memories=[to_memory_response(memory) for memory in result.memories],
     )

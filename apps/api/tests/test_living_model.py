@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -51,7 +51,7 @@ def memory_item(content: str) -> DecisionMemoryContextItem:
         content=content,
         confidence=0.9,
         evidence_count=2,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -136,10 +136,7 @@ def test_empty_profile_builds_valid_living_model() -> None:
         memory_context("conversation-a", [memory_item("稳定偏好")]),
     )
 
-    assert all(
-        value is None
-        for value in model.profile.model_dump().values()
-    )
+    assert all(value is None for value in model.profile.model_dump().values())
     assert len(model.decision_memory) == 1
 
 
@@ -163,10 +160,7 @@ def test_conversation_mismatch_degrades_to_empty_model() -> None:
 
     assert model.conversation_id == "conversation-a"
     assert model.decision_memory == []
-    assert all(
-        value is None
-        for value in model.profile.model_dump().values()
-    )
+    assert all(value is None for value in model.profile.model_dump().values())
 
 
 def test_builder_does_not_mutate_inputs() -> None:

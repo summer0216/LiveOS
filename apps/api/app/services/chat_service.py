@@ -5,12 +5,11 @@ from app.models.conversation import (
     Conversation,
     ConversationMessage,
 )
+from app.models.property import Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
-
-from app.models.property import Property
 from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
 
@@ -27,8 +26,8 @@ class ChatService:
             conversation_id,
         )
 
-        conversation.add_user_message(message)
-
+        conversation_manager.append_user_message(conversation_id, message)
+        conversation = conversation_manager.get(conversation_id) or conversation
         history = conversation.get_messages()
 
         return conversation, history
@@ -69,7 +68,7 @@ class ChatService:
         conversation_id: str,
         message: str,
     ) -> str:
-        conversation, history = self._prepare_conversation(
+        _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
         )
@@ -82,7 +81,7 @@ class ChatService:
         reply = ai_runtime.chat(history)
 
         if reply:
-            conversation.add_assistant_message(reply)
+            conversation_manager.append_assistant_message(conversation_id, reply)
 
         return reply
 
@@ -91,7 +90,7 @@ class ChatService:
         conversation_id: str,
         message: str,
     ) -> Iterator[str]:
-        conversation, history = self._prepare_conversation(
+        _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
         )
@@ -113,7 +112,8 @@ class ChatService:
         assistant_reply = "".join(assistant_reply_parts)
 
         if assistant_reply:
-            conversation.add_assistant_message(
+            conversation_manager.append_assistant_message(
+                conversation_id,
                 assistant_reply,
             )
 

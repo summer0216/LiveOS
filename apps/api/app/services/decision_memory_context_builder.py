@@ -48,7 +48,7 @@ class DecisionMemoryContextBuilder:
             stored_memories = self._memory_service.list_memories(
                 normalized_conversation_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Memory Context must degrade to empty on Store failure.
             logger.exception(
                 "Failed to build Memory Context for conversation %s.",
                 normalized_conversation_id,
@@ -59,9 +59,7 @@ class DecisionMemoryContextBuilder:
             )
 
         valid_memories = [
-            memory
-            for memory in stored_memories
-            if self._is_runtime_safe(memory)
+            memory for memory in stored_memories if self._is_runtime_safe(memory)
         ]
         selected_memories = sorted(
             valid_memories,

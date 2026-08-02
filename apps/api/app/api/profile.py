@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.models.profile import LivingProfile
 from app.schemas.profile import (
     LivingProfileResponse,
@@ -36,7 +37,10 @@ def build_profile_response(
 )
 async def get_living_profile(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> LivingProfileResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     profile = profile_manager.get(conversation_id)
 
     if profile is None:
@@ -58,7 +62,12 @@ async def get_living_profile(
 async def update_preference_tags(
     conversation_id: str,
     request: PreferenceTagsUpdateRequest,
+    raw_request: Request,
+    response: Response,
 ) -> LivingProfileResponse:
+    require_conversation_owner(
+        conversation_id, anonymous_user_id(raw_request, response)
+    )
     profile = profile_manager.update_tags(
         conversation_id=conversation_id,
         preference_tags=request.preference_tags,

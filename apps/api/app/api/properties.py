@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.models.property import Property
 from app.schemas.property import (
     PropertyCreateRequest,
@@ -8,6 +9,7 @@ from app.schemas.property import (
     PropertyResponse,
 )
 from app.services.chat_service import chat_service
+from app.services.conversation_manager import conversation_manager
 from app.services.property_manager import property_manager
 
 router = APIRouter(
@@ -27,7 +29,12 @@ class PropertyAnalyzeRequest(BaseModel):
 )
 def analyze_property(
     request: PropertyAnalyzeRequest,
+    raw_request: Request,
+    response: Response,
 ) -> Property:
+    require_conversation_owner(
+        request.conversation_id, anonymous_user_id(raw_request, response)
+    )
     return chat_service.update_property(
         conversation_id=request.conversation_id,
         description=request.description,
@@ -40,7 +47,10 @@ def analyze_property(
 )
 def list_properties(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> PropertyListResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     return PropertyListResponse(
         items=property_manager.list(conversation_id),
     )
@@ -53,7 +63,12 @@ def list_properties(
 )
 def create_property(
     request: PropertyCreateRequest,
+    raw_request: Request,
+    response: Response,
 ) -> Property:
+    user_id = anonymous_user_id(raw_request, response)
+    conversation_manager.get_or_create(request.conversation_id, user_id)
+    require_conversation_owner(request.conversation_id, user_id)
     return property_manager.create(
         conversation_id=request.conversation_id,
         property_=Property(
@@ -75,8 +90,12 @@ def create_property(
 )
 def delete_property(
     property_id: str,
+    request: Request,
+    response: Response,
 ) -> None:
-    if not property_manager.delete(property_id):
+    if not property_manager.delete_for_owner(
+        property_id, anonymous_user_id(request, response)
+    ):
         raise HTTPException(
             status_code=404,
             detail="Property not found.",
@@ -89,7 +108,10 @@ def delete_property(
 )
 def get_property(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> Property:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     property_ = property_manager.get(
         conversation_id,
     )

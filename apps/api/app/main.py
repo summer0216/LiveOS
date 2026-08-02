@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api import chat_router
 from app.api.conversation import router as conversation_router
 from app.api.decision_history import router as decision_history_router
@@ -7,6 +8,7 @@ from app.api.decisions import router as decisions_router
 from app.api.memories import router as memories_router
 from app.api.profile import router as profile_router
 from app.api.properties import router as properties_router
+from app.core.config import settings
 
 app = FastAPI(
     title="LiveOS API",
@@ -16,7 +18,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
+        origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],

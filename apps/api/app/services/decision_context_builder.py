@@ -53,7 +53,7 @@ class DecisionContextBuilder:
             memory_context = self._memory_builder.build(
                 normalized_conversation_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Memory Context is optional runtime enhancement.
             logger.exception(
                 (
                     "Failed to add Memory Context to Decision Context "

@@ -23,7 +23,7 @@ class AdaptiveDecision:
         try:
             context = self._build_context(living_model, decision_context)
             return self._build_guidance(context)
-        except Exception:
+        except Exception:  # noqa: BLE001 - optional adaptive guidance must degrade safely.
             logger.exception(
                 "Adaptive Decision construction failed; "
                 "continuing with Decision Intelligence.",
@@ -60,24 +60,29 @@ class AdaptiveDecision:
             )
         )
 
-        return "\n".join(
+        return "\n".join(  # noqa: FLY002 - lines include runtime-generated guidance.
             (
-                "Adaptive context priority is fixed: Current Facts > Living "
-                "Model > Memory Evolution > Decision History.",
+                (
+                    "Adaptive context priority is fixed: Current Facts > Living "
+                    "Model > Memory Evolution > Decision History."
+                ),
                 memory_guidance,
                 history_guidance,
-                "Adapt only the decision strategy. Never modify current "
-                "facts, Property data, Living Model data, or user input.",
-                "Never create a preference or change that is absent from the "
-                "supplied evidence.",
-                "When current evidence shows a real change in budget, "
-                "commute preference, housing quality preference, or family "
-                "structure, let that change affect candidate weighting.",
-                "If the current recommendation differs from past decisions, "
-                "explain the evidence-backed change concisely in reasons or "
-                "trade-offs. Do not force a difference when none is proven.",
-                "Return user-facing conclusions only. Never reveal hidden "
-                "reasoning or chain of thought.",
+                (
+                    "Adapt only the decision strategy. Never modify current facts, Property data, Living Model data, or user input."
+                ),
+                (
+                    "Never create a preference or change that is absent from the supplied evidence."
+                ),
+                (
+                    "When current evidence shows a real change in budget, commute preference, housing quality preference, or family structure, let that change affect candidate weighting."
+                ),
+                (
+                    "If the current recommendation differs from past decisions, explain the evidence-backed change concisely in reasons or trade-offs. Do not force a difference when none is proven."
+                ),
+                (
+                    "Return user-facing conclusions only. Never reveal hidden reasoning or chain of thought."
+                ),
             ),
         )
 

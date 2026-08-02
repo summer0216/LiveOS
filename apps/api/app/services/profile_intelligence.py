@@ -64,7 +64,7 @@ class ProfileIntelligence:
         data = json.loads(json_text)
 
         if not isinstance(data, dict):
-            raise ValueError(
+            raise TypeError(
                 "Profile Intelligence response must be a JSON object.",
             )
 

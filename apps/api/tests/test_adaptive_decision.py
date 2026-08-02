@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -46,7 +46,7 @@ def memory_item(content: str) -> DecisionMemoryContextItem:
         content=content,
         confidence=0.85,
         evidence_count=3,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -154,8 +154,7 @@ def test_adaptive_priority_is_explicit() -> None:
 
     assert guidance is not None
     assert (
-        "Current Facts > Living Model > Memory Evolution > Decision History"
-        in guidance
+        "Current Facts > Living Model > Memory Evolution > Decision History" in guidance
     )
 
 

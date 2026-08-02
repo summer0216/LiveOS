@@ -1,6 +1,5 @@
 from app.core.logger import logger
 
-
 FALLBACK_DECISION_REASONING = """
 Evaluate the current candidates against the supplied current facts and Living
 Model. Return only concise, user-facing conclusions supported by the input.
@@ -15,7 +14,7 @@ class DecisionIntelligence:
     def build(self, property_count: int) -> str:
         try:
             return self._build(property_count)
-        except Exception:
+        except Exception:  # noqa: BLE001 - prompt guidance has a defined fallback.
             logger.exception(
                 "Failed to build Decision Intelligence guidance; "
                 "using fallback guidance.",
@@ -34,23 +33,27 @@ class DecisionIntelligence:
             )
         )
 
-        return "\n".join(
+        return "\n".join(  # noqa: FLY002 - mixes generated and static guidance.
             (
                 candidate_guidance,
-                "Reason internally from the supplied evidence, then return "
-                "only concise user-facing conclusions, never hidden chain "
-                "of thought.",
-                "Identify decision-relevant advantages supported by current "
-                "property facts and express them in reasons.",
-                "Identify risks, missing information, and conflicts that "
-                "materially affect the choice.",
-                "Express a trade-off only when the selected property gains a "
-                "supported benefit while accepting a supported cost, risk, "
-                "or limitation. If none is supported, return no trade-offs.",
-                "Resolve conflicts using this fixed priority: Current Facts "
-                "> Living Model > Decision History.",
-                "History may provide continuity but cannot create facts, "
-                "scores, rankings, advantages, risks, or trade-offs.",
+                (
+                    "Reason internally from the supplied evidence, then return only concise user-facing conclusions, never hidden chain of thought."
+                ),
+                (
+                    "Identify decision-relevant advantages supported by current property facts and express them in reasons."
+                ),
+                (
+                    "Identify risks, missing information, and conflicts that materially affect the choice."
+                ),
+                (
+                    "Express a trade-off only when the selected property gains a supported benefit while accepting a supported cost, risk, or limitation. If none is supported, return no trade-offs."
+                ),
+                (
+                    "Resolve conflicts using this fixed priority: Current Facts > Living Model > Decision History."
+                ),
+                (
+                    "History may provide continuity but cannot create facts, scores, rankings, advantages, risks, or trade-offs."
+                ),
             ),
         )
 

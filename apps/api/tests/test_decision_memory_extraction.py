@@ -144,9 +144,7 @@ def candidate_data(
         "content": content,
         "confidence": confidence,
         "evidence_record_ids": (
-            evidence_ids
-            if evidence_ids is not None
-            else [records[0].id, records[1].id]
+            evidence_ids if evidence_ids is not None else [records[0].id, records[1].id]
         ),
     }
 
@@ -173,10 +171,7 @@ def test_insufficient_history_does_not_call_ai(
 
     result = extraction_service(client).extract("extraction-main")
 
-    assert (
-        result.status
-        == DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY
-    )
+    assert result.status == DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY
     assert result.history_record_count == record_count
     assert result.candidate_count == 0
     assert result.saved_count == 0
@@ -187,8 +182,7 @@ def test_insufficient_history_does_not_call_ai(
 
 def test_valid_extraction_saves_candidate_with_one_ai_call() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json([candidate_data(records)]),
@@ -209,12 +203,10 @@ def test_valid_extraction_saves_candidate_with_one_ai_call() -> None:
 
 def test_prompt_only_contains_current_conversation_records() -> None:
     records_a = [
-        save_record("extraction-main", f"A Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"A Decision {index}") for index in range(2)
     ]
     records_b = [
-        save_record("extraction-other", f"B Decision {index}")
-        for index in range(2)
+        save_record("extraction-other", f"B Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient()
 
@@ -227,8 +219,7 @@ def test_prompt_only_contains_current_conversation_records() -> None:
 
 def test_only_recent_ten_records_enter_prompt_in_ascending_order() -> None:
     records = [
-        save_record("extraction-limit", f"Decision {index}")
-        for index in range(12)
+        save_record("extraction-limit", f"Decision {index}") for index in range(12)
     ]
     client = FakeJSONClient()
 
@@ -239,10 +230,7 @@ def test_only_recent_ten_records_enter_prompt_in_ascending_order() -> None:
     assert records[0].id not in prompt
     assert records[1].id not in prompt
     assert all(record.id in prompt for record in records[2:])
-    prompt_positions = [
-        prompt.index(record.id)
-        for record in records[2:]
-    ]
+    prompt_positions = [prompt.index(record.id) for record in records[2:]]
     assert prompt_positions == sorted(prompt_positions)
     assert client.call_count == 1
 
@@ -304,8 +292,7 @@ def test_invalid_top_level_output_fails_without_retry(
 
 def test_unknown_evidence_rejects_candidate() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -327,8 +314,7 @@ def test_unknown_evidence_rejects_candidate() -> None:
 
 def test_cross_conversation_evidence_is_rejected() -> None:
     records_a = [
-        save_record("extraction-main", f"A Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"A Decision {index}") for index in range(2)
     ]
     record_b = save_record("extraction-other", "B Decision")
     client = FakeJSONClient(
@@ -350,8 +336,7 @@ def test_cross_conversation_evidence_is_rejected() -> None:
 
 def test_one_distinct_evidence_id_is_rejected() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -372,8 +357,7 @@ def test_one_distinct_evidence_id_is_rejected() -> None:
 
 def test_duplicate_evidence_is_saved_once_in_input_order() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -401,8 +385,7 @@ def test_duplicate_evidence_is_saved_once_in_input_order() -> None:
 
 def test_invalid_candidate_does_not_block_valid_candidates() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -437,8 +420,7 @@ def test_invalid_candidate_does_not_block_valid_candidates() -> None:
 
 def test_invalid_candidate_schema_does_not_block_valid_candidate() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -464,8 +446,7 @@ def test_invalid_candidate_schema_does_not_block_valid_candidate() -> None:
 
 def test_low_confidence_candidate_is_rejected() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -486,8 +467,7 @@ def test_low_confidence_candidate_is_rejected() -> None:
 
 def test_more_than_five_candidates_fails_top_level_validation() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     candidates = [
         candidate_data(
@@ -507,8 +487,7 @@ def test_more_than_five_candidates_fails_top_level_validation() -> None:
 
 def test_duplicate_candidates_return_one_stored_memory() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -534,8 +513,7 @@ def test_duplicate_candidates_return_one_stored_memory() -> None:
 
 def test_evolution_failure_does_not_write_partial_update() -> None:
     records = [
-        save_record("extraction-main", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-main", f"Decision {index}") for index in range(2)
     ]
     client = FakeJSONClient(
         response_json(
@@ -567,8 +545,7 @@ def test_evolution_failure_does_not_write_partial_update() -> None:
 
 def test_existing_memory_is_merged_through_memory_service() -> None:
     records = [
-        save_record("extraction-existing", f"Decision {index}")
-        for index in range(3)
+        save_record("extraction-existing", f"Decision {index}") for index in range(3)
     ]
     existing = decision_memory_service.save_candidate(
         "extraction-existing",
@@ -604,9 +581,12 @@ def test_existing_memory_is_merged_through_memory_service() -> None:
         UUID(records[1].id),
         UUID(records[2].id),
     ]
-    assert len(
-        decision_memory_service.list_memories("extraction-existing"),
-    ) == 1
+    assert (
+        len(
+            decision_memory_service.list_memories("extraction-existing"),
+        )
+        == 1
+    )
 
 
 def test_prompt_marks_historical_text_as_untrusted_data() -> None:
@@ -647,8 +627,7 @@ def test_deleted_property_snapshot_still_enters_prompt() -> None:
 
 def test_existing_memory_is_included_for_evolution() -> None:
     records = [
-        save_record("extraction-existing", f"Decision {index}")
-        for index in range(2)
+        save_record("extraction-existing", f"Decision {index}") for index in range(2)
     ]
     existing_content = "EXISTING_MEMORY_MUST_NOT_ENTER_PROMPT"
     decision_memory_service.save_candidate(

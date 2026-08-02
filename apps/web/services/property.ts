@@ -1,3 +1,5 @@
+import { apiRequest } from '@/services/api';
+
 export interface Property {
   id: string;
   conversation_id: string;
@@ -17,15 +19,12 @@ interface PropertyListResponse {
   items: Property[];
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8000';
-
 export async function getProperties(
   conversationId: string,
   signal?: AbortSignal,
 ): Promise<Property[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/properties?conversation_id=${encodeURIComponent(conversationId)}`,
+  const response = await apiRequest(
+    `/properties?conversation_id=${encodeURIComponent(conversationId)}`,
     {
       method: 'GET',
       cache: 'no-store',
@@ -54,7 +53,7 @@ export async function createProperty(
   conversationId: string,
   property: PropertyInput,
 ): Promise<Property> {
-  const response = await fetch(`${API_BASE_URL}/api/properties`, {
+  const response = await apiRequest('/properties', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -73,8 +72,8 @@ export async function createProperty(
 }
 
 export async function deleteProperty(propertyId: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/properties/${encodeURIComponent(propertyId)}`,
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}`,
     {
       method: 'DELETE',
     },

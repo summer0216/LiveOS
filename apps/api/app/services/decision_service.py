@@ -76,9 +76,7 @@ class DecisionService:
             return result
 
         property_ids = {
-            property_.id
-            for property_ in properties
-            if property_.id is not None
+            property_.id for property_ in properties if property_.id is not None
         }
 
         if result.best_property_id not in property_ids:
@@ -93,7 +91,7 @@ class DecisionService:
                 conversation_id=conversation_id,
                 decision=result,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Record persistence must not block a Ready Decision.
             logger.exception(
                 "Failed to save Decision Record for conversation %s.",
                 conversation_id,

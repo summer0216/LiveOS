@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.schemas.conversation import (
     ConversationHistoryResponse,
     ConversationMessageResponse,
@@ -18,7 +19,10 @@ router = APIRouter(
 )
 async def get_conversation_history(
     conversation_id: str,
+    request: Request,
+    response: Response,
 ) -> ConversationHistoryResponse:
+    require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     conversation = conversation_manager.get(conversation_id)
 
     if conversation is None:

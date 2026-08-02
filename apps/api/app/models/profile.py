@@ -11,10 +11,7 @@ PREFERENCE_TAG_CATEGORIES = (
 
 
 def create_empty_preference_tags() -> dict[str, list[str]]:
-    return {
-        category: []
-        for category in PREFERENCE_TAG_CATEGORIES
-    }
+    return {category: [] for category in PREFERENCE_TAG_CATEGORIES}
 
 
 @dataclass

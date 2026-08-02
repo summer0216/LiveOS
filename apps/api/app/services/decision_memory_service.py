@@ -1,6 +1,6 @@
 import re
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import RLock
 from uuid import UUID, uuid4
 
@@ -9,8 +9,9 @@ from app.models.decision_memory import (
     DecisionMemoryCandidate,
 )
 from app.runtime.memory_evolution import MemoryEvolutionCandidate
+from app.services.conversation_manager import conversation_manager
 from app.stores.decision_memory_store import (
-    DecisionMemoryStore,
+    DecisionMemoryStoreProtocol,
     decision_memory_store,
 )
 
@@ -36,7 +37,7 @@ def unique_evidence_ids(evidence_ids: list[UUID]) -> list[UUID]:
 class DecisionMemoryService:
     def __init__(
         self,
-        store: DecisionMemoryStore,
+        store: DecisionMemoryStoreProtocol,
     ) -> None:
         self._store = store
         self._lock = RLock()
@@ -49,6 +50,7 @@ class DecisionMemoryService:
         normalized_conversation_id = self._validate_conversation_id(
             conversation_id,
         )
+        conversation_manager.get_or_create(normalized_conversation_id)
         content = candidate.content.strip()
 
         if len(content) < MINIMUM_MEMORY_CONTENT_LENGTH:
@@ -81,7 +83,7 @@ class DecisionMemoryService:
                 category=candidate.category,
                 normalized_content=normalized_content,
             )
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             if existing is None:
                 memory = DecisionMemory(
@@ -123,22 +125,20 @@ class DecisionMemoryService:
         normalized_conversation_id = self._validate_conversation_id(
             conversation_id,
         )
+        conversation_manager.get_or_create(normalized_conversation_id)
 
         with self._lock:
             existing_memories = self._store.list_by_conversation(
                 normalized_conversation_id,
             )
-            memories_by_id = {
-                memory.id: memory
-                for memory in existing_memories
-            }
+            memories_by_id = {memory.id: memory for memory in existing_memories}
             evolved_by_id = memories_by_id.copy()
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             touched_ids: list[UUID] = []
 
             for candidate in candidates:
-                content, normalized_content, evidence_ids = (
-                    self._validate_candidate(candidate)
+                content, normalized_content, evidence_ids = self._validate_candidate(
+                    candidate
                 )
                 existing = (
                     evolved_by_id.get(candidate.memory_id)
@@ -154,10 +154,7 @@ class DecisionMemoryService:
                     raise DecisionMemoryValidationError(
                         "Evolution target must be an existing Memory.",
                     )
-                if (
-                    existing is not None
-                    and existing.category != candidate.category
-                ):
+                if existing is not None and existing.category != candidate.category:
                     raise DecisionMemoryValidationError(
                         "Memory category cannot change during evolution.",
                     )
@@ -175,9 +172,7 @@ class DecisionMemoryService:
                         updated_at=now,
                     )
                 else:
-                    is_reinforcement = (
-                        existing.normalized_content == normalized_content
-                    )
+                    is_reinforcement = existing.normalized_content == normalized_content
                     memory = existing.model_copy(
                         update={
                             "content": content,
@@ -233,10 +228,7 @@ class DecisionMemoryService:
         )
         memory = self._store.get_by_id(memory_id)
 
-        if (
-            memory is None
-            or memory.conversation_id != normalized_conversation_id
-        ):
+        if memory is None or memory.conversation_id != normalized_conversation_id:
             return None
 
         return memory

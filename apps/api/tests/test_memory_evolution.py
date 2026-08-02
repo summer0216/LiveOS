@@ -107,7 +107,9 @@ def memory_candidate(
 
 def test_reinforcement_preserves_identity_and_adds_evidence() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
-    record_ids = [save_record("evolution-main", f"Decision {index}") for index in range(3)]
+    record_ids = [
+        save_record("evolution-main", f"Decision {index}") for index in range(3)
+    ]
     existing = service.save_candidate(
         "evolution-main",
         memory_candidate(record_ids[:2], "用户长期偏好较短通勤。"),
@@ -131,14 +133,14 @@ def test_reinforcement_preserves_identity_and_adds_evidence() -> None:
 
     assert evolved.id == existing.id
     assert evolved.confidence == 0.9
-    assert evolved.evidence_record_ids == [
-        UUID(record_id) for record_id in record_ids
-    ]
+    assert evolved.evidence_record_ids == [UUID(record_id) for record_id in record_ids]
 
 
 def test_update_replaces_content_without_changing_schema_or_identity() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
-    record_ids = [save_record("evolution-main", f"Decision {index}") for index in range(3)]
+    record_ids = [
+        save_record("evolution-main", f"Decision {index}") for index in range(3)
+    ]
     existing = service.save_candidate(
         "evolution-main",
         memory_candidate(record_ids[:2], "用户长期优先较低租金。"),
@@ -168,7 +170,9 @@ def test_update_replaces_content_without_changing_schema_or_identity() -> None:
 
 
 def test_refresh_prompt_enforces_current_facts_priority_and_one_call() -> None:
-    record_ids = [save_record("evolution-main", f"Decision {index}") for index in range(2)]
+    record_ids = [
+        save_record("evolution-main", f"Decision {index}") for index in range(2)
+    ]
     profile_manager.merge(
         "evolution-main",
         LivingProfilePatch(budget=6000, commute_minutes=30),
@@ -251,7 +255,9 @@ def test_conversations_remain_isolated_during_evolution() -> None:
 def test_store_failure_preserves_original_memory() -> None:
     store = FailingReplaceStore()
     service = DecisionMemoryService(store)
-    record_ids = [save_record("evolution-failure", f"Decision {index}") for index in range(2)]
+    record_ids = [
+        save_record("evolution-failure", f"Decision {index}") for index in range(2)
+    ]
     existing = service.save_candidate(
         "evolution-failure",
         memory_candidate(record_ids, "用户偏好较短通勤。"),
@@ -266,9 +272,7 @@ def test_store_failure_preserves_original_memory() -> None:
                     category=existing.category,
                     content="用户现在偏好较低租金。",
                     confidence=0.9,
-                    evidence_record_ids=[
-                        UUID(record_id) for record_id in record_ids
-                    ],
+                    evidence_record_ids=[UUID(record_id) for record_id in record_ids],
                 ),
             ],
         )

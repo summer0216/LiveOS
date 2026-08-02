@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+
 from app.core.ai_client import AIMessage, ai_client
 from app.models.conversation import ConversationMessage
 

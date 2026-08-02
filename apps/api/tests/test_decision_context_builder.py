@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -63,10 +63,7 @@ class FakeMemoryBuilder:
 
         return DecisionMemoryContext(
             conversation_id=conversation_id,
-            memories=[
-                memory.model_copy(deep=True)
-                for memory in self.memories
-            ],
+            memories=[memory.model_copy(deep=True) for memory in self.memories],
         )
 
 
@@ -77,7 +74,7 @@ def decision_record(
     return DecisionRecord(
         id=str(uuid4()),
         conversation_id=conversation_id,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         summary=f"Decision {index}",
         best_property_id=f"property-{index}",
         reasons=[
@@ -99,7 +96,7 @@ def memory_item(
         content=content,
         confidence=0.85,
         evidence_count=2,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -182,10 +179,9 @@ def test_conversation_isolation_is_forwarded_to_both_builders() -> None:
         " conversation-a ",
     )
 
-    assert {
-        record.conversation_id
-        for record in context.recent_decisions
-    } == {"conversation-a"}
+    assert {record.conversation_id for record in context.recent_decisions} == {
+        "conversation-a"
+    }
     assert context.memory_context.conversation_id == "conversation-a"
     assert history.calls == ["conversation-a"]
     assert memory.calls == ["conversation-a"]

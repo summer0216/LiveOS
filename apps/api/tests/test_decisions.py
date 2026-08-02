@@ -8,10 +8,11 @@ from app.core.ai_client import ai_client
 from app.main import app
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import Property
-from app.services.decision_service import decision_service
 from app.services.decision_record_service import decision_record_service
+from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
@@ -32,6 +33,7 @@ CONVERSATION_IDS = (
 @pytest.fixture(autouse=True)
 def clean_decision_data() -> Iterator[None]:
     for conversation_id in CONVERSATION_IDS:
+        create_owned_conversation(client, conversation_id)
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
         decision_record_service.delete_conversation(conversation_id)
@@ -120,6 +122,7 @@ def test_waiting_without_profile_does_not_call_ai(
 
     set_json_response(monkeypatch, unexpected_call)
 
+    create_owned_conversation(client, "decision-no-profile")
     response = client.get(
         "/api/decisions",
         params={"conversation_id": "decision-no-profile"},
@@ -150,6 +153,7 @@ def test_single_property_returns_real_id_and_single_candidate_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_id = "decision-single"
+    create_owned_conversation(client, conversation_id)
     create_profile(conversation_id)
     property_ = create_property(conversation_id, "唯一候选")
     prompts: list[str] = []

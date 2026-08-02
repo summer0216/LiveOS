@@ -15,6 +15,7 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
@@ -49,7 +50,7 @@ def clean_history_data() -> Iterator[None]:
 
 
 def create_conversation(conversation_id: str) -> None:
-    conversation_manager.get_or_create(conversation_id)
+    create_owned_conversation(client, conversation_id)
 
 
 def ready_decision(
@@ -146,10 +147,7 @@ def test_multiple_records_are_returned_in_descending_time_order() -> None:
         second.id,
         first.id,
     ]
-    assert [
-        item["created_at"]
-        for item in payload["items"]
-    ] == sorted(
+    assert [item["created_at"] for item in payload["items"]] == sorted(
         [item["created_at"] for item in payload["items"]],
         reverse=True,
     )
@@ -280,6 +278,4 @@ def test_store_read_failure_returns_500(
     response = client.get(history_path(conversation_id))
 
     assert response.status_code == 500
-    assert response.json()["detail"] == (
-        "Decision history could not be loaded."
-    )
+    assert response.json()["detail"] == ("Decision history could not be loaded.")

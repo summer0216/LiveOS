@@ -17,6 +17,7 @@ from app.models.decision_memory_extraction import (
 )
 from app.services.decision_memory_service import decision_memory_service
 from app.stores.decision_memory_store import decision_memory_store
+from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
@@ -108,6 +109,7 @@ def extraction_result(
 
 
 def test_get_empty_memories_returns_200() -> None:
+    create_owned_conversation(client, "memory-empty")
     response = client.get(
         "/api/memories",
         params={"conversation_id": "memory-empty"},
@@ -121,6 +123,7 @@ def test_get_empty_memories_returns_200() -> None:
 
 
 def test_get_memories_maps_fields_and_updated_order() -> None:
+    create_owned_conversation(client, "memory-list")
     first = decision_memory_service.save_candidate(
         "memory-list",
         memory_candidate(),
@@ -157,6 +160,8 @@ def test_get_memories_maps_fields_and_updated_order() -> None:
 
 
 def test_get_memories_is_isolated_by_conversation() -> None:
+    create_owned_conversation(client, "memory-a")
+    create_owned_conversation(client, "memory-b")
     memory_a = decision_memory_service.save_candidate(
         "memory-a",
         memory_candidate(),
@@ -178,7 +183,7 @@ def test_get_memories_is_isolated_by_conversation() -> None:
 
 
 @pytest.mark.parametrize("conversation_id", ["", "   "])
-def test_get_invalid_conversation_id_returns_422(
+def test_get_unowned_or_invalid_conversation_returns_404(
     conversation_id: str,
 ) -> None:
     response = client.get(
@@ -186,12 +191,13 @@ def test_get_invalid_conversation_id_returns_422(
         params={"conversation_id": conversation_id},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 404
 
 
 def test_refresh_completed_maps_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-refresh")
     memory = decision_memory_service.save_candidate(
         "memory-refresh",
         memory_candidate(),
@@ -213,7 +219,7 @@ def test_refresh_completed_maps_response(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": " memory-refresh "},
+        params={"conversation_id": "memory-refresh"},
     )
     payload = response.json()
 
@@ -228,6 +234,7 @@ def test_refresh_completed_maps_response(
 def test_refresh_completed_with_empty_candidates_returns_200(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-refresh-empty")
     fake = FakeExtractionService(
         extraction_result(
             "memory-refresh-empty",
@@ -253,12 +260,11 @@ def test_refresh_completed_with_empty_candidates_returns_200(
 def test_refresh_insufficient_history_returns_200(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-insufficient")
     fake = FakeExtractionService(
         extraction_result(
             "memory-insufficient",
-            status=(
-                DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY
-            ),
+            status=(DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY),
             history_record_count=1,
         ),
     )
@@ -280,6 +286,7 @@ def test_refresh_insufficient_history_returns_200(
 def test_refresh_failed_returns_safe_502(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-failed")
     fake = FakeExtractionService(
         extraction_result(
             "memory-failed",
@@ -303,7 +310,7 @@ def test_refresh_failed_returns_safe_502(
     }
 
 
-def test_refresh_invalid_conversation_does_not_call_extraction(
+def test_refresh_unowned_or_invalid_conversation_does_not_call_extraction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = FakeExtractionService(
@@ -323,13 +330,14 @@ def test_refresh_invalid_conversation_does_not_call_extraction(
         params={"conversation_id": "   "},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 404
     assert fake.call_count == 0
 
 
 def test_refresh_and_get_share_memory_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-shared")
     fake = SavingExtractionService()
     monkeypatch.setattr(
         memories_api,
@@ -355,6 +363,7 @@ def test_refresh_and_get_share_memory_store(
 def test_get_does_not_call_extraction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-get-only")
     fake = FakeExtractionService(
         extraction_result(
             "unused",
@@ -379,12 +388,11 @@ def test_get_does_not_call_extraction(
 def test_refresh_body_cannot_submit_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    create_owned_conversation(client, "memory-no-client-candidate")
     fake = FakeExtractionService(
         extraction_result(
             "memory-no-client-candidate",
-            status=(
-                DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY
-            ),
+            status=(DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY),
             history_record_count=0,
         ),
     )
@@ -407,6 +415,9 @@ def test_refresh_body_cannot_submit_candidate(
 
     assert response.status_code == 200
     assert fake.call_count == 1
-    assert decision_memory_service.list_memories(
-        "memory-no-client-candidate",
-    ) == []
+    assert (
+        decision_memory_service.list_memories(
+            "memory-no-client-candidate",
+        )
+        == []
+    )

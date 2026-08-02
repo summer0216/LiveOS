@@ -23,7 +23,7 @@ class LivingModelBuilder:
                 profile,
                 memory_context,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - Living Model failure degrades to an empty model.
             logger.exception("Failed to build Living Model; using empty model.")
             return empty_living_model(normalized_conversation_id)
 
@@ -43,8 +43,7 @@ class LivingModelBuilder:
             conversation_id=conversation_id,
             profile=LivingModelProfile.model_validate(profile),
             decision_memory=[
-                memory.model_copy(deep=True)
-                for memory in memory_context.memories
+                memory.model_copy(deep=True) for memory in memory_context.memories
             ],
         )
 
