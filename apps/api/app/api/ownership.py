@@ -16,7 +16,7 @@ def set_anonymous_cookie(response: Response, user_id: str) -> None:
         httponly=True,
         samesite="lax",
         path="/",
-        secure=settings.APP_ENV == "production",
+        secure=settings.cookie_secure,
     )
 
 
