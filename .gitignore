@@ -36,6 +36,3 @@ yarn-error.log*
 
 # TypeScript
 *.tsbuildinfo
-
-# Local SQLite runtime data
-apps/api/data/

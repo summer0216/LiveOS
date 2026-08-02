@@ -18,10 +18,11 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "decision-intelligence-runtime",
-    "decision-intelligence-failure",
+    uuid_for("decision-intelligence-runtime"),
+    uuid_for("decision-intelligence-failure"),
 )
 
 
@@ -159,7 +160,7 @@ def test_reasoning_failure_uses_safe_fallback(
 def test_runtime_uses_reasoning_and_calls_model_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-intelligence-runtime"
+    conversation_id = uuid_for("decision-intelligence-runtime")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     prompts: list[str] = []
@@ -183,7 +184,7 @@ def test_runtime_uses_reasoning_and_calls_model_once(
 def test_reasoning_failure_does_not_block_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-intelligence-failure"
+    conversation_id = uuid_for("decision-intelligence-failure")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     call_count = 0

@@ -32,12 +32,13 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "memory-prompt-call",
-    "memory-prompt-validation",
-    "memory-prompt-record",
-    "memory-prompt-no-extraction",
+    uuid_for("memory-prompt-call"),
+    uuid_for("memory-prompt-validation"),
+    uuid_for("memory-prompt-record"),
+    uuid_for("memory-prompt-no-extraction"),
 )
 
 
@@ -374,7 +375,7 @@ def test_prompt_builder_does_not_access_memory_service(
 def test_decision_with_memory_uses_one_model_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "memory-prompt-call"
+    conversation_id = uuid_for("memory-prompt-call")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     calls: list[str] = []
@@ -407,7 +408,7 @@ def test_decision_with_memory_uses_one_model_call(
 def test_output_validation_and_record_schema_remain_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "memory-prompt-validation"
+    conversation_id = uuid_for("memory-prompt-validation")
     prepare_runtime(conversation_id)
     monkeypatch.setattr(
         decision_context_builder,
@@ -432,7 +433,7 @@ def test_output_validation_and_record_schema_remain_unchanged(
 def test_ready_record_has_no_memory_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "memory-prompt-record"
+    conversation_id = uuid_for("memory-prompt-record")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     monkeypatch.setattr(
@@ -460,7 +461,7 @@ def test_ready_record_has_no_memory_fields(
 def test_decision_does_not_trigger_memory_extraction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "memory-prompt-no-extraction"
+    conversation_id = uuid_for("memory-prompt-no-extraction")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
 

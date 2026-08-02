@@ -17,6 +17,7 @@ from app.models.decision_memory_extraction import (
 )
 from app.services.decision_memory_service import decision_memory_service
 from app.stores.decision_memory_store import decision_memory_store
+from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
@@ -109,34 +110,34 @@ def extraction_result(
 
 
 def test_get_empty_memories_returns_200() -> None:
-    create_owned_conversation(client, "memory-empty")
+    create_owned_conversation(client, uuid_for("memory-empty"))
     response = client.get(
         "/api/memories",
-        params={"conversation_id": "memory-empty"},
+        params={"conversation_id": uuid_for("memory-empty")},
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "conversation_id": "memory-empty",
+        "conversation_id": uuid_for("memory-empty"),
         "memories": [],
     }
 
 
 def test_get_memories_maps_fields_and_updated_order() -> None:
-    create_owned_conversation(client, "memory-list")
+    create_owned_conversation(client, uuid_for("memory-list"))
     first = decision_memory_service.save_candidate(
-        "memory-list",
+        uuid_for("memory-list"),
         memory_candidate(),
     )
     second = decision_memory_service.save_candidate(
-        "memory-list",
+        uuid_for("memory-list"),
         memory_candidate(
             category=DecisionMemoryCategory.PREFERENCE,
             content="用户持续偏好更大的空间。",
         ),
     )
     updated_first = decision_memory_service.save_candidate(
-        "memory-list",
+        uuid_for("memory-list"),
         memory_candidate(
             content="用户持续优先考虑通勤",
             confidence=0.9,
@@ -145,7 +146,7 @@ def test_get_memories_maps_fields_and_updated_order() -> None:
 
     response = client.get(
         "/api/memories",
-        params={"conversation_id": "memory-list"},
+        params={"conversation_id": uuid_for("memory-list")},
     )
     payload = response.json()
 
@@ -160,20 +161,20 @@ def test_get_memories_maps_fields_and_updated_order() -> None:
 
 
 def test_get_memories_is_isolated_by_conversation() -> None:
-    create_owned_conversation(client, "memory-a")
-    create_owned_conversation(client, "memory-b")
+    create_owned_conversation(client, uuid_for("memory-a"))
+    create_owned_conversation(client, uuid_for("memory-b"))
     memory_a = decision_memory_service.save_candidate(
-        "memory-a",
+        uuid_for("memory-a"),
         memory_candidate(),
     )
     decision_memory_service.save_candidate(
-        "memory-b",
+        uuid_for("memory-b"),
         memory_candidate(),
     )
 
     response = client.get(
         "/api/memories",
-        params={"conversation_id": "memory-a"},
+        params={"conversation_id": uuid_for("memory-a")},
     )
 
     assert response.status_code == 200
@@ -197,14 +198,14 @@ def test_get_unowned_or_invalid_conversation_returns_404(
 def test_refresh_completed_maps_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-refresh")
+    create_owned_conversation(client, uuid_for("memory-refresh"))
     memory = decision_memory_service.save_candidate(
-        "memory-refresh",
+        uuid_for("memory-refresh"),
         memory_candidate(),
     )
     fake = FakeExtractionService(
         extraction_result(
-            "memory-refresh",
+            uuid_for("memory-refresh"),
             status=DecisionMemoryExtractionStatus.COMPLETED,
             memories=[memory],
             candidate_count=1,
@@ -219,7 +220,7 @@ def test_refresh_completed_maps_response(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-refresh"},
+        params={"conversation_id": uuid_for("memory-refresh")},
     )
     payload = response.json()
 
@@ -228,16 +229,16 @@ def test_refresh_completed_maps_response(
     assert payload["saved_count"] == 1
     assert payload["memories"][0]["evidence_count"] == 2
     assert "normalized_content" not in payload["memories"][0]
-    assert fake.conversation_ids == ["memory-refresh"]
+    assert fake.conversation_ids == [uuid_for("memory-refresh")]
 
 
 def test_refresh_completed_with_empty_candidates_returns_200(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-refresh-empty")
+    create_owned_conversation(client, uuid_for("memory-refresh-empty"))
     fake = FakeExtractionService(
         extraction_result(
-            "memory-refresh-empty",
+            uuid_for("memory-refresh-empty"),
             status=DecisionMemoryExtractionStatus.COMPLETED,
         ),
     )
@@ -249,7 +250,7 @@ def test_refresh_completed_with_empty_candidates_returns_200(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-refresh-empty"},
+        params={"conversation_id": uuid_for("memory-refresh-empty")},
     )
 
     assert response.status_code == 200
@@ -260,10 +261,10 @@ def test_refresh_completed_with_empty_candidates_returns_200(
 def test_refresh_insufficient_history_returns_200(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-insufficient")
+    create_owned_conversation(client, uuid_for("memory-insufficient"))
     fake = FakeExtractionService(
         extraction_result(
-            "memory-insufficient",
+            uuid_for("memory-insufficient"),
             status=(DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY),
             history_record_count=1,
         ),
@@ -276,7 +277,7 @@ def test_refresh_insufficient_history_returns_200(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-insufficient"},
+        params={"conversation_id": uuid_for("memory-insufficient")},
     )
 
     assert response.status_code == 200
@@ -286,10 +287,10 @@ def test_refresh_insufficient_history_returns_200(
 def test_refresh_failed_returns_safe_502(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-failed")
+    create_owned_conversation(client, uuid_for("memory-failed"))
     fake = FakeExtractionService(
         extraction_result(
-            "memory-failed",
+            uuid_for("memory-failed"),
             status=DecisionMemoryExtractionStatus.FAILED,
         ),
     )
@@ -301,7 +302,7 @@ def test_refresh_failed_returns_safe_502(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-failed"},
+        params={"conversation_id": uuid_for("memory-failed")},
     )
 
     assert response.status_code == 502
@@ -337,7 +338,7 @@ def test_refresh_unowned_or_invalid_conversation_does_not_call_extraction(
 def test_refresh_and_get_share_memory_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-shared")
+    create_owned_conversation(client, uuid_for("memory-shared"))
     fake = SavingExtractionService()
     monkeypatch.setattr(
         memories_api,
@@ -347,11 +348,11 @@ def test_refresh_and_get_share_memory_store(
 
     refresh_response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-shared"},
+        params={"conversation_id": uuid_for("memory-shared")},
     )
     get_response = client.get(
         "/api/memories",
-        params={"conversation_id": "memory-shared"},
+        params={"conversation_id": uuid_for("memory-shared")},
     )
 
     assert refresh_response.status_code == 200
@@ -363,7 +364,7 @@ def test_refresh_and_get_share_memory_store(
 def test_get_does_not_call_extraction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-get-only")
+    create_owned_conversation(client, uuid_for("memory-get-only"))
     fake = FakeExtractionService(
         extraction_result(
             "unused",
@@ -378,7 +379,7 @@ def test_get_does_not_call_extraction(
 
     response = client.get(
         "/api/memories",
-        params={"conversation_id": "memory-get-only"},
+        params={"conversation_id": uuid_for("memory-get-only")},
     )
 
     assert response.status_code == 200
@@ -388,10 +389,10 @@ def test_get_does_not_call_extraction(
 def test_refresh_body_cannot_submit_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_owned_conversation(client, "memory-no-client-candidate")
+    create_owned_conversation(client, uuid_for("memory-no-client-candidate"))
     fake = FakeExtractionService(
         extraction_result(
-            "memory-no-client-candidate",
+            uuid_for("memory-no-client-candidate"),
             status=(DecisionMemoryExtractionStatus.INSUFFICIENT_HISTORY),
             history_record_count=0,
         ),
@@ -404,7 +405,7 @@ def test_refresh_body_cannot_submit_candidate(
 
     response = client.post(
         "/api/memories/refresh",
-        params={"conversation_id": "memory-no-client-candidate"},
+        params={"conversation_id": uuid_for("memory-no-client-candidate")},
         json={
             "candidate": {
                 "content": "客户端伪造 Memory",
@@ -417,7 +418,7 @@ def test_refresh_body_cannot_submit_candidate(
     assert fake.call_count == 1
     assert (
         decision_memory_service.list_memories(
-            "memory-no-client-candidate",
+            uuid_for("memory-no-client-candidate"),
         )
         == []
     )

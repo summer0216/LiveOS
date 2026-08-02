@@ -15,20 +15,21 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
 CONVERSATION_IDS = (
-    "history-empty",
-    "history-single",
-    "history-multiple",
-    "history-waiting",
-    "history-detail",
-    "history-isolation-a",
-    "history-isolation-b",
-    "history-snapshot",
-    "history-store-error",
+    uuid_for("history-empty"),
+    uuid_for("history-single"),
+    uuid_for("history-multiple"),
+    uuid_for("history-waiting"),
+    uuid_for("history-detail"),
+    uuid_for("history-isolation-a"),
+    uuid_for("history-isolation-b"),
+    uuid_for("history-snapshot"),
+    uuid_for("history-store-error"),
 )
 
 
@@ -81,11 +82,13 @@ def save_record(
     conversation_id: str,
     summary: str,
     *,
-    property_id: str = "property-history",
+    property_id: str | None = None,
 ) -> DecisionRecord:
     return decision_record_service.save(
         conversation_id=conversation_id,
-        decision=ready_decision(property_id, summary),
+        decision=ready_decision(
+            property_id or uuid_for(f"history-property-{summary}"), summary
+        ),
     )
 
 
@@ -94,7 +97,7 @@ def history_path(conversation_id: str) -> str:
 
 
 def test_empty_history_returns_200_and_unknown_conversation_returns_404() -> None:
-    conversation_id = "history-empty"
+    conversation_id = uuid_for("history-empty")
     create_conversation(conversation_id)
 
     response = client.get(history_path(conversation_id))
@@ -112,12 +115,13 @@ def test_empty_history_returns_200_and_unknown_conversation_returns_404() -> Non
 
 
 def test_single_record_list_returns_saved_snapshot() -> None:
-    conversation_id = "history-single"
+    conversation_id = uuid_for("history-single")
+    property_id = uuid_for("property-single")
     create_conversation(conversation_id)
     record = save_record(
         conversation_id,
         "单条历史快照",
-        property_id="property-single",
+        property_id=property_id,
     )
 
     response = client.get(history_path(conversation_id))
@@ -127,11 +131,11 @@ def test_single_record_list_returns_saved_snapshot() -> None:
     assert payload["total"] == 1
     assert payload["items"][0]["id"] == record.id
     assert payload["items"][0]["summary"] == "单条历史快照"
-    assert payload["items"][0]["best_property_id"] == "property-single"
+    assert payload["items"][0]["best_property_id"] == property_id
 
 
 def test_multiple_records_are_returned_in_descending_time_order() -> None:
-    conversation_id = "history-multiple"
+    conversation_id = uuid_for("history-multiple")
     create_conversation(conversation_id)
     first = save_record(conversation_id, "第一次 Decision")
     second = save_record(conversation_id, "第二次 Decision")
@@ -154,7 +158,7 @@ def test_multiple_records_are_returned_in_descending_time_order() -> None:
 
 
 def test_waiting_decision_does_not_add_history() -> None:
-    conversation_id = "history-waiting"
+    conversation_id = uuid_for("history-waiting")
     create_conversation(conversation_id)
 
     result = decision_service.generate(conversation_id)
@@ -166,7 +170,7 @@ def test_waiting_decision_does_not_add_history() -> None:
 
 
 def test_record_detail_and_missing_record() -> None:
-    conversation_id = "history-detail"
+    conversation_id = uuid_for("history-detail")
     create_conversation(conversation_id)
     record = save_record(conversation_id, "详情快照")
 
@@ -185,19 +189,19 @@ def test_record_detail_and_missing_record() -> None:
 
 
 def test_history_isolated_by_conversation() -> None:
-    conversation_a = "history-isolation-a"
-    conversation_b = "history-isolation-b"
+    conversation_a = uuid_for("history-isolation-a")
+    conversation_b = uuid_for("history-isolation-b")
     create_conversation(conversation_a)
     create_conversation(conversation_b)
     record_a = save_record(
         conversation_a,
         "A 的历史",
-        property_id="property-a",
+        property_id=uuid_for("history-property-a"),
     )
     record_b = save_record(
         conversation_b,
         "B 的历史",
-        property_id="property-b",
+        property_id=uuid_for("history-property-b"),
     )
 
     list_a = client.get(history_path(conversation_a)).json()
@@ -215,7 +219,7 @@ def test_history_isolated_by_conversation() -> None:
 def test_snapshot_survives_profile_change_and_property_deletion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "history-snapshot"
+    conversation_id = uuid_for("history-snapshot")
     create_conversation(conversation_id)
     profile_manager.merge(
         conversation_id=conversation_id,
@@ -263,7 +267,7 @@ def test_snapshot_survives_profile_change_and_property_deletion(
 def test_store_read_failure_returns_500(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "history-store-error"
+    conversation_id = uuid_for("history-store-error")
     create_conversation(conversation_id)
 
     def fail_read(_conversation_id: str) -> Never:

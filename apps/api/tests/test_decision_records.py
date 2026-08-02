@@ -12,16 +12,17 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "record-waiting",
-    "record-ready",
-    "record-repeated",
-    "record-save-failure",
-    "record-isolation-a",
-    "record-isolation-b",
-    "record-snapshot",
-    "record-concurrent",
+    uuid_for("record-waiting"),
+    uuid_for("record-ready"),
+    uuid_for("record-repeated"),
+    uuid_for("record-save-failure"),
+    uuid_for("record-isolation-a"),
+    uuid_for("record-isolation-b"),
+    uuid_for("record-snapshot"),
+    uuid_for("record-concurrent"),
 )
 
 
@@ -119,16 +120,16 @@ def prepare_ready(
 
 
 def test_waiting_decision_is_not_saved() -> None:
-    result = decision_service.generate("record-waiting")
+    result = decision_service.generate(uuid_for("record-waiting"))
 
     assert result.status == "waiting"
-    assert decision_record_service.list("record-waiting") == []
+    assert decision_record_service.list(uuid_for("record-waiting")) == []
 
 
 def test_ready_decision_saves_one_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "record-ready"
+    conversation_id = uuid_for("record-ready")
     property_ = prepare_ready(monkeypatch, conversation_id, "Ready 房源")
 
     result = decision_service.generate(conversation_id)
@@ -145,7 +146,7 @@ def test_ready_decision_saves_one_record(
 def test_each_ready_decision_appends_a_new_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "record-repeated"
+    conversation_id = uuid_for("record-repeated")
     prepare_ready(monkeypatch, conversation_id, "重复推荐房源")
 
     first_result = decision_service.generate(conversation_id)
@@ -161,7 +162,7 @@ def test_each_ready_decision_appends_a_new_record(
 def test_save_failure_does_not_change_ready_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "record-save-failure"
+    conversation_id = uuid_for("record-save-failure")
     prepare_ready(monkeypatch, conversation_id, "保存失败房源")
 
     def fail_save(*_args: object, **_kwargs: object) -> None:
@@ -178,8 +179,8 @@ def test_save_failure_does_not_change_ready_decision(
 def test_records_are_isolated_by_conversation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_a = "record-isolation-a"
-    conversation_b = "record-isolation-b"
+    conversation_a = uuid_for("record-isolation-a")
+    conversation_b = uuid_for("record-isolation-b")
     property_a = prepare_ready(monkeypatch, conversation_a, "A 房源")
     decision_service.generate(conversation_a)
     property_b = prepare_ready(monkeypatch, conversation_b, "B 房源")
@@ -197,7 +198,7 @@ def test_records_are_isolated_by_conversation(
 def test_record_remains_a_snapshot_after_source_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "record-snapshot"
+    conversation_id = uuid_for("record-snapshot")
     property_ = prepare_ready(monkeypatch, conversation_id, "快照房源")
     decision_service.generate(conversation_id)
     original_record = decision_record_service.list(conversation_id)[0]
@@ -213,9 +214,9 @@ def test_record_remains_a_snapshot_after_source_changes(
 
 
 def test_concurrent_writes_do_not_lose_records() -> None:
-    conversation_id = "record-concurrent"
+    conversation_id = uuid_for("record-concurrent")
     decision = DecisionResult.model_validate_json(
-        ready_json("concurrent-property"),
+        ready_json(uuid_for("concurrent-property")),
     )
 
     with ThreadPoolExecutor(max_workers=8) as executor:

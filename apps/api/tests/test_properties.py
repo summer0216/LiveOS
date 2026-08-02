@@ -2,14 +2,15 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
 
 def test_property_crud_and_conversation_isolation() -> None:
-    conversation_a = "property-list-a"
-    conversation_b = "property-list-b"
+    conversation_a = uuid_for("property-list-a")
+    conversation_b = uuid_for("property-list-b")
     property_manager.delete_conversation(conversation_a)
     property_manager.delete_conversation(conversation_b)
 

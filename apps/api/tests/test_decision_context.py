@@ -13,15 +13,16 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "context-empty",
-    "context-one",
-    "context-three",
-    "context-many",
-    "context-isolation-a",
-    "context-isolation-b",
-    "context-failure",
+    uuid_for("context-empty"),
+    uuid_for("context-one"),
+    uuid_for("context-three"),
+    uuid_for("context-many"),
+    uuid_for("context-isolation-a"),
+    uuid_for("context-isolation-b"),
+    uuid_for("context-failure"),
 )
 
 
@@ -67,7 +68,7 @@ def save_records(
         decision_record_service.save(
             conversation_id,
             ready_decision(
-                property_id=f"property-{index}",
+                property_id=uuid_for(f"context-property-{index}"),
                 summary=f"Decision {index}",
             ),
         )
@@ -102,25 +103,28 @@ def prepare_runtime(conversation_id: str) -> Property:
 
 
 def test_empty_history_returns_empty_context() -> None:
-    context = decision_context_service.build_context("context-empty")
+    conversation_id = uuid_for("context-empty")
+    context = decision_context_service.build_context(conversation_id)
 
-    assert context.conversation_id == "context-empty"
+    assert context.conversation_id == conversation_id
     assert context.recent_decisions == []
 
 
 def test_one_record_returns_one_snapshot() -> None:
-    save_records("context-one", 1)
+    conversation_id = uuid_for("context-one")
+    save_records(conversation_id, 1)
 
-    context = decision_context_service.build_context("context-one")
+    context = decision_context_service.build_context(conversation_id)
 
     assert len(context.recent_decisions) == 1
     assert context.recent_decisions[0].summary == "Decision 0"
 
 
 def test_more_than_three_records_returns_latest_three() -> None:
-    save_records("context-many", 5)
+    conversation_id = uuid_for("context-many")
+    save_records(conversation_id, 5)
 
-    context = decision_context_service.build_context("context-many")
+    context = decision_context_service.build_context(conversation_id)
 
     assert len(context.recent_decisions) == 3
     assert [record.summary for record in context.recent_decisions] == [
@@ -131,9 +135,10 @@ def test_more_than_three_records_returns_latest_three() -> None:
 
 
 def test_three_records_returns_all_three() -> None:
-    save_records("context-three", 3)
+    conversation_id = uuid_for("context-three")
+    save_records(conversation_id, 3)
 
-    context = decision_context_service.build_context("context-three")
+    context = decision_context_service.build_context(conversation_id)
 
     assert [record.summary for record in context.recent_decisions] == [
         "Decision 2",
@@ -143,23 +148,21 @@ def test_three_records_returns_all_three() -> None:
 
 
 def test_context_is_isolated_by_conversation() -> None:
-    save_records("context-isolation-a", 2)
-    save_records("context-isolation-b", 1)
+    conversation_a = uuid_for("context-isolation-a")
+    conversation_b = uuid_for("context-isolation-b")
+    save_records(conversation_a, 2)
+    save_records(conversation_b, 1)
 
-    context_a = decision_context_service.build_context(
-        "context-isolation-a",
-    )
-    context_b = decision_context_service.build_context(
-        "context-isolation-b",
-    )
+    context_a = decision_context_service.build_context(conversation_a)
+    context_b = decision_context_service.build_context(conversation_b)
 
     assert len(context_a.recent_decisions) == 2
     assert len(context_b.recent_decisions) == 1
     assert {record.conversation_id for record in context_a.recent_decisions} == {
-        "context-isolation-a"
+        conversation_a
     }
     assert {record.conversation_id for record in context_b.recent_decisions} == {
-        "context-isolation-b"
+        conversation_b
     }
 
 
@@ -183,7 +186,7 @@ def test_history_failure_returns_empty_context(
 def test_history_failure_does_not_stop_decision_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "context-failure"
+    conversation_id = uuid_for("context-failure")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     prompts: list[str] = []

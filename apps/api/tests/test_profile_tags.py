@@ -4,11 +4,12 @@ from app.main import app
 from app.models.profile_patch import LivingProfilePatch
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
 
 def test_preference_tags_require_the_conversation_owner() -> None:
-    conversation_id = "profile-tags-test"
+    conversation_id = uuid_for("profile-tags-test")
     owner_client = TestClient(app)
     other_client = TestClient(app)
 

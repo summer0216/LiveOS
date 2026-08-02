@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.main import app
 from app.services.conversation_manager import conversation_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 
 def test_cors_allows_explicit_development_origins_with_credentials() -> None:
@@ -38,10 +39,21 @@ def test_cors_does_not_allow_unknown_origin() -> None:
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_health_check_verifies_postgresql_and_schema() -> None:
+    response = TestClient(app).get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "database": "ok",
+        "schema": "ready",
+    }
+
+
 def test_anonymous_cookie_is_http_only_lax_and_secure_in_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "browser-cookie-production"
+    conversation_id = uuid_for("browser-cookie-production")
     conversation_manager.delete(conversation_id)
     property_manager.delete_conversation(conversation_id)
     monkeypatch.setattr(settings, "APP_ENV", "production")
@@ -66,7 +78,7 @@ def test_anonymous_cookie_is_http_only_lax_and_secure_in_production(
 def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "browser-stream-owner"
+    conversation_id = uuid_for("browser-stream-owner")
     conversation_manager.delete(conversation_id)
 
     def stream_reply(*, conversation_id: str, message: str):

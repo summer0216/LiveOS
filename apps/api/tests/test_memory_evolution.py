@@ -27,11 +27,12 @@ from app.stores.decision_memory_store import (
     DecisionMemoryStore,
     decision_memory_store,
 )
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "evolution-main",
-    "evolution-other",
-    "evolution-failure",
+    uuid_for("evolution-main"),
+    uuid_for("evolution-other"),
+    uuid_for("evolution-failure"),
 )
 
 
@@ -79,7 +80,7 @@ def save_record(conversation_id: str, summary: str) -> str:
         DecisionResult(
             status="ready",
             summary=summary,
-            best_property_id="property-a",
+            best_property_id=uuid_for("evolution-property-a"),
             reasons=[
                 DecisionReason(
                     title="当前依据",
@@ -108,15 +109,16 @@ def memory_candidate(
 def test_reinforcement_preserves_identity_and_adds_evidence() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
     record_ids = [
-        save_record("evolution-main", f"Decision {index}") for index in range(3)
+        save_record(uuid_for("evolution-main"), f"Decision {index}")
+        for index in range(3)
     ]
     existing = service.save_candidate(
-        "evolution-main",
+        uuid_for("evolution-main"),
         memory_candidate(record_ids[:2], "用户长期偏好较短通勤。"),
     )
 
     evolved = service.evolve_candidates(
-        "evolution-main",
+        uuid_for("evolution-main"),
         [
             MemoryEvolutionCandidate(
                 memory_id=existing.id,
@@ -139,15 +141,16 @@ def test_reinforcement_preserves_identity_and_adds_evidence() -> None:
 def test_update_replaces_content_without_changing_schema_or_identity() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
     record_ids = [
-        save_record("evolution-main", f"Decision {index}") for index in range(3)
+        save_record(uuid_for("evolution-main"), f"Decision {index}")
+        for index in range(3)
     ]
     existing = service.save_candidate(
-        "evolution-main",
+        uuid_for("evolution-main"),
         memory_candidate(record_ids[:2], "用户长期优先较低租金。"),
     )
 
     evolved = service.evolve_candidates(
-        "evolution-main",
+        uuid_for("evolution-main"),
         [
             MemoryEvolutionCandidate(
                 memory_id=existing.id,
@@ -166,20 +169,21 @@ def test_update_replaces_content_without_changing_schema_or_identity() -> None:
     assert evolved.content == "用户当前长期优先较短通勤。"
     assert evolved.confidence == 0.75
     assert evolved.created_at == existing.created_at
-    assert len(service.list_memories("evolution-main")) == 1
+    assert len(service.list_memories(uuid_for("evolution-main"))) == 1
 
 
 def test_refresh_prompt_enforces_current_facts_priority_and_one_call() -> None:
     record_ids = [
-        save_record("evolution-main", f"Decision {index}") for index in range(2)
+        save_record(uuid_for("evolution-main"), f"Decision {index}")
+        for index in range(2)
     ]
     profile_manager.merge(
-        "evolution-main",
+        uuid_for("evolution-main"),
         LivingProfilePatch(budget=6000, commute_minutes=30),
         latest_insights=[],
     )
     property_manager.create(
-        "evolution-main",
+        uuid_for("evolution-main"),
         Property(title="当前房源", rent=5800, commute_minutes=25),
     )
     response = json.dumps(
@@ -205,7 +209,7 @@ def test_refresh_prompt_enforces_current_facts_priority_and_one_call() -> None:
         property_source=property_manager,
     )
 
-    result = service.extract("evolution-main")
+    result = service.extract(uuid_for("evolution-main"))
 
     assert result.saved_count == 1
     assert client.call_count == 1
@@ -225,19 +229,23 @@ def test_refresh_prompt_enforces_current_facts_priority_and_one_call() -> None:
 
 def test_conversations_remain_isolated_during_evolution() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
-    ids_a = [save_record("evolution-main", f"A {index}") for index in range(2)]
-    ids_b = [save_record("evolution-other", f"B {index}") for index in range(2)]
+    ids_a = [
+        save_record(uuid_for("evolution-main"), f"A {index}") for index in range(2)
+    ]
+    ids_b = [
+        save_record(uuid_for("evolution-other"), f"B {index}") for index in range(2)
+    ]
     memory_a = service.save_candidate(
-        "evolution-main",
+        uuid_for("evolution-main"),
         memory_candidate(ids_a, "用户偏好较短通勤。"),
     )
     memory_b = service.save_candidate(
-        "evolution-other",
+        uuid_for("evolution-other"),
         memory_candidate(ids_b, "用户偏好较低租金。"),
     )
 
     service.evolve_candidates(
-        "evolution-main",
+        uuid_for("evolution-main"),
         [
             MemoryEvolutionCandidate(
                 memory_id=memory_a.id,
@@ -249,23 +257,24 @@ def test_conversations_remain_isolated_during_evolution() -> None:
         ],
     )
 
-    assert service.get_memory("evolution-other", memory_b.id) == memory_b
+    assert service.get_memory(uuid_for("evolution-other"), memory_b.id) == memory_b
 
 
 def test_store_failure_preserves_original_memory() -> None:
     store = FailingReplaceStore()
     service = DecisionMemoryService(store)
     record_ids = [
-        save_record("evolution-failure", f"Decision {index}") for index in range(2)
+        save_record(uuid_for("evolution-failure"), f"Decision {index}")
+        for index in range(2)
     ]
     existing = service.save_candidate(
-        "evolution-failure",
+        uuid_for("evolution-failure"),
         memory_candidate(record_ids, "用户偏好较短通勤。"),
     )
 
     with pytest.raises(RuntimeError, match="store unavailable"):
         service.evolve_candidates(
-            "evolution-failure",
+            uuid_for("evolution-failure"),
             [
                 MemoryEvolutionCandidate(
                     memory_id=existing.id,
@@ -277,4 +286,4 @@ def test_store_failure_preserves_original_memory() -> None:
             ],
         )
 
-    assert service.list_memories("evolution-failure") == [existing]
+    assert service.list_memories(uuid_for("evolution-failure")) == [existing]

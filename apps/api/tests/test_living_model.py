@@ -23,6 +23,7 @@ from app.services.living_model_builder import (
 )
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
     "living-model-runtime",
@@ -208,7 +209,7 @@ def test_builder_failure_degrades_without_logging_private_content(
 def test_decision_runtime_uses_living_model_and_one_model_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "living-model-runtime"
+    conversation_id = uuid_for("living-model-runtime")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     prompts: list[str] = []
@@ -246,7 +247,7 @@ def test_decision_runtime_uses_living_model_and_one_model_call(
 def test_runtime_continues_with_empty_model_after_builder_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "living-model-failure"
+    conversation_id = uuid_for("living-model-failure")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     prompts: list[str] = []

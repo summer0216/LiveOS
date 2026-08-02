@@ -7,11 +7,11 @@ from app.stores.persistent import (
     PropertyStore,
 )
 
-database = Database(settings.DATABASE_PATH)
+database = Database(settings.DATABASE_URL)
 database.initialize()
 conversation_store = ConversationStore(database)
 profile_store = ProfileStore(database)
 property_store = PropertyStore(database)
 decision_record_store = DecisionRecordStore(database)
-DEFAULT_ANONYMOUS_USER_ID = "system-test-owner"
+DEFAULT_ANONYMOUS_USER_ID = "00000000-0000-0000-0000-000000000001"
 conversation_store.ensure_user(DEFAULT_ANONYMOUS_USER_ID)

@@ -12,21 +12,22 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
 client = TestClient(app)
 
 CONVERSATION_IDS = (
-    "decision-no-profile",
-    "decision-no-property",
-    "decision-single",
-    "decision-multiple",
-    "decision-isolation-a",
-    "decision-isolation-b",
-    "decision-invalid-id",
-    "decision-invalid-confidence",
-    "decision-invalid-json",
-    "decision-ai-error",
+    uuid_for("decision-no-profile"),
+    uuid_for("decision-no-property"),
+    uuid_for("decision-single"),
+    uuid_for("decision-multiple"),
+    uuid_for("decision-isolation-a"),
+    uuid_for("decision-isolation-b"),
+    uuid_for("decision-invalid-id"),
+    uuid_for("decision-invalid-confidence"),
+    uuid_for("decision-invalid-json"),
+    uuid_for("decision-ai-error"),
 )
 
 
@@ -122,10 +123,10 @@ def test_waiting_without_profile_does_not_call_ai(
 
     set_json_response(monkeypatch, unexpected_call)
 
-    create_owned_conversation(client, "decision-no-profile")
+    create_owned_conversation(client, uuid_for("decision-no-profile"))
     response = client.get(
         "/api/decisions",
-        params={"conversation_id": "decision-no-profile"},
+        params={"conversation_id": uuid_for("decision-no-profile")},
     )
 
     assert response.status_code == 200
@@ -136,14 +137,14 @@ def test_waiting_without_profile_does_not_call_ai(
 def test_waiting_without_property_does_not_call_ai(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    create_profile("decision-no-property")
+    create_profile(uuid_for("decision-no-property"))
 
     def unexpected_call(_prompt: str) -> str:
         raise AssertionError("AI must not be called without a property.")
 
     set_json_response(monkeypatch, unexpected_call)
 
-    result = decision_service.generate("decision-no-property")
+    result = decision_service.generate(uuid_for("decision-no-property"))
 
     assert result.status == "waiting"
     assert result.best_property_id is None
@@ -152,7 +153,7 @@ def test_waiting_without_property_does_not_call_ai(
 def test_single_property_returns_real_id_and_single_candidate_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-single"
+    conversation_id = uuid_for("decision-single")
     create_owned_conversation(client, conversation_id)
     create_profile(conversation_id)
     property_ = create_property(conversation_id, "唯一候选")
@@ -181,7 +182,7 @@ def test_single_property_returns_real_id_and_single_candidate_prompt(
 def test_multiple_properties_returns_one_real_property(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-multiple"
+    conversation_id = uuid_for("decision-multiple")
     create_profile(conversation_id)
     first = create_property(conversation_id, "候选一")
     second = create_property(
@@ -204,8 +205,8 @@ def test_multiple_properties_returns_one_real_property(
 def test_conversation_decisions_cannot_reference_other_properties(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_a = "decision-isolation-a"
-    conversation_b = "decision-isolation-b"
+    conversation_a = uuid_for("decision-isolation-a")
+    conversation_b = uuid_for("decision-isolation-b")
     create_profile(conversation_a)
     create_profile(conversation_b)
     property_a = create_property(conversation_a, "A 房源")
@@ -229,7 +230,7 @@ def test_conversation_decisions_cannot_reference_other_properties(
 def test_unknown_property_id_degrades_to_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-invalid-id"
+    conversation_id = uuid_for("decision-invalid-id")
     create_profile(conversation_id)
     create_property(conversation_id, "真实房源")
     set_json_response(monkeypatch, ready_json("unknown-property"))
@@ -243,7 +244,7 @@ def test_unknown_property_id_degrades_to_waiting(
 def test_invalid_confidence_degrades_to_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-invalid-confidence"
+    conversation_id = uuid_for("decision-invalid-confidence")
     create_profile(conversation_id)
     property_ = create_property(conversation_id, "置信度测试")
     assert property_.id is not None
@@ -261,7 +262,7 @@ def test_invalid_confidence_degrades_to_waiting(
 def test_non_json_response_degrades_to_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-invalid-json"
+    conversation_id = uuid_for("decision-invalid-json")
     create_profile(conversation_id)
     create_property(conversation_id, "JSON 测试")
     set_json_response(monkeypatch, "not JSON")
@@ -275,7 +276,7 @@ def test_non_json_response_degrades_to_waiting(
 def test_ai_error_degrades_to_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "decision-ai-error"
+    conversation_id = uuid_for("decision-ai-error")
     create_profile(conversation_id)
     create_property(conversation_id, "异常测试")
 

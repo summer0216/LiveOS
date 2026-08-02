@@ -18,10 +18,11 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from tests.ids import uuid_for
 
 CONVERSATION_IDS = (
-    "adaptive-runtime",
-    "adaptive-failure",
+    uuid_for("adaptive-runtime"),
+    uuid_for("adaptive-failure"),
 )
 
 
@@ -208,7 +209,7 @@ def test_adaptive_failure_omits_layer_and_keeps_decision_intelligence(
 def test_runtime_uses_adaptive_layer_with_one_model_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "adaptive-runtime"
+    conversation_id = uuid_for("adaptive-runtime")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     prompts: list[str] = []
@@ -229,7 +230,7 @@ def test_runtime_uses_adaptive_layer_with_one_model_call(
 def test_adaptive_failure_still_generates_decision_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    conversation_id = "adaptive-failure"
+    conversation_id = uuid_for("adaptive-failure")
     property_ = prepare_runtime(conversation_id)
     assert property_.id is not None
     call_count = 0

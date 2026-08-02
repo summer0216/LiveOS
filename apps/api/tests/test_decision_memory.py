@@ -13,6 +13,10 @@ from app.services.decision_memory_service import (
     decision_memory_service,
 )
 from app.stores.decision_memory_store import decision_memory_store
+from tests.ids import uuid_for
+
+CONVERSATION_A = uuid_for("decision-memory-a")
+CONVERSATION_B = uuid_for("decision-memory-b")
 
 
 @pytest.fixture(autouse=True)
@@ -45,16 +49,16 @@ def candidate(
 
 def test_create_memory_adds_backend_metadata() -> None:
     memory = decision_memory_service.save_candidate(
-        " conversation-a ",
+        f" {CONVERSATION_A} ",
         candidate(),
     )
 
     assert isinstance(memory.id, UUID)
-    assert memory.conversation_id == "conversation-a"
+    assert memory.conversation_id == CONVERSATION_A
     assert memory.normalized_content == "用户优先考虑通勤"
     assert memory.created_at == memory.updated_at
     assert memory.created_at.tzinfo is not None
-    assert len(decision_memory_service.list_memories("conversation-a")) == 1
+    assert len(decision_memory_service.list_memories(CONVERSATION_A)) == 1
 
 
 def test_empty_content_is_rejected_without_saving() -> None:
@@ -63,11 +67,11 @@ def test_empty_content_is_rejected_without_saving() -> None:
         match="at least 3 characters",
     ):
         decision_memory_service.save_candidate(
-            "conversation-a",
+            CONVERSATION_A,
             candidate(content="   "),
         )
 
-    assert decision_memory_service.list_memories("conversation-a") == []
+    assert decision_memory_service.list_memories(CONVERSATION_A) == []
 
 
 def test_confidence_below_threshold_is_rejected() -> None:
@@ -76,14 +80,14 @@ def test_confidence_below_threshold_is_rejected() -> None:
         match="at least 0.7",
     ):
         decision_memory_service.save_candidate(
-            "conversation-a",
+            CONVERSATION_A,
             candidate(confidence=0.69),
         )
 
 
 def test_confidence_boundary_is_allowed() -> None:
     memory = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(confidence=0.7),
     )
 
@@ -125,7 +129,7 @@ def test_insufficient_evidence_is_rejected(
         match="2 distinct",
     ):
         decision_memory_service.save_candidate(
-            "conversation-a",
+            CONVERSATION_A,
             candidate(evidence_record_ids=evidence_record_ids),
         )
 
@@ -135,7 +139,7 @@ def test_duplicate_evidence_is_removed_in_input_order() -> None:
     evidence_b = uuid4()
 
     memory = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(
             evidence_record_ids=[
                 evidence_a,
@@ -153,14 +157,14 @@ def test_equivalent_memory_merges_metadata_and_evidence() -> None:
     evidence_b = uuid4()
     evidence_c = uuid4()
     first = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(
             confidence=0.9,
             evidence_record_ids=[evidence_a, evidence_b],
         ),
     )
     second = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(
             content=" 用户优先考虑通勤 ",
             confidence=0.8,
@@ -179,16 +183,16 @@ def test_equivalent_memory_merges_metadata_and_evidence() -> None:
         evidence_b,
         evidence_c,
     ]
-    assert len(decision_memory_service.list_memories("conversation-a")) == 1
+    assert len(decision_memory_service.list_memories(CONVERSATION_A)) == 1
 
 
 def test_trailing_punctuation_and_whitespace_normalize_for_merge() -> None:
     first = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(content="用户优先考虑通勤。"),
     )
     second = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(content="  用户优先考虑通勤  "),
     )
 
@@ -197,25 +201,25 @@ def test_trailing_punctuation_and_whitespace_normalize_for_merge() -> None:
 
 def test_different_categories_do_not_merge() -> None:
     priority = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(category=DecisionMemoryCategory.PRIORITY),
     )
     preference = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(category=DecisionMemoryCategory.PREFERENCE),
     )
 
     assert priority.id != preference.id
-    assert len(decision_memory_service.list_memories("conversation-a")) == 2
+    assert len(decision_memory_service.list_memories(CONVERSATION_A)) == 2
 
 
 def test_conversations_are_isolated() -> None:
     memory_a = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(),
     )
     memory_b = decision_memory_service.save_candidate(
-        "conversation-b",
+        CONVERSATION_B,
         candidate(),
     )
 
@@ -223,33 +227,33 @@ def test_conversations_are_isolated() -> None:
     assert [
         memory.conversation_id
         for memory in decision_memory_service.list_memories(
-            "conversation-a",
+            CONVERSATION_A,
         )
-    ] == ["conversation-a"]
+    ] == [CONVERSATION_A]
     assert [
         memory.conversation_id
         for memory in decision_memory_service.list_memories(
-            "conversation-b",
+            CONVERSATION_B,
         )
-    ] == ["conversation-b"]
+    ] == [CONVERSATION_B]
 
 
 def test_get_memory_checks_conversation_id() -> None:
     memory = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(),
     )
 
     assert (
         decision_memory_service.get_memory(
-            "conversation-b",
+            CONVERSATION_B,
             memory.id,
         )
         is None
     )
     assert (
         decision_memory_service.get_memory(
-            "conversation-a",
+            CONVERSATION_A,
             memory.id,
         )
         == memory
@@ -258,22 +262,22 @@ def test_get_memory_checks_conversation_id() -> None:
 
 def test_list_is_ordered_by_latest_update() -> None:
     first = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(content="用户优先考虑通勤。"),
     )
     second = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(content="用户重视居住空间。"),
     )
     updated_first = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(
             content="用户优先考虑通勤",
             confidence=0.9,
         ),
     )
 
-    memories = decision_memory_service.list_memories("conversation-a")
+    memories = decision_memory_service.list_memories(CONVERSATION_A)
 
     assert memories[0].id == updated_first.id
     assert memories[1].id == second.id
@@ -284,12 +288,12 @@ def test_store_returns_deep_copies() -> None:
     evidence_a = uuid4()
     evidence_b = uuid4()
     memory = decision_memory_service.save_candidate(
-        "conversation-a",
+        CONVERSATION_A,
         candidate(evidence_record_ids=[evidence_a, evidence_b]),
     )
 
     memory.evidence_record_ids.append(uuid4())
-    listed = decision_memory_service.list_memories("conversation-a")
+    listed = decision_memory_service.list_memories(CONVERSATION_A)
 
     assert listed[0].evidence_record_ids == [evidence_a, evidence_b]
 

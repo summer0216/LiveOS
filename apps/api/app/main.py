@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import chat_router
@@ -9,6 +9,7 @@ from app.api.memories import router as memories_router
 from app.api.profile import router as profile_router
 from app.api.properties import router as properties_router
 from app.core.config import settings
+from app.stores.runtime import database
 
 app = FastAPI(
     title="LiveOS API",
@@ -43,7 +44,18 @@ async def root():
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
+    try:
+        if not database.health():
+            raise RuntimeError("PostgreSQL schema is incomplete.")
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Database health check failed.",
+        ) from error
+
     return {
         "status": "ok",
+        "database": "ok",
+        "schema": "ready",
     }
