@@ -5,7 +5,7 @@ import { useState } from 'react';
 import AICore, {
   type AICoreState,
 } from '@/features/ai-entry/components/AICore';
-import Welcome from "@/features/ai-entry/components/Welcome";
+import Welcome from "@/features/ai-entry/components/welcome";
 import PromptComposer from "@/features/ai-entry/components/PromptComposer";
 
 export default function HomePage() {
