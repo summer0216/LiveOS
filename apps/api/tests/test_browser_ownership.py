@@ -57,6 +57,7 @@ def test_anonymous_cookie_is_http_only_lax_and_secure_in_production(
     conversation_manager.delete(conversation_id)
     property_manager.delete_conversation(conversation_id)
     monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "COOKIE_SECURE", None)
 
     response = TestClient(app).post(
         "/api/properties",
@@ -83,7 +84,8 @@ def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
 
     def stream_reply(*, conversation_id: str, message: str):
         del conversation_id, message
-        yield "ok"
+        yield "first"
+        yield "second"
 
     monkeypatch.setattr(chat_api.chat_service, "chat_stream", stream_reply)
     owner_client = TestClient(app)
@@ -104,6 +106,13 @@ def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
 
     assert stream_response.status_code == 200
     assert stream_response.headers["set-cookie"].startswith(f"{COOKIE_NAME}=")
+    assert stream_response.headers["content-type"].startswith("text/event-stream")
+    assert stream_response.headers["cache-control"] == "no-cache, no-transform"
+    assert stream_response.headers["connection"] == "keep-alive"
+    assert stream_response.headers["x-accel-buffering"] == "no"
+    assert stream_response.text == (
+        ': connected\n\ndata: "first"\n\ndata: "second"\n\n'
+    )
     assert owner_response.status_code == 200
     assert other_response.status_code == 404
 

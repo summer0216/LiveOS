@@ -1,3 +1,6 @@
+import json
+from collections.abc import Iterator
+
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -10,6 +13,14 @@ router = APIRouter(
     prefix="/chat",
     tags=["Chat"],
 )
+
+
+def _stream_events(chunks: Iterator[str]) -> Iterator[str]:
+    # Flush the response headers before the first model token is available.
+    yield ": connected\n\n"
+
+    for chunk in chunks:
+        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
 
 @router.post("", response_model=ChatResponse)
@@ -38,8 +49,13 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
     )
 
     stream_response = StreamingResponse(
-        generator,
-        media_type="text/plain",
+        _stream_events(generator),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
     if raw_request.cookies.get(COOKIE_NAME) is None:
         set_anonymous_cookie(stream_response, user_id)

@@ -20,7 +20,6 @@ interface StreamMessageOptions {
     conversationId: string;
     message: string;
     onChunk: (chunk: string) => void;
-
 }
 
 export async function streamMessage({
@@ -35,7 +34,9 @@ export async function streamMessage({
 
     const response = await apiRequest('/chat/stream', {
         method: 'POST',
+        cache: 'no-store',
         headers: {
+            Accept: 'text/event-stream',
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(request),
@@ -51,6 +52,29 @@ export async function streamMessage({
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let eventBuffer = '';
+
+    const processEvents = (value: string) => {
+        eventBuffer += value.replaceAll('\r\n', '\n');
+        const events = eventBuffer.split('\n\n');
+        eventBuffer = events.pop() ?? '';
+
+        for (const event of events) {
+            const data = event
+                .split('\n')
+                .find((line) => line.startsWith('data: '));
+
+            if (!data) {
+                continue;
+            }
+
+            const chunk: unknown = JSON.parse(data.slice(6));
+            if (typeof chunk !== 'string') {
+                throw new Error('Streaming API returned an invalid event.');
+            }
+            onChunk(chunk);
+        }
+    };
 
     try {
         while (true) {
@@ -63,18 +87,18 @@ export async function streamMessage({
                 stream: true,
             });
             if (chunk) {
-                onChunk(chunk);
+                processEvents(chunk);
             }
-
         }
 
         const remaining = decoder.decode();
         if (remaining) {
-            onChunk(remaining);
+            processEvents(remaining);
         }
-
+        if (eventBuffer.trim()) {
+            processEvents('\n\n');
+        }
     } finally {
         reader.releaseLock();
     }
-
 }
