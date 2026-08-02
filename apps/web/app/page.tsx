@@ -24,6 +24,9 @@ export default function HomePage() {
             setCoreState(isListening ? 'listening' : 'idle');
           }}
           onSubmitStart={() => {
+            setCoreState('listening');
+          }}
+          onThinkingStart={() => {
             setCoreState('thinking');
           }}
         />

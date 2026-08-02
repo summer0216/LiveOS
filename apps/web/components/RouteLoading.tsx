@@ -8,7 +8,7 @@ export default function RouteLoading() {
       className="flex min-h-screen items-center justify-center bg-[#050812] text-slate-500"
     >
       <div className="flex flex-col items-center gap-4">
-        <AICore state="thinking" size="runtime" />
+        <AICore state="thinking" size="sm" />
         <span className="font-mono text-xs tracking-[0.16em]">
           LOADING
         </span>

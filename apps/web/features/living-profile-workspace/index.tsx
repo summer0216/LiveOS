@@ -281,7 +281,7 @@ function WorkspaceHeader({
           aria-label="返回 LiveOS 首页"
           className="flex shrink-0 items-center gap-2.5"
         >
-          <AICore state={coreState} size="runtime" />
+          <AICore state={coreState} size="sm" />
           <span className="text-lg font-semibold tracking-tight">
             Live
             <span className="text-blue-500">OS</span>

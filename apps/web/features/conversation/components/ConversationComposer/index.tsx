@@ -45,7 +45,7 @@ export default function ConversationComposer({
 
     return (
         <div className="shrink-0 border-t border-white/[0.06] bg-[#050812]/95 px-5 py-5 backdrop-blur-xl sm:px-8">
-            <div className="flex items-end gap-3 rounded-xl border border-white/10 bg-[#10182b] p-2.5">
+            <div className="flex items-end gap-3 rounded-xl border border-white/10 bg-[#10182b] p-2.5 transition-[background-color,border-color,box-shadow] duration-200 hover:border-blue-400/50 hover:bg-[#121c31] focus-within:border-blue-500 focus-within:bg-[#10182b] focus-within:shadow-[0_0_0_4px_rgba(59,105,255,0.12)]">
                 <textarea
                     rows={1}
                     value={message}
