@@ -15,6 +15,7 @@ import {
   getLivingProfile,
   type LivingProfile,
 } from '@/services/profile';
+import { createClientId } from '@/lib/createClientId';
 
 type MessageRole = 'user' | 'assistant';
 
@@ -89,12 +90,12 @@ export default function ConversationFeature() {
       }
 
       const userMessage: ConversationMessage = {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         role: 'user',
         content: message,
       };
 
-      const assistantMessageId = crypto.randomUUID();
+      const assistantMessageId = createClientId();
 
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -163,7 +164,7 @@ export default function ConversationFeature() {
         setMessages((currentMessages) => [
           ...currentMessages,
           {
-            id: crypto.randomUUID(),
+            id: createClientId(),
             role: 'assistant',
             content: STREAM_ERROR_MESSAGE,
           },

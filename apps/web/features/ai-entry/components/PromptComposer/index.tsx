@@ -3,6 +3,7 @@
 import type { KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClientId } from '@/lib/createClientId';
 
 interface PromptComposerProps {
   onListeningChange: (isListening: boolean) => void;
@@ -37,7 +38,7 @@ export default function PromptComposer({
       return;
     }
 
-    const conversationId = crypto.randomUUID();
+    const conversationId = createClientId();
     const params = new URLSearchParams({
       conversation_id: conversationId,
       message: value,
