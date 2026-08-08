@@ -36,18 +36,18 @@ CONVERSATION_IDS = (
 @pytest.fixture(autouse=True)
 def clean_history_data() -> Iterator[None]:
     for conversation_id in CONVERSATION_IDS:
-        conversation_manager.delete(conversation_id)
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
         decision_record_service.delete_conversation(conversation_id)
+        conversation_manager.delete(conversation_id)
 
     yield
 
     for conversation_id in CONVERSATION_IDS:
-        conversation_manager.delete(conversation_id)
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
         decision_record_service.delete_conversation(conversation_id)
+        conversation_manager.delete(conversation_id)
 
 
 def create_conversation(conversation_id: str) -> None:
@@ -188,7 +188,7 @@ def test_record_detail_and_missing_record() -> None:
     assert missing_response.json()["detail"] == "Decision record not found."
 
 
-def test_history_isolated_by_conversation() -> None:
+def test_history_is_shared_by_owner_across_conversations() -> None:
     conversation_a = uuid_for("history-isolation-a")
     conversation_b = uuid_for("history-isolation-b")
     create_conversation(conversation_a)
@@ -209,11 +209,10 @@ def test_history_isolated_by_conversation() -> None:
         f"{history_path(conversation_b)}/{record_a.id}",
     )
 
-    assert list_a["total"] == 1
-    assert list_a["items"][0]["id"] == record_a.id
-    assert list_a["items"][0]["id"] != record_b.id
-    assert cross_detail.status_code == 404
-    assert cross_detail.json()["detail"] == "Decision record not found."
+    assert list_a["total"] == 2
+    assert {item["id"] for item in list_a["items"]} == {record_a.id, record_b.id}
+    assert cross_detail.status_code == 200
+    assert cross_detail.json()["id"] == record_a.id
 
 
 def test_snapshot_survives_profile_change_and_property_deletion(

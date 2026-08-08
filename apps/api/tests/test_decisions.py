@@ -202,7 +202,7 @@ def test_multiple_properties_returns_one_real_property(
     assert result.best_property_id in {first.id, second.id}
 
 
-def test_conversation_decisions_cannot_reference_other_properties(
+def test_decisions_can_reference_same_owner_properties_from_other_conversations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_a = uuid_for("decision-isolation-a")
@@ -217,14 +217,14 @@ def test_conversation_decisions_cannot_reference_other_properties(
 
     result_a = decision_service.generate(conversation_a)
 
-    assert result_a.status == "waiting"
-    assert result_a.best_property_id is None
+    assert result_a.status == "ready"
+    assert result_a.best_property_id == property_b.id
 
     set_json_response(monkeypatch, ready_json(property_a.id))
     result_b = decision_service.generate(conversation_b)
 
-    assert result_b.status == "waiting"
-    assert result_b.best_property_id is None
+    assert result_b.status == "ready"
+    assert result_b.best_property_id == property_a.id
 
 
 def test_unknown_property_id_degrades_to_waiting(

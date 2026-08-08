@@ -176,7 +176,7 @@ def test_save_failure_does_not_change_ready_decision(
     assert decision_record_service.list(conversation_id) == []
 
 
-def test_records_are_isolated_by_conversation(
+def test_records_are_shared_by_owner_across_conversations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_a = uuid_for("record-isolation-a")
@@ -189,10 +189,13 @@ def test_records_are_isolated_by_conversation(
     records_a = decision_record_service.list(conversation_a)
     records_b = decision_record_service.list(conversation_b)
 
-    assert len(records_a) == 1
-    assert len(records_b) == 1
-    assert records_a[0].best_property_id == property_a.id
-    assert records_b[0].best_property_id == property_b.id
+    assert len(records_a) == 2
+    assert len(records_b) == 2
+    assert {record.best_property_id for record in records_a} == {
+        property_a.id,
+        property_b.id,
+    }
+    assert records_a == records_b
 
 
 def test_record_remains_a_snapshot_after_source_changes(

@@ -36,6 +36,9 @@ class ConversationManager:
     def belongs_to(self, conversation_id: str, user_id: str) -> bool:
         return conversation_store.belongs_to(conversation_id, user_id)
 
+    def owner_id(self, conversation_id: str) -> str | None:
+        return conversation_store.owner_id(conversation_id)
+
     def append_user_message(self, conversation_id: str, content: str) -> None:
         conversation_store.append(conversation_id, "user", content)
 

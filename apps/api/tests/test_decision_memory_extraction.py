@@ -203,7 +203,7 @@ def test_valid_extraction_saves_candidate_with_one_ai_call() -> None:
     ]
 
 
-def test_prompt_only_contains_current_conversation_records() -> None:
+def test_prompt_contains_owner_history_across_conversations() -> None:
     records_a = [
         save_record(uuid_for("extraction-main"), f"A Decision {index}")
         for index in range(2)
@@ -218,7 +218,7 @@ def test_prompt_only_contains_current_conversation_records() -> None:
 
     prompt = client.prompts[0]
     assert all(record.id in prompt for record in records_a)
-    assert all(record.id not in prompt for record in records_b)
+    assert all(record.id in prompt for record in records_b)
 
 
 def test_only_recent_ten_records_enter_prompt_in_ascending_order() -> None:
@@ -318,7 +318,7 @@ def test_unknown_evidence_rejects_candidate() -> None:
     assert result.rejected_count == 1
 
 
-def test_cross_conversation_evidence_is_rejected() -> None:
+def test_same_owner_cross_conversation_evidence_is_accepted() -> None:
     records_a = [
         save_record(uuid_for("extraction-main"), f"A Decision {index}")
         for index in range(2)
@@ -337,8 +337,8 @@ def test_cross_conversation_evidence_is_rejected() -> None:
 
     result = extraction_service(client).extract(uuid_for("extraction-main"))
 
-    assert result.saved_count == 0
-    assert result.rejected_count == 1
+    assert result.saved_count == 1
+    assert result.rejected_count == 0
 
 
 def test_one_distinct_evidence_id_is_rejected() -> None:

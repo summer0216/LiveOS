@@ -147,7 +147,7 @@ def test_three_records_returns_all_three() -> None:
     ]
 
 
-def test_context_is_isolated_by_conversation() -> None:
+def test_context_is_shared_by_owner_across_conversations() -> None:
     conversation_a = uuid_for("context-isolation-a")
     conversation_b = uuid_for("context-isolation-b")
     save_records(conversation_a, 2)
@@ -156,14 +156,13 @@ def test_context_is_isolated_by_conversation() -> None:
     context_a = decision_context_service.build_context(conversation_a)
     context_b = decision_context_service.build_context(conversation_b)
 
-    assert len(context_a.recent_decisions) == 2
-    assert len(context_b.recent_decisions) == 1
+    assert len(context_a.recent_decisions) == 3
+    assert len(context_b.recent_decisions) == 3
     assert {record.conversation_id for record in context_a.recent_decisions} == {
-        conversation_a
+        conversation_a,
+        conversation_b,
     }
-    assert {record.conversation_id for record in context_b.recent_decisions} == {
-        conversation_b
-    }
+    assert context_a.recent_decisions == context_b.recent_decisions
 
 
 def test_history_failure_returns_empty_context(

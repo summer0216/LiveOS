@@ -8,7 +8,7 @@ from tests.ownership import create_owned_conversation
 client = TestClient(app)
 
 
-def test_property_crud_and_conversation_isolation() -> None:
+def test_property_crud_and_owner_workspace_sharing() -> None:
     conversation_a = uuid_for("property-list-a")
     conversation_b = uuid_for("property-list-b")
     property_manager.delete_conversation(conversation_a)
@@ -66,14 +66,14 @@ def test_property_crud_and_conversation_isolation() -> None:
         params={"conversation_id": conversation_a},
     )
     assert list_a_response.status_code == 200
-    assert len(list_a_response.json()["items"]) == 2
+    assert len(list_a_response.json()["items"]) == 3
 
     list_b_response = client.get(
         "/api/properties",
         params={"conversation_id": conversation_b},
     )
     assert list_b_response.status_code == 200
-    assert len(list_b_response.json()["items"]) == 1
+    assert len(list_b_response.json()["items"]) == 3
 
     delete_response = client.delete(
         f"/api/properties/{first_property['id']}",
@@ -84,7 +84,7 @@ def test_property_crud_and_conversation_isolation() -> None:
         "/api/properties",
         params={"conversation_id": conversation_a},
     )
-    assert len(remaining_response.json()["items"]) == 1
+    assert len(remaining_response.json()["items"]) == 2
 
     missing_delete_response = client.delete(
         "/api/properties/missing-property",

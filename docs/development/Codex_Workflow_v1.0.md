@@ -1,4 +1,4 @@
-# Codex Workflow v1.1
+# Codex Workflow v1.0
 
 **Status:** Frozen  
 **Applies To:** LiveOS MVP  
@@ -33,7 +33,6 @@ Codex 是工程实现者（AI Engineer）。
 
 - 功能实现
 - Bug 修复
-- 数据迁移
 - TypeScript
 - ESLint
 - Build
@@ -108,66 +107,36 @@ Codex 是工程实现者（AI Engineer）。
 
 ---
 
-# Task Specification Standard
-
-每个 Task 必须保持简单明确。
-
-建议统一结构：
-
-```
-Goal
-
-Reference
-
-Scope
-
-Acceptance
-
-Deliverable
-```
-
-Task 应尽量控制在：
-
-**50~100 行。**
-
-如果超过：
-
-建议拆分为多个 Task。
-
-不要把多个 Sprint 的工作放到同一个 Specification。
-
----
-
 # Build Workflow
 
 每次任务均按以下流程执行：
 
 ```
-Read Specification
+阅读 Specification
 
 ↓
 
-Inspect Existing Implementation
+分析修改范围
 
 ↓
 
-Analyze Change Scope
+实现代码
 
 ↓
 
-Implement
+TypeScript Check
 
 ↓
 
-Relevant Validation
+ESLint
 
 ↓
 
-Full Validation
+Production Build
 
 ↓
 
-Git Check
+Git 检查
 
 ↓
 
@@ -175,29 +144,6 @@ Implementation Report
 ```
 
 不得跳过验证。
-
----
-
-# Inspect First
-
-开始修改代码之前：
-
-必须：
-
-- 阅读当前实现
-- 理解已有 Architecture
-- 优先兼容已有实现
-- 优先最小修改
-
-不要：
-
-看到代码即可重写。
-
-不要：
-
-为了实现当前功能：
-
-重构无关模块。
 
 ---
 
@@ -241,9 +187,7 @@ Codex 不负责：
 
 不要自行决定。
 
-应停止扩大修改。
-
-在最终 Report 中说明。
+应在最终报告中说明。
 
 等待 Architecture Review。
 
@@ -335,64 +279,6 @@ as any
 
 ---
 
-# Validation Strategy
-
-开发过程中：
-
-优先执行与当前任务相关的验证。
-
-例如：
-
-Backend：
-
-```
-Targeted pytest
-
-↓
-
-ruff
-```
-
-Frontend：
-
-```
-Type Check
-
-↓
-
-ESLint
-```
-
-任务完成后：
-
-统一执行完整验证：
-
-```
-Backend
-
-pytest
-
-↓
-
-ruff
-
-Frontend
-
-pnpm type-check
-
-↓
-
-pnpm lint
-
-↓
-
-Production Build
-```
-
-避免每次小修改都执行完整 Build。
-
----
-
 # Git Principle
 
 提交前必须执行：
@@ -437,12 +323,32 @@ git status --short
 
 ## 3.
 
+数据来源
+
+说明：
+
+是否复用已有数据。
+
+是否新增数据来源。
+
+---
+
+## 4.
+
+未修改内容
+
+明确说明：
+
+哪些模块保持不变。
+
+---
+
+## 5.
+
 验证结果
 
 包括：
 
-- Targeted Tests
-- Full Tests（如执行）
 - TypeScript
 - ESLint
 - Build
@@ -451,19 +357,17 @@ git status --short
 
 ---
 
-## 4.
+## 6.
 
-风险
+遗留问题
 
-仅列：
-
-真实存在的风险。
+仅列真实问题。
 
 不要列未来优化建议。
 
 ---
 
-## 5.
+## 7.
 
 完成状态
 
@@ -472,44 +376,7 @@ git status --short
 ```
 Sprint XX 是否完成：
 
-DONE
-
-或
-
-BLOCKED
-```
-
----
-
-# Architecture Escalation
-
-如果实现过程中发现：
-
-- Specification 与现有 Architecture 冲突
-- 数据模型冲突
-- Ownership 冲突
-- Runtime Boundary 冲突
-
-不得自行重新设计。
-
-不得继续扩大修改范围。
-
-应：
-
-```
-停止实现
-
-↓
-
-记录冲突
-
-↓
-
-返回 BLOCKED
-
-↓
-
-等待 Architecture Review
+是 / 否
 ```
 
 ---
@@ -573,43 +440,8 @@ Codex 的成功标准不是：
 
 ---
 
-# Collaboration Model
-
-LiveOS 开发采用固定职责分工：
-
-Product
-
-↓
-
-Architecture
-
-↓
-
-Engineering
-
-对应角色：
-
-- Product：需求、PRD、Sprint
-- Architecture：Runtime、Database、Workflow、Review
-- Codex：Implementation、Validation、Git、Report
-
-Codex 负责工程实现。
-
-不负责产品决策。
-
----
-
 # Current Version
 
-**Codex Workflow:** v1.1
-
-**Changes from v1.0**
-
-- 新增 Task Specification Standard
-- 新增 Inspect First
-- 新增 Validation Strategy
-- 新增 Architecture Escalation
-- 新增 Collaboration Model
-- 保持 v1.0 所有核心原则不变
+**Codex Workflow:** v1.0
 
 **Status:** Frozen

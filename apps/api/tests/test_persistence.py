@@ -35,6 +35,14 @@ def test_postgresql_runtime_data_survives_database_reconnect() -> None:
     property_store = PropertyStore(database)
     record_store = DecisionRecordStore(database)
 
+    with database.connect() as connection:
+        for table in (
+            "living_profiles",
+            "properties",
+            "decision_records",
+            "decision_memories",
+        ):
+            connection.execute(f"DELETE FROM {table} WHERE owner_id = %s", (user_id,))
     conversation_store.delete(conversation_id)
     conversation_store.get_or_create(conversation_id, user_id)
     conversation_store.append(conversation_id, "user", "寻找通勤方便的房源")
@@ -68,10 +76,11 @@ def test_postgresql_runtime_data_survives_database_reconnect() -> None:
         connection.execute(
             """
             INSERT INTO decision_memories(
-                id, conversation_id, category, content, normalized_content,
+                id, owner_id, conversation_id, category, content, normalized_content,
                 confidence, evidence_record_ids_json, created_at, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            SELECT %s, anonymous_user_id, %s, %s, %s, %s, %s, %s, %s, %s
+            FROM conversations WHERE id = %s
             """,
             (
                 memory_id,
@@ -83,6 +92,7 @@ def test_postgresql_runtime_data_survives_database_reconnect() -> None:
                 Jsonb([str(uuid4())]),
                 timestamp,
                 timestamp,
+                conversation_id,
             ),
         )
 
@@ -113,6 +123,14 @@ def test_postgresql_runtime_data_survives_database_reconnect() -> None:
         ).fetchone()
     assert persisted_memory is not None
 
+    reconnected_profiles.delete(conversation_id)
+    reconnected_properties.delete(property_id)
+    reconnected_records.delete_conversation(conversation_id)
+    with reconnected_database.connect() as connection:
+        connection.execute(
+            "DELETE FROM decision_memories WHERE owner_id = %s",
+            (user_id,),
+        )
     reconnected_conversations.delete(conversation_id)
 
 
@@ -121,6 +139,11 @@ def test_postgresql_memory_replace_rolls_back_as_one_transaction() -> None:
     conversation_id = uuid_for("atomic-memory-conversation")
     user_id = uuid_for("atomic-memory-user")
     conversation_store = ConversationStore(database)
+    with database.connect() as connection:
+        connection.execute(
+            "DELETE FROM decision_memories WHERE owner_id = %s",
+            (user_id,),
+        )
     conversation_store.delete(conversation_id)
     conversation_store.get_or_create(conversation_id, user_id)
     timestamp = datetime.now(UTC)
@@ -156,4 +179,9 @@ def test_postgresql_memory_replace_rolls_back_as_one_transaction() -> None:
         )
 
     assert decision_memory_store.list_by_conversation(conversation_id) == [original]
+    with database.connect() as connection:
+        connection.execute(
+            "DELETE FROM decision_memories WHERE owner_id = %s",
+            (user_id,),
+        )
     conversation_store.delete(conversation_id)

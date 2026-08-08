@@ -227,7 +227,7 @@ def test_refresh_prompt_enforces_current_facts_priority_and_one_call() -> None:
     ) < client.prompts[0].index("EXISTING MEMORY")
 
 
-def test_conversations_remain_isolated_during_evolution() -> None:
+def test_same_owner_conversations_share_evolved_memory() -> None:
     service = DecisionMemoryService(DecisionMemoryStore())
     ids_a = [
         save_record(uuid_for("evolution-main"), f"A {index}") for index in range(2)

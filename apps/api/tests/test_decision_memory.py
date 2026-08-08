@@ -8,6 +8,7 @@ from app.models.decision_memory import (
     DecisionMemoryCandidate,
     DecisionMemoryCategory,
 )
+from app.services.conversation_manager import conversation_manager
 from app.services.decision_memory_service import (
     DecisionMemoryValidationError,
     decision_memory_service,
@@ -22,6 +23,8 @@ CONVERSATION_B = uuid_for("decision-memory-b")
 @pytest.fixture(autouse=True)
 def clear_memory_store() -> Iterator[None]:
     decision_memory_store.clear()
+    conversation_manager.get_or_create(CONVERSATION_A)
+    conversation_manager.get_or_create(CONVERSATION_B)
 
     yield
 
@@ -213,7 +216,7 @@ def test_different_categories_do_not_merge() -> None:
     assert len(decision_memory_service.list_memories(CONVERSATION_A)) == 2
 
 
-def test_conversations_are_isolated() -> None:
+def test_same_owner_conversations_share_memories() -> None:
     memory_a = decision_memory_service.save_candidate(
         CONVERSATION_A,
         candidate(),
@@ -223,7 +226,7 @@ def test_conversations_are_isolated() -> None:
         candidate(),
     )
 
-    assert memory_a.id != memory_b.id
+    assert memory_a.id == memory_b.id
     assert [
         memory.conversation_id
         for memory in decision_memory_service.list_memories(
@@ -235,22 +238,16 @@ def test_conversations_are_isolated() -> None:
         for memory in decision_memory_service.list_memories(
             CONVERSATION_B,
         )
-    ] == [CONVERSATION_B]
+    ] == [CONVERSATION_A]
 
 
-def test_get_memory_checks_conversation_id() -> None:
+def test_get_memory_accepts_another_conversation_for_same_owner() -> None:
     memory = decision_memory_service.save_candidate(
         CONVERSATION_A,
         candidate(),
     )
 
-    assert (
-        decision_memory_service.get_memory(
-            CONVERSATION_B,
-            memory.id,
-        )
-        is None
-    )
+    assert decision_memory_service.get_memory(CONVERSATION_B, memory.id) == memory
     assert (
         decision_memory_service.get_memory(
             CONVERSATION_A,

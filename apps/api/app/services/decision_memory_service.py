@@ -226,12 +226,10 @@ class DecisionMemoryService:
         normalized_conversation_id = self._validate_conversation_id(
             conversation_id,
         )
-        memory = self._store.get_by_id(memory_id)
-
-        if memory is None or memory.conversation_id != normalized_conversation_id:
-            return None
-
-        return memory
+        return self._store.get_by_id_for_conversation(
+            normalized_conversation_id,
+            memory_id,
+        )
 
     @staticmethod
     def _find_equivalent(

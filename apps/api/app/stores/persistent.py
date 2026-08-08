@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -25,6 +27,29 @@ def optional_uuid(value: str | UUID) -> UUID | None:
         return uuid_value(value)
     except (TypeError, ValueError):
         return None
+
+
+def resolve_owner_id(database: Database, conversation_id: str | UUID) -> UUID | None:
+    conversation_uuid = optional_uuid(conversation_id)
+    if conversation_uuid is None:
+        return None
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT anonymous_user_id FROM conversations WHERE id = %s",
+            (conversation_uuid,),
+        ).fetchone()
+    return row["anonymous_user_id"] if row is not None else None
+
+
+def validate_owner_source(
+    database: Database,
+    owner_id: str | UUID,
+    conversation_id: str | UUID | None,
+) -> None:
+    if conversation_id is None:
+        return
+    if resolve_owner_id(database, conversation_id) != uuid_value(owner_id):
+        raise ValueError("Source conversation does not belong to Owner.")
 
 
 class ConversationStore:
@@ -107,6 +132,10 @@ class ConversationStore:
                 is not None
             )
 
+    def owner_id(self, conversation_id: str) -> str | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        return str(owner_id) if owner_id is not None else None
+
     def append(self, conversation_id: str, role: str, content: str) -> None:
         conversation_uuid = uuid_value(conversation_id)
         with self._database.connect() as connection:
@@ -157,13 +186,19 @@ class ProfileStore:
         self._database = database
 
     def get(self, conversation_id: str) -> LivingProfile | None:
-        conversation_uuid = optional_uuid(conversation_id)
-        if conversation_uuid is None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return None
+        return self.get_by_owner(owner_id)
+
+    def get_by_owner(self, owner_id: str | UUID) -> LivingProfile | None:
+        owner_uuid = optional_uuid(owner_id)
+        if owner_uuid is None:
             return None
         with self._database.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM living_profiles WHERE conversation_id = %s",
-                (conversation_uuid,),
+                "SELECT * FROM living_profiles WHERE owner_id = %s",
+                (owner_uuid,),
             ).fetchone()
         if row is None:
             return None
@@ -179,8 +214,21 @@ class ProfileStore:
         )
 
     def save(self, conversation_id: str, profile: LivingProfile) -> LivingProfile:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        return self.save_for_owner(owner_id, profile, conversation_id)
+
+    def save_for_owner(
+        self,
+        owner_id: str | UUID,
+        profile: LivingProfile,
+        conversation_id: str | UUID | None = None,
+    ) -> LivingProfile:
+        owner_uuid = uuid_value(owner_id)
+        validate_owner_source(self._database, owner_uuid, conversation_id)
         values = (
-            uuid_value(conversation_id),
+            optional_uuid(conversation_id),
             profile.work_location,
             profile.budget,
             profile.commute_minutes,
@@ -195,12 +243,13 @@ class ProfileStore:
             connection.execute(
                 """
                 INSERT INTO living_profiles(
-                    conversation_id, work_location, budget, commute_minutes,
+                    owner_id, conversation_id, work_location, budget, commute_minutes,
                     preferred_city, family_size, has_pet, latest_insights_json,
                     preference_tags_json, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (conversation_id) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id) DO UPDATE SET
+                    conversation_id = EXCLUDED.conversation_id,
                     work_location = EXCLUDED.work_location,
                     budget = EXCLUDED.budget,
                     commute_minutes = EXCLUDED.commute_minutes,
@@ -211,9 +260,9 @@ class ProfileStore:
                     preference_tags_json = EXCLUDED.preference_tags_json,
                     updated_at = EXCLUDED.updated_at
                 """,
-                values,
+                (owner_uuid, *values),
             )
-        return self.get(conversation_id) or profile
+        return self.get_by_owner(owner_uuid) or profile
 
     def delete(self, conversation_id: str) -> bool:
         conversation_uuid = optional_uuid(conversation_id)
@@ -222,7 +271,12 @@ class ProfileStore:
         with self._database.connect() as connection:
             return (
                 connection.execute(
-                    "DELETE FROM living_profiles WHERE conversation_id = %s",
+                    """
+                    DELETE FROM living_profiles
+                    WHERE owner_id = (
+                        SELECT anonymous_user_id FROM conversations WHERE id = %s
+                    )
+                    """,
                     (conversation_uuid,),
                 ).rowcount
                 > 0
@@ -237,7 +291,11 @@ class PropertyStore:
     def _from(row: dict[str, Any]) -> Property:
         return Property(
             id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
+            conversation_id=(
+                str(row["conversation_id"])
+                if row["conversation_id"] is not None
+                else None
+            ),
             title=row["title"],
             district=row["district"],
             rent=row["rent"],
@@ -251,19 +309,31 @@ class PropertyStore:
     def create(self, property_: Property) -> Property:
         if property_.id is None or property_.conversation_id is None:
             raise ValueError("Stored Property requires IDs.")
+        owner_id = resolve_owner_id(self._database, property_.conversation_id)
+        if owner_id is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        return self.create_for_owner(owner_id, property_)
+
+    def create_for_owner(
+        self, owner_id: str | UUID, property_: Property
+    ) -> Property:
+        if property_.id is None:
+            raise ValueError("Stored Property requires an ID.")
+        validate_owner_source(self._database, owner_id, property_.conversation_id)
         timestamp = now()
         with self._database.connect() as connection:
             connection.execute(
                 """
                 INSERT INTO properties(
-                    id, conversation_id, title, district, rent, area, bedrooms,
+                    id, owner_id, conversation_id, title, district, rent, area, bedrooms,
                     bathrooms, commute_minutes, pet_friendly, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
-                    uuid_value(property_.conversation_id),
+                    uuid_value(owner_id),
+                    optional_uuid(property_.conversation_id),
                     property_.title,
                     property_.district,
                     property_.rent,
@@ -279,17 +349,23 @@ class PropertyStore:
         return property_
 
     def list(self, conversation_id: str) -> list[Property]:
-        conversation_uuid = optional_uuid(conversation_id)
-        if conversation_uuid is None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return []
+        return self.list_by_owner(owner_id)
+
+    def list_by_owner(self, owner_id: str | UUID) -> list[Property]:
+        owner_uuid = optional_uuid(owner_id)
+        if owner_uuid is None:
             return []
         with self._database.connect() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM properties
-                WHERE conversation_id = %s
+                WHERE owner_id = %s
                 ORDER BY created_at
                 """,
-                (conversation_uuid,),
+                (owner_uuid,),
             ).fetchall()
         return [self._from(row) for row in rows]
 
@@ -306,7 +382,11 @@ class PropertyStore:
             ("DELETE FROM properties WHERE id = %s", (property_uuid,))
             if conversation_id is None
             else (
-                "DELETE FROM properties WHERE id = %s AND conversation_id = %s",
+                """
+                DELETE FROM properties WHERE id = %s AND owner_id = (
+                    SELECT anonymous_user_id FROM conversations WHERE id = %s
+                )
+                """,
                 (property_uuid, conversation_uuid),
             )
         )
@@ -324,9 +404,7 @@ class PropertyStore:
                     """
                     DELETE FROM properties
                     WHERE id = %s
-                      AND conversation_id IN (
-                          SELECT id FROM conversations WHERE anonymous_user_id = %s
-                      )
+                      AND owner_id = %s
                     """,
                     (property_uuid, user_uuid),
                 ).rowcount
@@ -349,17 +427,27 @@ class DecisionRecordStore:
         self._database = database
 
     def save(self, record: DecisionRecord) -> DecisionRecord:
+        owner_id = resolve_owner_id(self._database, record.conversation_id)
+        if owner_id is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        return self.save_for_owner(owner_id, record)
+
+    def save_for_owner(
+        self, owner_id: str | UUID, record: DecisionRecord
+    ) -> DecisionRecord:
+        validate_owner_source(self._database, owner_id, record.conversation_id)
         with self._database.connect() as connection:
             connection.execute(
                 """
                 INSERT INTO decision_records(
-                    id, conversation_id, created_at, summary, best_property_id,
+                    id, owner_id, conversation_id, created_at, summary, best_property_id,
                     reasons_json, trade_offs_json, confidence
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(record.id),
+                    uuid_value(owner_id),
                     uuid_value(record.conversation_id),
                     record.created_at,
                     record.summary,
@@ -375,7 +463,11 @@ class DecisionRecordStore:
     def _from(row: dict[str, Any]) -> DecisionRecord:
         return DecisionRecord(
             id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
+            conversation_id=(
+                str(row["conversation_id"])
+                if row["conversation_id"] is not None
+                else str(row["owner_id"])
+            ),
             created_at=row["created_at"],
             summary=row["summary"],
             best_property_id=str(row["best_property_id"]),
@@ -389,32 +481,47 @@ class DecisionRecordStore:
         )
 
     def list_by_conversation(self, conversation_id: str) -> list[DecisionRecord]:
-        conversation_uuid = optional_uuid(conversation_id)
-        if conversation_uuid is None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return []
+        return self.list_by_owner(owner_id)
+
+    def list_by_owner(self, owner_id: str | UUID) -> list[DecisionRecord]:
+        owner_uuid = optional_uuid(owner_id)
+        if owner_uuid is None:
             return []
         with self._database.connect() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM decision_records
-                WHERE conversation_id = %s
+                WHERE owner_id = %s
                 ORDER BY created_at DESC
                 """,
-                (conversation_uuid,),
+                (owner_uuid,),
             ).fetchall()
         return [self._from(row) for row in rows]
 
     def get_by_id(self, conversation_id: str, record_id: str) -> DecisionRecord | None:
-        conversation_uuid = optional_uuid(conversation_id)
+        owner_uuid = resolve_owner_id(self._database, conversation_id)
         record_uuid = optional_uuid(record_id)
-        if conversation_uuid is None or record_uuid is None:
+        if owner_uuid is None or record_uuid is None:
+            return None
+        return self.get_by_id_for_owner(owner_uuid, record_uuid)
+
+    def get_by_id_for_owner(
+        self, owner_id: str | UUID, record_id: str | UUID
+    ) -> DecisionRecord | None:
+        owner_uuid = optional_uuid(owner_id)
+        record_uuid = optional_uuid(record_id)
+        if owner_uuid is None or record_uuid is None:
             return None
         with self._database.connect() as connection:
             row = connection.execute(
                 """
                 SELECT * FROM decision_records
-                WHERE conversation_id = %s AND id = %s
+                WHERE owner_id = %s AND id = %s
                 """,
-                (conversation_uuid, record_uuid),
+                (owner_uuid, record_uuid),
             ).fetchone()
         return self._from(row) if row is not None else None
 
