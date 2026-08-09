@@ -1,8 +1,10 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+from uuid import UUID
 
 from psycopg import Connection, connect
 from psycopg.rows import DictRow, dict_row
+from psycopg.types.json import Jsonb
 
 REQUIRED_TABLES = {
     "anonymous_users",
@@ -101,7 +103,7 @@ SCHEMA_STATEMENTS = (
     """,
 )
 
-MIGRATION_STATEMENTS = (
+OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
@@ -130,6 +132,9 @@ MIGRATION_STATEMENTS = (
     FROM conversations AS conversation
     WHERE item.conversation_id = conversation.id AND item.owner_id IS NULL
     """,
+)
+
+OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "ALTER TABLE living_profiles ALTER COLUMN owner_id SET NOT NULL",
     "ALTER TABLE properties ALTER COLUMN owner_id SET NOT NULL",
     "ALTER TABLE decision_records ALTER COLUMN owner_id SET NOT NULL",
@@ -151,6 +156,96 @@ MIGRATION_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_memories_owner_updated ON decision_memories(owner_id, updated_at DESC)",
 )
 
+PROFILE_SCALAR_FIELDS = (
+    "work_location",
+    "budget",
+    "commute_minutes",
+    "preferred_city",
+    "family_size",
+    "has_pet",
+)
+
+
+def has_profile_value(value: object) -> bool:
+    return not (value is None or (isinstance(value, str) and not value.strip()))
+
+
+def append_unique(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)
+
+
+def merge_living_profiles(connection: Connection[DictRow]) -> None:
+    rows = connection.execute(
+        """
+        SELECT * FROM living_profiles
+        WHERE owner_id IS NOT NULL
+        ORDER BY owner_id, updated_at, conversation_id
+        """
+    ).fetchall()
+    rows_by_owner: dict[UUID, list[DictRow]] = {}
+    for row in rows:
+        rows_by_owner.setdefault(row["owner_id"], []).append(row)
+
+    for owner_id, owner_rows in rows_by_owner.items():
+        if len(owner_rows) < 2:
+            continue
+
+        scalar_values: dict[str, object] = {
+            field: None for field in PROFILE_SCALAR_FIELDS
+        }
+        insights: list[str] = []
+        preference_tags: dict[str, list[str]] = {}
+        source_conversation_id = owner_rows[-1]["conversation_id"]
+        source_updated_at = owner_rows[-1]["updated_at"]
+
+        for row in owner_rows:
+            row_has_update = False
+            for field in PROFILE_SCALAR_FIELDS:
+                value = row[field]
+                if has_profile_value(value):
+                    scalar_values[field] = value
+                    row_has_update = True
+
+            for insight in row["latest_insights_json"]:
+                append_unique(insights, insight)
+                row_has_update = True
+
+            for category, values in row["preference_tags_json"].items():
+                merged_values = preference_tags.setdefault(category, [])
+                for value in values:
+                    append_unique(merged_values, value)
+                    row_has_update = True
+
+            if row_has_update:
+                source_conversation_id = row["conversation_id"]
+                source_updated_at = row["updated_at"]
+
+        connection.execute(
+            "DELETE FROM living_profiles WHERE owner_id = %s",
+            (owner_id,),
+        )
+        connection.execute(
+            """
+            INSERT INTO living_profiles(
+                owner_id, conversation_id, work_location, budget, commute_minutes,
+                preferred_city, family_size, has_pet, latest_insights_json,
+                preference_tags_json, updated_at
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            """,
+            (
+                owner_id,
+                source_conversation_id,
+                *(scalar_values[field] for field in PROFILE_SCALAR_FIELDS),
+                Jsonb(insights),
+                Jsonb(preference_tags),
+                source_updated_at,
+            ),
+        )
+
 
 class Database:
     def __init__(self, url: str) -> None:
@@ -165,7 +260,10 @@ class Database:
         with self.connect() as connection:
             for statement in SCHEMA_STATEMENTS:
                 connection.execute(statement)
-            for statement in MIGRATION_STATEMENTS:
+            for statement in OWNERSHIP_BACKFILL_STATEMENTS:
+                connection.execute(statement)
+            merge_living_profiles(connection)
+            for statement in OWNERSHIP_CONSTRAINT_STATEMENTS:
                 connection.execute(statement)
 
     def health(self) -> bool:

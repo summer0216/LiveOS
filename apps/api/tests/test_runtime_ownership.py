@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -248,6 +248,152 @@ def test_legacy_conversation_rows_are_backfilled_to_owner_scope() -> None:
                 assert migrated is not None
                 assert migrated["owner_id"] == owner_id
                 assert migrated["conversation_id"] == conversation_id
+    finally:
+        with root_database.connect() as connection:
+            connection.execute(f'DROP SCHEMA "{schema}" CASCADE')
+
+
+def test_duplicate_legacy_profiles_merge_without_information_loss() -> None:
+    schema = f"profile_merge_{uuid4().hex}"
+    root_database = Database(settings.DATABASE_URL)
+    with root_database.connect() as connection:
+        connection.execute(f'CREATE SCHEMA "{schema}"')
+
+    database = Database(database_url_for_schema(settings.DATABASE_URL, schema))
+    owner_id = uuid4()
+    conversations = [uuid4() for _index in range(4)]
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    try:
+        with database.connect() as connection:
+            connection.execute(
+                "CREATE TABLE anonymous_users (id UUID PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE conversations (
+                    id UUID PRIMARY KEY,
+                    anonymous_user_id UUID NOT NULL REFERENCES anonymous_users(id),
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE living_profiles (
+                    conversation_id UUID PRIMARY KEY REFERENCES conversations(id)
+                        ON DELETE CASCADE,
+                    work_location TEXT, budget INTEGER, commute_minutes INTEGER,
+                    preferred_city TEXT, family_size INTEGER, has_pet BOOLEAN,
+                    latest_insights_json JSONB NOT NULL,
+                    preference_tags_json JSONB NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "INSERT INTO anonymous_users VALUES (%s, %s)",
+                (owner_id, base_time),
+            )
+            for index, conversation_id in enumerate(conversations):
+                timestamp = base_time + timedelta(hours=index)
+                connection.execute(
+                    "INSERT INTO conversations VALUES (%s, %s, %s, %s)",
+                    (conversation_id, owner_id, timestamp, timestamp),
+                )
+
+            profiles = (
+                (
+                    conversations[0],
+                    "Old office",
+                    5000,
+                    None,
+                    "Shenzhen",
+                    None,
+                    True,
+                    ["old", "shared"],
+                    {"preference": ["quiet", "shared"]},
+                ),
+                (
+                    conversations[1],
+                    None,
+                    None,
+                    30,
+                    None,
+                    2,
+                    False,
+                    ["shared", "middle"],
+                    {
+                        "preference": ["shared", "sunny"],
+                        "lifestyle": ["pet"],
+                    },
+                ),
+                (
+                    conversations[2],
+                    "New office",
+                    7000,
+                    None,
+                    "",
+                    None,
+                    None,
+                    ["new"],
+                    {"lifestyle": ["pet", "walk"]},
+                ),
+                (
+                    conversations[3],
+                    "   ",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    [],
+                    {},
+                ),
+            )
+            for index, profile in enumerate(profiles):
+                connection.execute(
+                    """
+                    INSERT INTO living_profiles VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        *profile[:7],
+                        Jsonb(profile[7]),
+                        Jsonb(profile[8]),
+                        base_time + timedelta(hours=index),
+                    ),
+                )
+
+        database.initialize()
+        with database.connect() as connection:
+            first = connection.execute("SELECT * FROM living_profiles").fetchone()
+        assert first is not None
+        assert first["owner_id"] == owner_id
+        assert first["conversation_id"] == conversations[2]
+        assert first["updated_at"] == base_time + timedelta(hours=2)
+        assert first["work_location"] == "New office"
+        assert first["budget"] == 7000
+        assert first["commute_minutes"] == 30
+        assert first["preferred_city"] == "Shenzhen"
+        assert first["family_size"] == 2
+        assert first["has_pet"] is False
+        assert first["latest_insights_json"] == ["old", "shared", "middle", "new"]
+        assert first["preference_tags_json"] == {
+            "preference": ["quiet", "shared", "sunny"],
+            "lifestyle": ["pet", "walk"],
+        }
+
+        database.initialize()
+        with database.connect() as connection:
+            second = connection.execute("SELECT * FROM living_profiles").fetchone()
+            count = connection.execute(
+                "SELECT COUNT(*) AS count FROM living_profiles"
+            ).fetchone()
+        assert second == first
+        assert count is not None
+        assert count["count"] == 1
     finally:
         with root_database.connect() as connection:
             connection.execute(f'DROP SCHEMA "{schema}" CASCADE')
