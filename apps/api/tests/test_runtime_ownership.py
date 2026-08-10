@@ -101,6 +101,50 @@ def test_same_owner_shares_runtime_data_but_not_messages() -> None:
     conversations.delete(other_conversation)
 
 
+def test_owner_shared_profile_is_visible_across_conversations_but_messages_are_isolated() -> None:
+    database = Database(settings.DATABASE_URL)
+    owner_id = str(uuid4())
+    conversation_a1 = str(uuid4())
+    conversation_a2 = str(uuid4())
+    conversations = ConversationStore(database)
+    profiles = ProfileStore(database)
+
+    conversations.ensure_user(owner_id)
+    conversations.get_or_create(conversation_a1, owner_id)
+    conversations.get_or_create(conversation_a2, owner_id)
+
+    assert conversation_a1 != conversation_a2
+    assert conversations.owner_id(conversation_a1) == owner_id
+    assert conversations.owner_id(conversation_a2) == owner_id
+
+    profiles.save(
+        conversation_a1,
+        LivingProfile(work_location="南山区", budget=6000, commute_minutes=30),
+    )
+
+    profile_from_a2 = profiles.get(conversation_a2)
+    assert profile_from_a2 is not None
+    assert profile_from_a2.work_location == "南山区"
+    assert profile_from_a2.budget == 6000
+    assert profile_from_a2.commute_minutes == 30
+
+    conversations.append(conversation_a1, "user", "A1 独有消息")
+    conversation_a2_state = conversations.get(conversation_a2)
+    assert conversation_a2_state is not None
+    assert all(
+        message.content != "A1 独有消息"
+        for message in conversation_a2_state.get_messages()
+    )
+
+    with database.connect() as connection:
+        profile_count = connection.execute(
+            "SELECT COUNT(*) AS count FROM living_profiles WHERE owner_id = %s",
+            (owner_id,),
+        ).fetchone()
+    assert profile_count is not None
+    assert profile_count["count"] == 1
+
+
 def test_legacy_conversation_rows_are_backfilled_to_owner_scope() -> None:
     schema = f"runtime_ownership_{uuid4().hex}"
     root_database = Database(settings.DATABASE_URL)
