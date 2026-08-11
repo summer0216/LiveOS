@@ -27,7 +27,7 @@ import {
 const JOURNEY_STEPS = [
     '入口',
     '对话',
-    '画像',
+    '生活模型',
     '工作台',
     '详情',
     '对比',
@@ -475,7 +475,7 @@ function ProfileHeading({
         <section className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
             <div>
                 <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
-                    居住画像 · AI 生成
+                    生活模型 · AI 生成
                 </p>
                 <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-100 sm:text-4xl">
                     你的偏好，我已读懂。
@@ -496,12 +496,12 @@ function ProfileHeading({
                         ? '保存中…'
                         : isEditing
                           ? '完成编辑'
-                          : '编辑画像'}
+                          : '编辑生活模型'}
                 </button>
                 <button
                     type="button"
                     disabled
-                    title="将在 P04 Workspace 实现"
+                    title="将在 P04 工作台实现"
                     className="flex cursor-not-allowed items-center gap-2 rounded-xl bg-blue-500 px-6 py-3.5 text-sm font-medium text-white opacity-80 shadow-[0_12px_30px_rgba(59,105,255,0.2)]"
                 >
                     查找房源
@@ -683,7 +683,7 @@ function ProfileLoadedState({
                     <p className="mt-2 text-sm leading-6 text-slate-400">
                         {profile.latest_insights.length > 0
                             ? profile.latest_insights.join('，') + '。'
-                            : '你的居住画像已生成。继续对话，我会逐步完善对你的理解。'}
+                            : '你的生活模型已生成。继续对话，我会逐步完善对你的理解。'}
                     </p>
                 </div>
             </section>
@@ -809,7 +809,7 @@ function ProfileLoadingState() {
     return (
         <div
             role="status"
-            aria-label="正在加载居住画像"
+            aria-label="正在加载生活模型"
             className="mt-12 space-y-8"
         >
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -843,7 +843,7 @@ function ProfileEmptyState({
                 ◌
             </span>
             <h2 className="mt-6 text-xl font-medium text-slate-200">
-                {hasError ? '画像暂时无法加载' : '还没有生成居住画像'}
+                {hasError ? '生活模型暂时无法加载' : '还没有生成生活模型'}
             </h2>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-500">
                 {hasError

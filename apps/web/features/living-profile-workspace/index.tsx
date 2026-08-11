@@ -23,7 +23,7 @@ const UNKNOWN_VALUE = '仍在了解中';
 const JOURNEY_STEPS = [
   '入口',
   '对话',
-  '画像',
+  '生活模型',
   '工作台',
   '详情',
   '对比',
@@ -67,7 +67,7 @@ function formatProfileValue(field: ProfileField): string {
 function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
   return [
     {
-      title: 'Work & Commute',
+      title: '工作与通勤',
       description: '工作与日常通勤要求',
       icon: BriefcaseBusiness,
       fields: [
@@ -87,7 +87,7 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
       ],
     },
     {
-      title: 'Budget',
+      title: '预算',
       description: '当前住房预算范围',
       icon: CircleDollarSign,
       fields: [
@@ -101,7 +101,7 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
       ],
     },
     {
-      title: 'Housing Preference',
+      title: '住房偏好',
       description: '理想住房的地点偏好',
       icon: House,
       fields: [
@@ -114,7 +114,7 @@ function getProfileSections(profile: LivingProfile | null): ProfileSection[] {
       ],
     },
     {
-      title: 'Family & Lifestyle',
+      title: '家庭与生活方式',
       description: '家庭结构与生活方式',
       icon: Users,
       fields: [
@@ -214,10 +214,10 @@ export default function LivingProfileWorkspace() {
           <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
             <div>
               <p className="font-mono text-xs tracking-[0.16em] text-blue-400">
-                LIVING PROFILE
+                生活模型
               </p>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Living Profile
+                生活模型
               </h1>
               <p className="mt-3 text-base text-slate-500">
                 AI 正在持续建立你的居住模型。
@@ -227,7 +227,7 @@ export default function LivingProfileWorkspace() {
               href={propertyHref}
               className="w-fit rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15"
             >
-              进入 Property Workspace
+              进入房源工作台
             </Link>
           </section>
 
@@ -247,7 +247,7 @@ export default function LivingProfileWorkspace() {
           />
 
           <section
-            aria-label="Living Profile 生活领域"
+            aria-label="生活模型领域"
             className="mt-8 grid gap-5 md:grid-cols-2"
           >
             {sections.map((section) => (
@@ -366,7 +366,7 @@ function Overview({
             id="profile-overview-title"
             className="font-medium text-slate-200"
           >
-            Overview
+            居住模型概览
           </h2>
           <p className="mt-1 text-sm text-slate-500">当前居住模型完成度</p>
         </div>
@@ -486,10 +486,10 @@ function AIInsightCard({
         </span>
         <div>
           <h2 id="ai-insight-title" className="font-medium text-slate-200">
-            AI Insight
+            AI 洞察
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            AI 对当前 Living Profile 的理解
+            AI 对当前生活模型的理解
           </p>
         </div>
       </div>
@@ -502,7 +502,7 @@ function AIInsightCard({
       ) : isEmpty ? (
         <div className="mt-6 rounded-xl border border-white/[0.06] bg-black/10 px-5 py-5">
           <p className="text-sm font-medium text-slate-300">
-            AI 还没有建立足够的 Living Profile。
+            AI 还没有建立足够的生活模型。
           </p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             继续与 AI 对话后，这里会逐步展示它对你的理解。
@@ -511,7 +511,7 @@ function AIInsightCard({
       ) : isComplete ? (
         <div className="mt-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.04] px-5 py-5">
           <p className="text-sm font-medium text-slate-300">
-            Living Profile 已建立完成。
+            生活模型已建立完成。
           </p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             后续新的对话仍会持续更新你的居住模型。

@@ -65,7 +65,7 @@ export default function ConversationComposer({
                         href={profileHref}
                         className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-blue-500 px-5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(59,105,255,0.22)]"
                     >
-                        查看画像
+                        查看生活模型
                         <ArrowRight size={15} />
                     </Link>
                 ) : (

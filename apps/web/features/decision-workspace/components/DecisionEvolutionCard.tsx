@@ -54,10 +54,10 @@ export function DecisionEvolutionCard({
               id="decision-evolution-title"
               className="font-medium text-slate-200"
             >
-              Decision Evolution
+              决策变化
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              当前 Decision 与上一次 Decision
+              当前决策与上一次决策
             </p>
           </div>
         </div>
@@ -68,13 +68,13 @@ export function DecisionEvolutionCard({
           className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
         >
           <RefreshCw size={15} />
-          Refresh Decision
+          刷新决策
         </button>
       </div>
 
       {previous === null ? (
         <p className="mt-6 rounded-xl border border-dashed border-white/[0.08] bg-black/10 px-5 py-6 text-sm text-slate-500">
-          No previous decision.
+          暂无上一条决策。
         </p>
       ) : (
         <EvolutionDetails
@@ -125,7 +125,7 @@ function EvolutionDetails({
               </span>
               {!previousProperty && (
                 <span className="mt-1 block text-xs text-amber-300/80">
-                  Currently unavailable
+                  当前暂不可用
                 </span>
               )}
             </>
@@ -146,7 +146,7 @@ function EvolutionDetails({
         }
       />
 
-      <EvolutionMetric label="Confidence" status="Previous → Current">
+      <EvolutionMetric label="可信度" status="之前 → 当前">
         <ValueTransition
           previous={formatConfidence(previous.confidence)}
           current={formatConfidence(current.confidence)}
@@ -191,12 +191,12 @@ function ValueTransition({
   return (
     <div className="mt-4 flex items-center gap-3 text-sm">
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-slate-600">Previous</p>
+        <p className="text-xs text-slate-600">之前</p>
         <div className="mt-1 break-words text-slate-400">{previous}</div>
       </div>
       <ArrowRight className="shrink-0 text-slate-700" size={16} />
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-slate-600">Current</p>
+        <p className="text-xs text-slate-600">当前</p>
         <div className="mt-1 break-words text-blue-300">{current}</div>
       </div>
     </div>

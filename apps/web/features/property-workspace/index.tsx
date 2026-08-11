@@ -32,7 +32,7 @@ const UNKNOWN_VALUE = '仍在了解中';
 const JOURNEY_STEPS = [
   '入口',
   '对话',
-  '画像',
+  '生活模型',
   '工作台',
   '详情',
   '对比',
@@ -227,7 +227,7 @@ export default function PropertyWorkspace() {
                 PROPERTY WORKSPACE
               </p>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Property Workspace
+                房源工作台
               </h1>
               <p className="mt-3 max-w-xl text-base leading-7 text-slate-500">
                 管理你的候选房源，AI 将基于这些房源完成后续分析。
@@ -237,7 +237,7 @@ export default function PropertyWorkspace() {
               href={decisionHref}
               className="w-fit rounded-xl border border-blue-500/30 bg-blue-500/10 px-5 py-3 text-sm font-medium text-blue-300 transition hover:border-blue-400/50 hover:bg-blue-500/15"
             >
-              进入 AI Decision
+              进入 AI 决策
             </Link>
           </section>
 
@@ -456,7 +456,7 @@ function WorkspaceHeader({
           href={profileHref}
           className="ml-auto rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
         >
-          返回 Living Profile
+          返回生活模型
         </Link>
       </div>
     </header>
@@ -484,7 +484,7 @@ function PropertyOverview({
             id="property-overview-title"
             className="font-medium text-slate-200"
           >
-            Overview
+            房源概览
           </h2>
           <p className="mt-1 text-sm text-slate-500">候选房源</p>
         </div>

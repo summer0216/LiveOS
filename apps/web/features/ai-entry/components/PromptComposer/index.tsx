@@ -83,16 +83,22 @@ export default function PromptComposer({
           onListeningChange(Boolean(nextMessage.trim()));
         }}
         onKeyDown={handleKeyDown}
-        placeholder="Tell me about the life you're looking for..."
+        placeholder="告诉我你的想法……"
         className="w-full resize-none rounded-3xl border border-white/10 bg-[#10182b] px-6 py-5 text-white outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-slate-600 hover:border-blue-400/50 hover:bg-[#121c31] focus:border-blue-500 focus:bg-[#10182b] focus:shadow-[0_0_0_6px_rgba(59,105,255,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
       />
+
+      <div className="mt-4 space-y-1 text-center text-sm text-neutral-500">
+        <p>例如：我在南山工作，预算6000元。</p>
+        <p>例如：我希望通勤控制在30分钟内。</p>
+        <p>例如：帮我分析一下这个房源适不适合我。</p>
+      </div>
 
       <p className="mt-4 text-center text-sm text-neutral-500">
         {submitPhase === 'listening'
           ? '··· 正在聆听……'
           : submitPhase === 'thinking'
             ? '··· 正在开启对话……'
-            : 'Press Enter to start · Shift + Enter for new line'}
+            : '按 Enter 开始 · Shift + Enter 换行'}
       </p>
     </section>
   );

@@ -10,7 +10,7 @@ export default function RouteLoading() {
       <div className="flex flex-col items-center gap-4">
         <AICore state="thinking" size="sm" />
         <span className="font-mono text-xs tracking-[0.16em]">
-          LOADING
+          正在加载
         </span>
       </div>
     </main>

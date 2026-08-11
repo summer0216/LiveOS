@@ -9,7 +9,7 @@ import AICore, {
 const JOURNEY_STEPS = [
     '入口',
     '对话',
-    '画像',
+    '生活模型',
     '工作台',
     '详情',
     '对比',

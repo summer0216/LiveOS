@@ -22,6 +22,8 @@ interface StreamMessageOptions {
     onChunk: (chunk: string) => void;
 }
 
+const STREAM_READ_TIMEOUT_MS = 45_000;
+
 export async function streamMessage({
     conversationId,
     message,
@@ -60,6 +62,9 @@ export async function streamMessage({
         eventBuffer = events.pop() ?? '';
 
         for (const event of events) {
+            const eventType = event
+                .split('\n')
+                .find((line) => line.startsWith('event: '));
             const data = event
                 .split('\n')
                 .find((line) => line.startsWith('data: '));
@@ -72,13 +77,33 @@ export async function streamMessage({
             if (typeof chunk !== 'string') {
                 throw new Error('Streaming API returned an invalid event.');
             }
+            if (eventType === 'event: error') {
+                throw new Error(chunk);
+            }
             onChunk(chunk);
         }
     };
 
     try {
         while (true) {
-            const { value, done } = await reader.read();
+            let readTimeout: ReturnType<typeof setTimeout> | undefined;
+            const { value, done } = await Promise.race([
+                reader.read().finally(() => {
+                    if (readTimeout !== undefined) {
+                        clearTimeout(readTimeout);
+                    }
+                }),
+                new Promise<never>((_, reject) => {
+                    readTimeout = setTimeout(() => {
+                        void reader.cancel();
+                        reject(
+                            new Error(
+                                'Streaming response timed out while waiting for data.',
+                            ),
+                        );
+                    }, STREAM_READ_TIMEOUT_MS);
+                }),
+            ]);
             if (done) {
                 break;
             }

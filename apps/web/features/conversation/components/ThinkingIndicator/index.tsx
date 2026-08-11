@@ -11,7 +11,7 @@ export default function ThinkingIndicator() {
         <motion.div
             role="status"
             aria-live="polite"
-            aria-label="LiveOS is thinking"
+            aria-label="LiveOS 正在思考"
             className="mb-8 flex items-start gap-3 sm:gap-4"
             initial={{ opacity: 0, y: 2 }}
             animate={{ opacity: 1, y: 0 }}

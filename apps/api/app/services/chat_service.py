@@ -78,7 +78,7 @@ class ChatService:
             history=history,
         )
 
-        reply = ai_runtime.chat(history)
+        reply = ai_runtime.chat(history, profile_manager.get(conversation_id))
 
         if reply:
             conversation_manager.append_assistant_message(conversation_id, reply)
@@ -102,7 +102,10 @@ class ChatService:
 
         assistant_reply_parts: list[str] = []
 
-        for chunk in ai_runtime.chat_stream(history):
+        for chunk in ai_runtime.chat_stream(
+            history,
+            profile_manager.get(conversation_id),
+        ):
             if not chunk:
                 continue
 

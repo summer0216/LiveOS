@@ -1,5 +1,7 @@
 import json
+import logging
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
@@ -13,14 +15,43 @@ router = APIRouter(
     prefix="/chat",
     tags=["Chat"],
 )
+logger = logging.getLogger(__name__)
+STREAM_IDLE_TIMEOUT_SECONDS = 30.0
+STREAM_ERROR_MESSAGE = "抱歉，LiveOS 暂时无法完成回复，请稍后重试。"
 
 
 def _stream_events(chunks: Iterator[str]) -> Iterator[str]:
     # Flush the response headers before the first model token is available.
     yield ": connected\n\n"
 
-    for chunk in chunks:
-        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+    executor = ThreadPoolExecutor(max_workers=1)
+    iterator = iter(chunks)
+    try:
+        while True:
+            future = executor.submit(next, iterator)
+            try:
+                chunk = future.result(timeout=STREAM_IDLE_TIMEOUT_SECONDS)
+            except StopIteration:
+                break
+            except TimeoutError:
+                logger.error(
+                    "Streaming chat idle timeout after %.1f seconds",
+                    STREAM_IDLE_TIMEOUT_SECONDS,
+                )
+                yield (
+                    "event: error\n"
+                    f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
+                )
+                break
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+    except Exception:
+        logger.exception("Streaming chat failed")
+        yield (
+            "event: error\n"
+            f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
+        )
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 @router.post("", response_model=ChatResponse)

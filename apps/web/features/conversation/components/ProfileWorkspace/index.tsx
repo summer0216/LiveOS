@@ -127,7 +127,7 @@ export default function ProfileWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7">
                 <div className="flex items-center justify-between gap-4">
                     <h2 className="text-lg font-medium tracking-tight text-slate-100">
-                        Living Profile
+                        生活模型
                     </h2>
                     <span
                         aria-live="polite"
@@ -180,7 +180,7 @@ export default function ProfileWorkspace({
 
                 <section className="mt-6 rounded-xl border border-white/[0.08] bg-[#0b1020] p-5">
                     <h3 className="font-mono text-xs tracking-[0.12em] text-blue-400">
-                        AI Insight
+                        AI 洞察
                     </h3>
 
                     <div className="mt-4 space-y-5">
@@ -209,7 +209,7 @@ export default function ProfileWorkspace({
                         href={profileHref}
                         className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-500 text-sm font-medium text-white shadow-[0_10px_30px_rgba(59,105,255,0.22)] transition hover:bg-blue-400"
                     >
-                        查看居住画像
+                        查看生活模型
                         <ArrowRight size={16} />
                     </Link>
                 ) : (
@@ -218,7 +218,7 @@ export default function ProfileWorkspace({
                         disabled
                         className="h-12 w-full cursor-not-allowed rounded-xl bg-slate-900 text-sm text-slate-700"
                     >
-                        画像生成中
+                        生活模型生成中
                     </button>
                 )}
             </div>

@@ -1,346 +1,409 @@
-# LiveOS Design System v1.1
+---
 
-## AI Core Runtime
+# Brand Identity
 
-Status: Proposed
+## Revision History
+
+### v1.1
+
+Brand Identity
+
+- Added Brand Identity
+- Added AI Core Visual Language
+- Added Favicon Specification
+- Unified terminology
+  - AI Orb → AI Core
+  - Orbit → Orbit Dot
+- Brand colors now reference Design Tokens
+- No Component changes
+- No Motion changes
+- No Design Token changes
 
 ---
 
-# Why
+## Brand Philosophy
 
-LiveOS is built around a Single AI Runtime.
+LiveOS has one permanent visual identity.
 
-Users should always feel they are interacting with one continuous AI rather than switching between independent pages or modules.
+That identity is the **AI Core**.
 
-The AI Core is the visual representation of that runtime.
+Every branded visual asset should evolve from the AI Core rather than introducing a different symbol.
 
-It is the most important visual element in LiveOS.
+Whether users are interacting with the Landing Page, Conversation, Workspace, Browser Tab, or future desktop and mobile applications, they should always recognize the same visual language.
 
----
+Brand evolution is encouraged.
 
-# Design Philosophy
-
-The AI Core is not merely an icon.
-
-It is not a logo.
-
-It is not a loading animation.
-
-It is the living presence of the AI Runtime.
-
-Every state transition of the AI Runtime should be reflected by the AI Core.
-
-Users should gradually learn the AI state naturally without relying on labels such as:
-
-- Thinking...
-- Loading...
-- Processing...
-
-Instead, users recognize the state through motion, color, and rhythm.
+Brand replacement is not.
 
 ---
 
-# Core Identity
+## Design Principle
 
-The AI Core represents:
+The AI Core is the permanent visual identity of LiveOS.
 
-- Presence
+Every visual representation of LiveOS evolves from the AI Core.
+
+Examples include:
+
+- Landing AI Core
+- Conversation AI Core
+- Sidebar AI Core
+- Favicon
+- Future App Icon
+
+These are not different logos.
+
+They are different visual expressions of the same AI Core.
+
+LiveOS should always present one unified visual identity.
+
+---
+
+# AI Core Visual Language
+
+The AI Core is the primary visual identity of LiveOS.
+
+Its visual language is composed of four visual elements.
+
+---
+
+## 1. Core
+
+The Core is the primary visual identity of LiveOS.
+
+It represents:
+
+- Intelligence
 - Understanding
-- Reasoning
 - Memory
-- Decision
+- Continuity
 
-It should always feel:
+Requirements:
 
+- Glass-like appearance
+- Soft highlight
+- Gentle gradient
+- Circular geometry
+- Minimal detail
+
+The Core should always remain the visual focus.
+
+---
+
+## 2. Orbit Dot
+
+The Orbit Dot is a supporting visual element.
+
+It is **not** the brand identity itself.
+
+It visually expresses:
+
+- Continuous understanding
+- Continuous evolution
+- Continuous thinking
+
+Requirements:
+
+- Only one Orbit Dot
+- Positioned naturally around the Core
+- Small and subtle
+- Never visually dominate the Core
+
+Its purpose is to reinforce the living state of the AI Core.
+
+It should never become the primary visual focus.
+
+---
+
+## 3. Glow
+
+Glow is an atmospheric effect.
+
+Purpose:
+
+- Improve visibility
+- Create depth
+- Express warmth
+
+Requirements:
+
+- Soft
+- Subtle
 - Calm
-- Intelligent
-- Alive
-- Premium
-- Minimal
 
-It should never feel:
+Glow supports the Core.
 
-- Decorative
-- Playful
-- Mechanical
-- Overly animated
-- Like a loading spinner
-- Like a light bulb
+It should never become a lighting effect.
 
 ---
 
-# Runtime State Language
+## 4. Breathing Motion
 
-## Idle
+Breathing Motion is the default animation language of the AI Core.
 
-Meaning
+Purpose:
 
-Waiting for user interaction.
+- Express continuous awareness
+- Express a living AI
+- Create emotional connection
 
-Color
-
-AI Blue
-
-Motion
-
-Slow breathing
-
-Feeling
-
-Present but quiet.
-
----
-
-## Listening
-
-Meaning
-
-Receiving user input.
-
-Color
-
-AI Blue
-
-Motion
-
-Slightly focused breathing.
-
-Feeling
-
-Attentive.
-
----
-
-## Thinking
-
-Meaning
-
-Reasoning in progress.
-
-Color
-
-AI Purple
-
-Motion
-
-Gentle pulse combined with breathing.
-
-Feeling
-
-Internal computation.
-
----
-
-## Understanding
-
-Meaning
-
-Building Living Profile.
-
-Color
-
-Blue → Purple transition
-
-Motion
-
-Smooth energy flow.
-
-Feeling
-
-Knowledge is forming.
-
----
-
-## Decision
-
-Meaning
-
-Generating recommendations.
-
-Color
-
-Balanced Blue/Purple
-
-Motion
-
-Stable pulse.
-
-Feeling
-
-Confidence.
-
----
-
-## Memory Sync
-
-Meaning
-
-Important knowledge has been stored.
-
-Color
-
-Soft Blue
-
-Motion
-
-Single calm pulse.
-
-Feeling
-
-Remembered.
-
----
-
-## Completed
-
-Meaning
-
-Current task finished.
-
-Color
-
-AI Blue
-
-Motion
-
-Return to idle breathing.
-
-Feeling
-
-Ready for the next interaction.
-
----
-
-## Error
-
-Meaning
-
-Runtime unavailable.
-
-Color
-
-Neutral Gray
-
-Motion
-
-No breathing.
-
-Feeling
-
-Unavailable.
-
----
-
-# Motion Principles
-
-Every animation should communicate runtime state.
-
-Never animate purely for decoration.
-
-Motion should be:
+Requirements:
 
 - Slow
-- Smooth
-- Intentional
-- Continuous
+- Calm
+- Natural
+
+Avoid mechanical or exaggerated animations.
+
+---
+
+# Favicon
+
+## Purpose
+
+The favicon represents LiveOS in the smallest possible space.
+
+Its purpose is immediate brand recognition.
+
+Users should instantly recognize LiveOS from a browser tab without relying on text.
+
+---
+
+## Design Principle
+
+The favicon is **not** a scaled-down logo.
+
+It is the minimal visual expression of the AI Core.
+
+Only the essential visual language should remain.
+
+---
+
+## Visual Composition
+
+The favicon contains only three visual elements.
+
+### Core
+
+The primary visual element.
+
+Requirements:
+
+- Circular
+- Gentle highlight
+- Soft gradient
+- Minimal detail
+
+Recommended size:
+
+Approximately 70% of the icon area.
+
+Maintain generous whitespace.
+
+---
+
+### Orbit Dot
+
+One single Orbit Dot.
+
+Requirements:
+
+- Only one
+- Positioned approximately 45° above the Core
+- Around 10% of the Core size
+- Balanced and subtle
+
+Purpose:
+
+Express continuous AI activity.
+
+Never become decorative.
+
+---
+
+### Glow
+
+A minimal outer glow.
+
+Purpose:
+
+Improve recognition on light browser backgrounds.
 
 Avoid:
 
-- Flashing
-- Fast scaling
-- Sudden brightness
-- Large bouncing effects
+- Heavy glow
+- Neon effects
+- Sci-fi lighting
 
 ---
 
-# Color Language
+## Background
 
-Blue
+Transparent.
 
-Represents:
+Do not place the favicon on a colored square.
 
-Understanding
-
-Listening
-
-Stability
-
-Trust
-
-Purple
-
-Represents:
-
-Reasoning
-
-Inference
-
-Internal computation
-
-Blue → Purple
-
-Represents:
-
-Runtime transition.
+The browser already provides the visual container.
 
 ---
 
-# Product Principle
+## Color
 
-Users should never feel:
+The favicon must reuse the AI Core color palette.
 
-"I changed pages."
+All implementation values must reference the Design Tokens.
 
-Instead they should feel:
-
-"The same AI entered a new state."
+Brand Identity must never redefine colors or implementation values.
 
 ---
 
-# Runtime Continuity
+## Remove
 
-The same AI Core exists across every stage.
+Never include:
 
-Landing
+- Multiple Orbit Rings
+- Decorative circles
+- Text
+- Letters
+- LiveOS wordmark
+- Complex gradients
+- Heavy shadows
+- Mechanical elements
 
-↓
-
-Conversation
-
-↓
-
-Living Profile
-
-↓
-
-Workspace
-
-↓
-
-Decision
-
-↓
-
-Memory
-
-The page changes.
-
-The AI does not.
+Recognition always takes priority over detail.
 
 ---
 
-# Future Evolution
+## Design Keywords
 
-The AI Core may evolve visually over time.
+The favicon should feel:
 
-However:
+- Minimal
+- Calm
+- Premium
+- Intelligent
+- Human
+- Living
 
-Its identity,
+Avoid:
 
-motion language,
+- Cyber
+- Mechanical
+- Industrial
+- Decorative
 
-state semantics,
+---
 
-and runtime continuity
+## Deliverables
 
-must remain consistent across every version of LiveOS.
+### Master Asset
+
+- SVG
+
+### Export Assets
+
+- 16 × 16
+- 32 × 32
+- 48 × 48
+- 64 × 64
+- 128 × 128
+- 256 × 256
+- 512 × 512
+
+---
+
+# AI Core Family
+
+The AI Core is a scalable visual language.
+
+Different product surfaces use different levels of complexity.
+
+---
+
+## Landing Page
+
+Complete AI Core.
+
+Includes:
+
+- Core
+- Orbit Dot
+- Glow
+- Breathing Motion
+
+---
+
+## Conversation
+
+Simplified AI Core.
+
+Includes:
+
+- Core
+- Orbit Dot
+- Soft Glow
+
+---
+
+## Sidebar
+
+Compact AI Core.
+
+Includes:
+
+- Core
+- Minimal Orbit Dot
+
+Reduce visual detail while preserving identity.
+
+---
+
+## Favicon
+
+Minimal AI Core.
+
+Includes:
+
+- Core
+- One Orbit Dot
+- Minimal Glow
+
+No additional decoration.
+
+---
+
+## Future App Icon
+
+Future desktop and mobile application icons should continue evolving from the AI Core.
+
+The AI Core must always remain the primary visual identity of LiveOS.
+
+---
+
+# Brand Evolution Principle
+
+As LiveOS evolves, the AI Core may become:
+
+- Simpler
+- More expressive
+- More dynamic
+
+However, its visual identity must always remain recognizable.
+
+Evolution is encouraged.
+
+Replacement is not.
+
+---
+
+# Brand Consistency
+
+The AI Core is the only permanent visual identity of LiveOS.
+
+The Core is always the visual focus.
+
+Orbit Dot, Glow and Breathing Motion are supporting visual elements.
+
+Users should immediately recognize LiveOS without relying on text.
+
+From a browser favicon to future desktop and mobile applications, the AI Core should remain the consistent visual language of LiveOS.

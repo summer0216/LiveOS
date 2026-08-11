@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import chat as chat_api
+from app.api.chat import _stream_events
 from app.api.ownership import COOKIE_NAME
 from app.core.config import settings
 from app.main import app
@@ -117,3 +118,36 @@ def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
     assert other_response.status_code == 404
 
     conversation_manager.delete(conversation_id)
+
+
+def test_stream_events_turn_model_exception_into_a_terminal_error_event() -> None:
+    def failing_stream():
+        yield "partial"
+        raise RuntimeError("model unavailable")
+
+    assert list(_stream_events(failing_stream())) == [
+        ': connected\n\n',
+        'data: "partial"\n\n',
+        (
+            'event: error\n'
+            'data: "抱歉，LiveOS 暂时无法完成回复，请稍后重试。"\n\n'
+        ),
+    ]
+
+
+def test_stream_events_turns_a_first_token_timeout_into_a_terminal_error_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def stalled_stream():
+        yield from ()
+
+        import time
+
+        time.sleep(0.05)
+
+    monkeypatch.setattr(chat_api, "STREAM_IDLE_TIMEOUT_SECONDS", 0.001)
+
+    events = list(_stream_events(stalled_stream()))
+
+    assert events[0] == ": connected\n\n"
+    assert events[-1].startswith("event: error\n")

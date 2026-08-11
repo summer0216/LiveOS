@@ -50,6 +50,24 @@ Codex 是工程实现者（AI Engineer）。
 
 ---
 
+# Mission Classification
+
+Every task belongs to exactly one Mission.
+
+Examples:
+
+- Product Polish
+- Engineering
+- Runtime
+- Database
+- Architecture
+
+Codex must only complete the current Mission.
+
+Do not expand into other Missions unless explicitly required.
+
+---
+
 # Core Principles
 
 ## Principle 1
@@ -611,5 +629,30 @@ Codex 负责工程实现。
 - 新增 Architecture Escalation
 - 新增 Collaboration Model
 - 保持 v1.0 所有核心原则不变
+
+# Recommended Model
+
+Default
+
+Model:
+
+GPT-5.6 Luna
+
+Reasoning:
+
+Light
+
+Use Medium only when:
+
+- Cross-module implementation
+- Database Migration
+- Runtime Context
+
+Use High only when:
+
+- Architecture
+- Runtime Evolution
+
+Extra High is not recommended for normal Sprint implementation.
 
 **Status:** Frozen

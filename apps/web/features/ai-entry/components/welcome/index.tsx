@@ -6,7 +6,7 @@ export default function Welcome() {
       </h1>
 
       <p className="mt-4 text-base text-neutral-400">
-        Your AI for Better Living
+        让 AI 更懂你的生活
       </p>
     </section>
   );

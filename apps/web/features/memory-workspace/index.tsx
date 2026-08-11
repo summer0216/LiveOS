@@ -26,7 +26,7 @@ import {
 const JOURNEY_STEPS = [
   '入口',
   '对话',
-  '画像',
+  '生活模型',
   '工作台',
   '详情',
   '对比',
@@ -178,7 +178,7 @@ export default function MemoryWorkspace() {
                 size={16}
                 className={isRefreshing ? 'animate-spin' : undefined}
               />
-              {isRefreshing ? 'Refreshing…' : 'Refresh Memory'}
+              {isRefreshing ? '刷新中…' : '刷新记忆'}
             </button>
           </section>
 
@@ -326,7 +326,7 @@ function MemorySummary({ count }: { count: number | null }) {
           <Brain size={19} />
         </span>
         <div>
-          <h2 className="font-medium text-slate-200">Memory Summary</h2>
+          <h2 className="font-medium text-slate-200">记忆概览</h2>
           <p className="mt-1 text-sm text-slate-500">
             当前会话形成的稳定决策认知
           </p>
@@ -390,7 +390,7 @@ function MemoryEmptyState({
           size={16}
           className={isRefreshing ? 'animate-spin' : undefined}
         />
-        {isRefreshing ? 'Refreshing…' : 'Refresh Memory'}
+        {isRefreshing ? '刷新中…' : '刷新记忆'}
       </button>
     </section>
   );

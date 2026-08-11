@@ -32,7 +32,7 @@ import { getProperties, type Property } from '@/services/property';
 const JOURNEY_STEPS = [
   '入口',
   '对话',
-  '画像',
+  '生活模型',
   '工作台',
   '详情',
   '对比',
@@ -220,10 +220,10 @@ function DecisionWorkspaceView({
               AI DECISION
             </p>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              AI Decision
+              AI 决策
             </h1>
             <p className="mt-3 max-w-xl text-base leading-7 text-slate-500">
-              AI 正在综合 Living Profile 与候选房源，生成最终居住建议。
+              AI 正在综合生活模型与候选房源，生成最终居住建议。
             </p>
           </section>
 
@@ -263,7 +263,7 @@ function DecisionWorkspaceView({
 
           {status === 'error' && (
             <DecisionError
-              title="AI Decision 加载失败。"
+              title="AI 决策加载失败。"
               description="请稍后重试。"
               onRetry={onRetry}
             />
@@ -271,16 +271,16 @@ function DecisionWorkspaceView({
 
           {status === 'invalid-property' && (
             <DecisionError
-              title="AI Decision 暂时无法展示。"
-              description="请重新生成 Decision。"
+              title="AI 决策暂时无法展示。"
+              description="请重新生成决策。"
               onRetry={onRetry}
             />
           )}
 
           {status === 'missing-conversation' && (
             <DecisionError
-              title="Conversation 不存在。"
-              description="请从当前对话重新进入 AI Decision。"
+              title="对话不存在。"
+              description="请从当前对话重新进入 AI 决策。"
             />
           )}
         </div>
@@ -373,7 +373,7 @@ function WorkspaceHeader({
           href={propertyHref}
           className="ml-auto rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200"
         >
-          返回 Property Workspace
+          返回房源工作台
         </Link>
       </div>
     </header>
@@ -413,7 +413,7 @@ function DecisionOverview({
             id="decision-overview-title"
             className="font-medium text-slate-200"
           >
-            Overview
+            决策概览
           </h2>
           <p className="mt-1 text-sm text-slate-500">当前决策状态</p>
         </div>
@@ -488,7 +488,7 @@ function DecisionSummary({
             id="decision-summary-title"
             className="font-medium text-slate-200"
           >
-            Decision Summary
+            决策摘要
           </h2>
           <p className="mt-1 text-sm text-slate-600">最终建议生成状态</p>
         </div>
@@ -520,7 +520,7 @@ function DecisionSummary({
 
 function BestPropertyLoading() {
   return (
-    <section aria-label="Best Property Loading" className="mt-8">
+    <section aria-label="最佳房源加载中" className="mt-8">
       <div className="h-6 w-36 animate-pulse rounded bg-white/[0.06]" />
       <div className="mt-5 h-80 animate-pulse rounded-2xl border border-white/[0.06] bg-[#0b1020]/90" />
     </section>
@@ -534,10 +534,10 @@ function BestProperty({ property }: { property: Property }) {
         id="best-property-title"
         className="text-lg font-medium text-slate-200"
       >
-        Best Property
+        最佳房源
       </h2>
       <p className="mt-1 text-sm text-slate-600">
-        当前 Decision 选出的最佳房源
+        当前决策选出的最佳房源
       </p>
       <div className="mt-5">
         <PropertyCard property={property} />
@@ -549,7 +549,7 @@ function BestProperty({ property }: { property: Property }) {
 function RecommendationReasons({ reasons }: { reasons: DecisionReason[] }) {
   return (
     <DecisionList
-      title="Why this property"
+      title="推荐理由"
       description="AI 当前推荐这套房源的主要依据"
       items={reasons}
       icon={<Sparkles size={19} />}
@@ -564,7 +564,7 @@ function DecisionTradeOffs({
 }) {
   return (
     <DecisionList
-      title="Trade-offs"
+      title="需要权衡"
       description="当前选择仍需留意的真实取舍"
       items={tradeOffs}
       icon={<Scale size={19} />}
@@ -621,9 +621,9 @@ function DecisionConfidence({ confidence }: { confidence: number }) {
           <Gauge size={19} />
         </span>
         <div>
-          <h2 className="font-medium text-slate-200">Confidence</h2>
+          <h2 className="font-medium text-slate-200">可信度</h2>
           <p className="mt-1 text-sm text-slate-600">
-            当前输入信息对 Decision 的支持程度
+            当前输入信息对决策的支持程度
           </p>
         </div>
       </div>
@@ -644,7 +644,7 @@ function DecisionWaitingState() {
         AI 还无法完成最终决策。
       </h2>
       <p className="mt-3 max-w-sm text-sm leading-6 text-slate-500">
-        继续完善 Living Profile，并添加候选房源后，AI 将生成最佳居住建议。
+        继续完善生活模型，并添加候选房源后，AI 将生成最佳居住建议。
       </p>
     </section>
   );

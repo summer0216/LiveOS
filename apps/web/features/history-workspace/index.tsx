@@ -30,7 +30,7 @@ import { getProperties, type Property } from '@/services/property';
 const JOURNEY_STEPS = [
   '入口',
   '对话',
-  '画像',
+  '生活模型',
   '工作台',
   '详情',
   '对比',
@@ -233,7 +233,7 @@ export default function HistoryWorkspace() {
                 History List
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                最新生成的 Decision 显示在最上方
+                最新生成的决策显示在最上方
               </p>
               <div className="mt-5 grid gap-6">
                 {history.items.map((record) => (
@@ -325,7 +325,7 @@ function WorkspaceHeader({
                 <Link
                   key={step}
                   href={decisionHref}
-                  aria-label="返回 AI Decision"
+                  aria-label="返回 AI 决策"
                 >
                   {content}
                 </Link>
@@ -373,7 +373,7 @@ function HistorySummary({
           <History size={19} />
         </span>
         <div>
-          <h2 className="font-medium text-slate-200">History Summary</h2>
+          <h2 className="font-medium text-slate-200">历史概览</h2>
           <p className="mt-1 text-sm text-slate-500">当前会话保存的决策记录</p>
         </div>
       </div>
@@ -492,7 +492,7 @@ function DecisionRecordCard({
       </div>
 
       <section className="mt-6">
-        <h4 className="text-sm font-medium text-slate-300">Best Property</h4>
+        <h4 className="text-sm font-medium text-slate-300">最佳房源</h4>
         <div className="mt-3">
           {propertyError ? (
             <PropertyUnavailable
