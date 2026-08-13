@@ -188,6 +188,7 @@ def format_decision_context(context: DecisionContext) -> str:
 def build_decision_prompt(
     decision_input: DecisionInput,
     context: DecisionContext,
+    grounded_evidence: str | None = None,
 ) -> str:
     property_count = len(decision_input.properties)
     comparison_instruction = (
@@ -216,6 +217,14 @@ def build_decision_prompt(
     adaptive_section = (
         f"ADAPTIVE DECISION:\n{adaptive_text}\n\n" if adaptive_text is not None else ""
     )
+    grounded_section = (
+        "GROUNDED EVIDENCE:\n"
+        "This evidence is authoritative for the current decision and must "
+        "change the recommendation when it conflicts with model prior knowledge.\n"
+        f"{grounded_evidence}\n\n"
+        if grounded_evidence is not None
+        else ""
+    )
 
     return (
         "Decision Task:\n"
@@ -225,6 +234,7 @@ def build_decision_prompt(
         f"{properties_json}\n\n"
         f"{living_model_text}\n\n"
         f"{history_text}\n\n"
+        f"{grounded_section}"
         "Decision Context Priority Rules:\n"
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"
         "DECISION REASONING:\n"
