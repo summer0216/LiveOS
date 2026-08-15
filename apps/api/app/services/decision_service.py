@@ -10,6 +10,7 @@ from app.schemas.decision import (
     DecisionTradeOff,
     PropertyDecisionInput,
 )
+from app.services.commute_evidence import CommuteEvidence, get_commute_evidence
 from app.services.decision_context_builder import decision_context_builder
 from app.services.decision_record_service import decision_record_service
 from app.services.living_model_builder import living_model_builder
@@ -100,6 +101,54 @@ def apply_nearby_rent_evidence(
     )
 
 
+def apply_grounded_tradeoff(
+    result: DecisionResult,
+    rent_evidence: NearbyRentEvidence | None,
+    commute_evidence: CommuteEvidence | None,
+    budget: int | None,
+) -> DecisionResult:
+    result = apply_nearby_rent_evidence(result, rent_evidence, budget)
+    if (
+        rent_evidence is None
+        or commute_evidence is None
+        or budget is None
+        or not rent_evidence.supports_budget(budget)
+    ):
+        return result
+
+    tradeoff_reason = DecisionReason(
+        title="独居与通勤权衡",
+        description=(
+            f"附近独居租金约为 {rent_evidence.independent_min_rent}–"
+            f"{rent_evidence.independent_max_rent} 元/月，{budget} 元预算可行；"
+            f"但预计每日通勤约 {commute_evidence.commute_minutes} 分钟。"
+        ),
+    )
+    tradeoff = DecisionTradeOff(
+        title="独居与通勤取舍",
+        description=(
+            f"可以保持独立居住，但需要接受约 {commute_evidence.commute_minutes} 分钟通勤；"
+            "如果通勤优先级更高，建议重新选择区域。"
+        ),
+    )
+    reasons = [
+        reason
+        for reason in result.reasons
+        if reason.title not in {"附近独居租金证据", "独居与通勤权衡"}
+    ]
+    return result.model_copy(
+        update={
+            "summary": (
+                "独立居住可行，但需要接受约 "
+                f"{commute_evidence.commute_minutes} 分钟通勤。"
+                "如果通勤优先级高于独居，建议重新选择区域。"
+            ),
+            "reasons": [tradeoff_reason, *reasons][:4],
+            "trade_offs": [tradeoff, *result.trade_offs][:3],
+        }
+    )
+
+
 class DecisionService:
     def generate(self, conversation_id: str) -> DecisionResult:
         if not conversation_id:
@@ -120,6 +169,7 @@ class DecisionService:
             return waiting_decision("请先添加候选房源。")
 
         nearby_rent_evidence = get_nearby_rent_evidence(profile)
+        commute_evidence = get_commute_evidence(profile)
 
         try:
             decision_input = DecisionInput(
@@ -137,11 +187,15 @@ class DecisionService:
                 build_decision_prompt(
                     decision_input,
                     decision_context,
-                    grounded_evidence=(
-                        nearby_rent_evidence.prompt_context()
-                        if nearby_rent_evidence is not None
-                        else None
-                    ),
+                    grounded_evidence="\n".join(
+                        evidence.prompt_context()
+                        for evidence in (
+                            nearby_rent_evidence,
+                            commute_evidence,
+                        )
+                        if evidence is not None
+                    )
+                    or None,
                 ),
             )
             result = DecisionResult.model_validate_json(json_text)
@@ -153,9 +207,10 @@ class DecisionService:
             )
             return waiting_decision("AI 暂时无法完成当前决策，请稍后重试。")
 
-        result = apply_nearby_rent_evidence(
+        result = apply_grounded_tradeoff(
             result,
             nearby_rent_evidence,
+            commute_evidence,
             profile.budget,
         )
 
