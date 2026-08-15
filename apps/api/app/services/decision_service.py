@@ -149,6 +149,40 @@ def apply_grounded_tradeoff(
     )
 
 
+def build_next_actions(
+    result: DecisionResult,
+    rent_evidence: NearbyRentEvidence | None,
+    commute_evidence: CommuteEvidence | None,
+    budget: int | None,
+) -> DecisionResult:
+    if (
+        result.status != "ready"
+        or not result.summary
+        or rent_evidence is None
+        or commute_evidence is None
+        or budget is None
+        or not rent_evidence.supports_budget(budget)
+        or "独立居住可行" not in result.summary
+        or not any(
+            trade_off.title == "独居与通勤取舍"
+            and str(commute_evidence.commute_minutes) in trade_off.description
+            for trade_off in result.trade_offs
+        )
+    ):
+        return result
+
+    next_actions = (
+        f"下一步：优先比较{rent_evidence.area}约 {budget} 元的一居室。"
+        f"如果不能接受约 {commute_evidence.commute_minutes} 分钟通勤，"
+        "重新选择距离公司更近的区域；当前预算支持独立居住，暂不优先考虑合租。"
+    )
+    return result.model_copy(
+        update={
+            "summary": f"{result.summary} {next_actions}",
+        }
+    )
+
+
 class DecisionService:
     def generate(self, conversation_id: str) -> DecisionResult:
         if not conversation_id:
@@ -208,6 +242,12 @@ class DecisionService:
             return waiting_decision("AI 暂时无法完成当前决策，请稍后重试。")
 
         result = apply_grounded_tradeoff(
+            result,
+            nearby_rent_evidence,
+            commute_evidence,
+            profile.budget,
+        )
+        result = build_next_actions(
             result,
             nearby_rent_evidence,
             commute_evidence,

@@ -12,6 +12,7 @@ from app.services.commute_evidence import get_commute_evidence
 from app.services.decision_service import (
     apply_grounded_tradeoff,
     apply_nearby_rent_evidence,
+    build_next_actions,
 )
 from app.services.nearby_rent_evidence import get_nearby_rent_evidence
 
@@ -138,3 +139,47 @@ def test_multi_evidence_produces_one_tradeoff_decision() -> None:
     assert "重新选择区域" in grounded.summary
     assert grounded.reasons[0].title == "独居与通勤权衡"
     assert grounded.trade_offs[0].title == "独居与通勤取舍"
+
+    recommendation = build_next_actions(
+        grounded,
+        rent_evidence,
+        commute_evidence,
+        2200,
+    )
+
+    assert "下一步" in recommendation.summary
+    assert "一居室" in recommendation.summary
+    assert "65 分钟通勤" in recommendation.summary
+    assert "独立居住" in recommendation.summary
+    assert "合租" in recommendation.summary
+
+
+def test_next_actions_do_not_ignore_conflicting_decision() -> None:
+    profile = LivingProfile(
+        work_location="成都高新区合作路89号",
+        preferred_city="成都",
+        budget=2200,
+        family_size=1,
+    )
+    rent_evidence = get_nearby_rent_evidence(profile)
+    commute_evidence = get_commute_evidence(profile)
+    assert rent_evidence is not None
+    assert commute_evidence is not None
+
+    conflicting_decision = DecisionResult(
+        status="ready",
+        summary="当前信息不足以确认独立居住方案。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="待确认", description="需要更多信息。")],
+        trade_offs=[],
+        confidence=0.5,
+    )
+
+    recommendation = build_next_actions(
+        conflicting_decision,
+        rent_evidence,
+        commute_evidence,
+        2200,
+    )
+
+    assert recommendation == conflicting_decision
