@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
+  ArrowRight,
   AlertTriangle,
   Building2,
   Check,
@@ -49,6 +50,21 @@ type WorkspaceStatus =
   | 'error'
   | 'invalid-property'
   | 'missing-conversation';
+
+function splitDecisionSummary(summary: string | null): {
+  decision: string | null;
+  recommendation: string | null;
+} {
+  if (!summary?.trim()) {
+    return { decision: summary, recommendation: null };
+  }
+
+  const [decision, recommendation] = summary.split(' 下一步：', 2);
+  return {
+    decision: decision.trim(),
+    recommendation: recommendation?.trim() || null,
+  };
+}
 
 function getDecisionCoreState(status: WorkspaceStatus): AICoreState {
   if (status === 'loading') {
@@ -204,6 +220,7 @@ function DecisionWorkspaceView({
   onRetry: () => void;
 }) {
   const isLoading = status === 'loading';
+  const summarySections = splitDecisionSummary(decision?.summary ?? null);
 
   return (
     <main className="min-h-screen bg-[#050812] text-slate-100">
@@ -233,8 +250,14 @@ function DecisionWorkspaceView({
           />
           <DecisionSummary
             status={status}
-            summary={decision?.summary ?? null}
+            summary={summarySections.decision}
           />
+
+          {status === 'ready' && summarySections.recommendation && (
+            <ActionableRecommendation
+              recommendation={summarySections.recommendation}
+            />
+          )}
 
           {isLoading && <BestPropertyLoading />}
 
@@ -514,6 +537,39 @@ function DecisionSummary({
           </>
         )}
       </div>
+    </section>
+  );
+}
+
+function ActionableRecommendation({
+  recommendation,
+}: {
+  recommendation: string;
+}) {
+  return (
+    <section
+      aria-labelledby="actionable-recommendation-title"
+      className="mt-8 rounded-2xl border border-blue-500/20 bg-blue-500/[0.06] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.12)] sm:p-7"
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
+          <ArrowRight size={19} />
+        </span>
+        <div>
+          <h2
+            id="actionable-recommendation-title"
+            className="font-medium text-slate-200"
+          >
+            下一步行动
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            基于当前决策与权衡的可执行建议
+          </p>
+        </div>
+      </div>
+      <p className="mt-6 rounded-xl border border-blue-500/10 bg-black/10 px-5 py-5 text-sm leading-7 text-slate-300">
+        {recommendation}
+      </p>
     </section>
   );
 }

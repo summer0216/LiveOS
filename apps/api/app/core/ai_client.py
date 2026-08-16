@@ -1,9 +1,11 @@
 from collections.abc import Iterator
+from time import perf_counter
 from typing import Literal, TypedDict
 
 from openai import OpenAI, OpenAIError
 
 from app.core.config import settings
+from app.core.logger import logger
 
 MessageRole = Literal["system", "user", "assistant"]
 
@@ -44,6 +46,7 @@ class AIClient:
         messages: list[AIMessage],
     ) -> Iterator[str]:
 
+        started_at = perf_counter()
         try:
             stream = self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
@@ -51,7 +54,12 @@ class AIClient:
                 temperature=0.7,
                 stream=True,
             )
+            logger.warning(
+                "LLM streaming response opened elapsed_ms=%.1f",
+                (perf_counter() - started_at) * 1000,
+            )
 
+            first_token_logged = False
             for chunk in stream:
                 if not chunk.choices:
                     continue
@@ -59,9 +67,19 @@ class AIClient:
                 content = chunk.choices[0].delta.content
 
                 if content:
+                    if not first_token_logged:
+                        logger.warning(
+                            "LLM streaming first token elapsed_ms=%.1f",
+                            (perf_counter() - started_at) * 1000,
+                        )
+                        first_token_logged = True
                     yield content
 
         except OpenAIError as error:
+            logger.exception(
+                "LLM streaming request failed elapsed_ms=%.1f",
+                (perf_counter() - started_at) * 1000,
+            )
             raise RuntimeError(
                 f"LLM streaming request failed: {error}",
             ) from error

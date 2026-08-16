@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Iterator
+from time import perf_counter
 
 from app.models.conversation import (
     Conversation,
@@ -22,6 +23,7 @@ class ChatService:
         conversation_id: str,
         message: str,
     ) -> tuple[Conversation, list[ConversationMessage]]:
+        started_at = perf_counter()
         conversation = conversation_manager.get_or_create(
             conversation_id,
         )
@@ -29,6 +31,12 @@ class ChatService:
         conversation_manager.append_user_message(conversation_id, message)
         conversation = conversation_manager.get(conversation_id) or conversation
         history = conversation.get_messages()
+        logger.warning(
+            "Conversation history load conversation_id=%s messages=%d elapsed_ms=%.1f",
+            conversation_id,
+            len(history),
+            (perf_counter() - started_at) * 1000,
+        )
 
         return conversation, history
 
@@ -44,21 +52,39 @@ class ChatService:
         Profile 更新失败时不阻断正常聊天。
         """
 
+        started_at = perf_counter()
+        logger.warning(
+            "Profile intelligence start conversation_id=%s messages=%d",
+            conversation_id,
+            len(history),
+        )
         try:
             analysis = profile_intelligence.analyze(history)
+            logger.warning(
+                "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
+                conversation_id,
+                (perf_counter() - started_at) * 1000,
+            )
 
+            merge_started_at = perf_counter()
             profile_manager.merge(
                 conversation_id=conversation_id,
                 patch=analysis.patch,
                 latest_insights=analysis.insights,
+            )
+            logger.warning(
+                "Profile merge complete conversation_id=%s elapsed_ms=%.1f",
+                conversation_id,
+                (perf_counter() - merge_started_at) * 1000,
             )
 
             return analysis.insights
 
         except Exception:
             logger.exception(
-                "Failed to update living profile. conversation_id=%s",
+                "Failed to update living profile. conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,
+                (perf_counter() - started_at) * 1000,
             )
 
             return []
@@ -102,15 +128,32 @@ class ChatService:
 
         assistant_reply_parts: list[str] = []
 
+        runtime_started_at = perf_counter()
+        logger.warning("Runtime context build start conversation_id=%s", conversation_id)
+        stream_started = False
         for chunk in ai_runtime.chat_stream(
             history,
             profile_manager.get(conversation_id),
         ):
+            if not stream_started:
+                stream_started = True
+                logger.warning(
+                    "LLM streaming first token conversation_id=%s context_elapsed_ms=%.1f",
+                    conversation_id,
+                    (perf_counter() - runtime_started_at) * 1000,
+                )
             if not chunk:
                 continue
 
             assistant_reply_parts.append(chunk)
             yield chunk
+
+        if not stream_started:
+            logger.warning(
+                "LLM streaming completed without token conversation_id=%s context_elapsed_ms=%.1f",
+                conversation_id,
+                (perf_counter() - runtime_started_at) * 1000,
+            )
 
         assistant_reply = "".join(assistant_reply_parts)
 

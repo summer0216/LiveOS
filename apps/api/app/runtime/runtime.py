@@ -1,6 +1,8 @@
 from collections.abc import Iterator
+from time import perf_counter
 
 from app.core.ai_client import AIMessage, ai_client
+from app.core.logger import logger
 from app.models.conversation import ConversationMessage
 from app.models.profile import LivingProfile
 
@@ -102,7 +104,14 @@ class AIRuntime:
         living_profile: LivingProfile | None = None,
     ) -> Iterator[str]:
 
+        started_at = perf_counter()
         context = self.build_context(history, living_profile)
+        logger.warning(
+            "Runtime context build complete messages=%d elapsed_ms=%.1f",
+            len(history),
+            (perf_counter() - started_at) * 1000,
+        )
+        logger.warning("LLM streaming request start messages=%d", len(context))
         yield from ai_client.generate_stream(context)
 
 
