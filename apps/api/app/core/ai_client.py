@@ -15,6 +15,9 @@ class AIMessage(TypedDict):
     content: str
 
 
+JSON_REQUEST_TIMEOUT_SECONDS = 90.0
+
+
 class AIClient:
     def __init__(self) -> None:
         self.client = OpenAI(
@@ -89,7 +92,9 @@ class AIClient:
         prompt: str,
     ) -> str:
         try:
-            response = self.client.chat.completions.create(
+            response = self.client.with_options(
+                timeout=JSON_REQUEST_TIMEOUT_SECONDS,
+            ).chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
                     {

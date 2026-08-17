@@ -1,35 +1,26 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { Check } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 import AICore, {
     type AICoreState,
 } from '@/features/ai-entry/components/AICore';
 
-const JOURNEY_STEPS = [
-    '入口',
-    '对话',
-    '生活模型',
-    '工作台',
-    '详情',
-    '对比',
-    '决策',
-    '记忆',
-] as const;
-
 interface ConversationLayoutProps {
     children: ReactNode;
-    profileHref: string;
-    profileReady: boolean;
+    conversationId: string;
     coreState: AICoreState;
 }
 
 export default function ConversationLayout({
     children,
-    profileHref,
-    profileReady,
+    conversationId,
     coreState,
 }: ConversationLayoutProps) {
+    const propertyHref = conversationId
+        ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
+        : '/workspace/property';
+
     return (
         <main className="flex h-screen flex-col overflow-hidden bg-[#050812] text-slate-100">
             <header className="shrink-0 border-b border-white/[0.06] bg-[#050812]/95">
@@ -46,78 +37,21 @@ export default function ConversationLayout({
                         </span>
                     </Link>
 
-                    <nav
-                        aria-label="LiveOS 决策旅程"
-                        className="hidden min-w-0 flex-1 items-center justify-center xl:flex"
-                    >
-                        {JOURNEY_STEPS.map((step, index) => {
-                            const stepNumber = index + 1;
-                            const isComplete = stepNumber < 2;
-                            const isCurrent = stepNumber === 2;
-                            const isProfileStep = stepNumber === 3;
-
-                            const content = (
-                                <>
-                                    <span
-                                        className={[
-                                            'flex h-7 w-7 items-center justify-center rounded-full border text-xs',
-                                            isCurrent
-                                                ? 'border-blue-500 bg-blue-500 text-white'
-                                                : isComplete
-                                                  ? 'border-blue-500/70 bg-blue-500/10'
-                                                  : 'border-slate-800 bg-slate-900/70',
-                                        ].join(' ')}
-                                    >
-                                        {isComplete ? (
-                                            <Check size={14} />
-                                        ) : (
-                                            stepNumber
-                                        )}
-                                    </span>
-                                    <span>{step}</span>
-                                </>
-                            );
-
-                            return (
-                                <div
-                                    key={step}
-                                    className="flex items-center"
-                                >
-                                    {isProfileStep && profileReady ? (
-                                        <Link
-                                            href={profileHref}
-                                            className="flex items-center gap-2 text-sm text-slate-500 transition hover:text-blue-400"
-                                        >
-                                            {content}
-                                        </Link>
-                                    ) : (
-                                        <div
-                                            className={[
-                                                'flex items-center gap-2 text-sm',
-                                                isCurrent
-                                                    ? 'font-medium text-slate-100'
-                                                    : isComplete
-                                                      ? 'text-blue-400'
-                                                      : 'text-slate-600',
-                                            ].join(' ')}
-                                        >
-                                            {content}
-                                        </div>
-                                    )}
-
-                                    {index <
-                                        JOURNEY_STEPS.length - 1 && (
-                                        <span className="mx-3 h-px w-5 bg-slate-800" />
-                                    )}
-                                </div>
-                            );
-                        })}
+                    <nav aria-label="LiveOS 主导航" className="hidden items-center gap-6 xl:flex">
+                        <Link href={propertyHref} className="text-sm text-slate-400 transition hover:text-blue-400">
+                            候选房源
+                        </Link>
+                        <span className="text-sm text-slate-600">决策旅程</span>
                     </nav>
 
                     <div className="ml-auto flex shrink-0 items-center gap-3">
-                        <span className="hidden rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 sm:inline">
-                            工作台
-                        </span>
+                        <Link
+                            href={conversationId ? `/conversation?conversation_id=${encodeURIComponent(conversationId)}` : '/conversation'}
+                            className="hidden items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200 sm:flex"
+                        >
+                            <Plus size={15} />
+                            新对话
+                        </Link>
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-500 text-sm font-medium text-white">
                             我
                         </span>

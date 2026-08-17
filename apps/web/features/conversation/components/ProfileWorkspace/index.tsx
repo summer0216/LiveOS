@@ -1,10 +1,6 @@
-import Link from 'next/link';
 import {
-    ArrowRight,
     Building2,
-    CheckCircle2,
     Clock3,
-    Circle,
     MapPin,
     PawPrint,
     Users,
@@ -17,7 +13,6 @@ import type { LivingProfile } from '@/services/profile';
 interface ProfileWorkspaceProps {
     profile: LivingProfile | null;
     isLoading: boolean;
-    profileHref: string;
 }
 
 interface ProfileFieldItem {
@@ -112,14 +107,10 @@ function getProfileFieldItems(
 export default function ProfileWorkspace({
     profile,
     isLoading,
-    profileHref,
 }: ProfileWorkspaceProps) {
     const items = getProfileFieldItems(profile);
     const identifiedItems = items.filter(
         (item) => item.isIdentified,
-    );
-    const unknownItems = items.filter(
-        (item) => !item.isIdentified,
     );
 
     return (
@@ -127,7 +118,7 @@ export default function ProfileWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7">
                 <div className="flex items-center justify-between gap-4">
                     <h2 className="text-lg font-medium tracking-tight text-slate-100">
-                        生活模型
+                        Live Context
                     </h2>
                     <span
                         aria-live="polite"
@@ -178,99 +169,11 @@ export default function ProfileWorkspace({
                     )}
                 </div>
 
-                <section className="mt-6 rounded-xl border border-white/[0.08] bg-[#0b1020] p-5">
-                    <h3 className="font-mono text-xs tracking-[0.12em] text-blue-400">
-                        AI 洞察
-                    </h3>
-
-                    <div className="mt-4 space-y-5">
-                        {identifiedItems.length > 0 && (
-                            <InsightGroup
-                                title="已识别"
-                                items={identifiedItems}
-                                identified
-                            />
-                        )}
-
-                        {unknownItems.length > 0 && (
-                            <InsightGroup
-                                title="仍需了解"
-                                items={unknownItems}
-                                identified={false}
-                            />
-                        )}
-                    </div>
-                </section>
-            </div>
-
-            <div className="shrink-0 border-t border-white/[0.06] bg-[#060a14]/95 p-6">
-                {profile ? (
-                    <Link
-                        href={profileHref}
-                        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-500 text-sm font-medium text-white shadow-[0_10px_30px_rgba(59,105,255,0.22)] transition hover:bg-blue-400"
-                    >
-                        查看生活模型
-                        <ArrowRight size={16} />
-                    </Link>
-                ) : (
-                    <button
-                        type="button"
-                        disabled
-                        className="h-12 w-full cursor-not-allowed rounded-xl bg-slate-900 text-sm text-slate-700"
-                    >
-                        生活模型生成中
-                    </button>
-                )}
+                <p className="mt-6 text-xs leading-5 text-slate-600">
+                    如果情况有变化，直接告诉 LiveOS 即可。
+                </p>
             </div>
         </aside>
-    );
-}
-
-function InsightGroup({
-    title,
-    items,
-    identified,
-}: {
-    title: string;
-    items: ProfileFieldItem[];
-    identified: boolean;
-}) {
-    return (
-        <div>
-            <p className="text-[10px] font-medium tracking-[0.14em] text-slate-700">
-                {title}
-            </p>
-            <ul className="mt-2 space-y-2">
-                {items.map((item) => (
-                    <li
-                        key={item.key}
-                        className={[
-                            'flex items-center gap-2 text-xs',
-                            identified
-                                ? 'text-slate-400'
-                                : 'text-slate-600',
-                        ].join(' ')}
-                    >
-                        {identified ? (
-                            <CheckCircle2
-                                size={14}
-                                className="shrink-0 text-blue-400"
-                            />
-                        ) : (
-                            <Circle
-                                size={14}
-                                className="shrink-0 text-slate-700"
-                            />
-                        )}
-                        <span>
-                            {identified
-                                ? `已识别${item.label}`
-                                : `仍需了解${item.label}`}
-                        </span>
-                    </li>
-                ))}
-            </ul>
-        </div>
     );
 }
 
