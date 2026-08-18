@@ -18,7 +18,7 @@ router = APIRouter(
 logger = logging.getLogger(__name__)
 # Allow slow but valid model first-token/chunk delivery without removing the
 # protection against a genuinely stalled stream.
-STREAM_IDLE_TIMEOUT_SECONDS = 60.0
+STREAM_IDLE_TIMEOUT_SECONDS = 90.0
 STREAM_ERROR_MESSAGE = "抱歉，LiveOS 暂时无法完成回复，请稍后重试。"
 
 

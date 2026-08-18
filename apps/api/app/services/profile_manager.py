@@ -26,13 +26,31 @@ class ProfileManager:
         conversation_id: str,
         patch: LivingProfilePatch,
         latest_insights: list[str],
-    ) -> LivingProfile:
+    ) -> tuple[LivingProfile, bool]:
         profile = self.get_or_create(conversation_id)
+        previous_values = (
+            profile.work_location,
+            profile.budget,
+            profile.commute_minutes,
+            profile.preferred_city,
+            profile.family_size,
+            profile.has_pet,
+        )
 
         profile.apply_patch(patch)
         profile.latest_insights = latest_insights.copy()
 
-        return profile_store.save(conversation_id, profile)
+        saved_profile = profile_store.save(conversation_id, profile)
+        current_values = (
+            saved_profile.work_location,
+            saved_profile.budget,
+            saved_profile.commute_minutes,
+            saved_profile.preferred_city,
+            saved_profile.family_size,
+            saved_profile.has_pet,
+        )
+
+        return saved_profile, previous_values != current_values
 
     def delete(
         self,

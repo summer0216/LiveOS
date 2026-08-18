@@ -22,7 +22,7 @@ interface StreamMessageOptions {
     onChunk: (chunk: string) => void;
 }
 
-const STREAM_READ_TIMEOUT_MS = 75_000;
+const STREAM_READ_TIMEOUT_MS = 90_000;
 
 export async function streamMessage({
     conversationId,

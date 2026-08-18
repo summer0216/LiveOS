@@ -29,6 +29,24 @@ interface ConversationMessage {
   content: string;
 }
 
+const PROFILE_VALUE_FIELDS = [
+  'work_location',
+  'budget',
+  'commute_minutes',
+  'preferred_city',
+  'family_size',
+  'has_pet',
+] as const;
+
+function hasMeaningfulProfileChange(
+  previousProfile: LivingProfile,
+  currentProfile: LivingProfile,
+): boolean {
+  return PROFILE_VALUE_FIELDS.some(
+    (field) => previousProfile[field] !== currentProfile[field],
+  );
+}
+
 const STREAM_ERROR_MESSAGE =
   '抱歉，LiveOS 暂时无法完成回复，请稍后重试。';
 
@@ -76,11 +94,13 @@ export default function ConversationFeature() {
         await getLivingProfile(conversationId);
 
       setProfile(livingProfile);
+      return livingProfile;
     } catch (error: unknown) {
       console.error(
         'Failed to load living profile:',
         error,
       );
+      return undefined;
     } finally {
       setIsProfileLoading(false);
     }
@@ -92,11 +112,19 @@ export default function ConversationFeature() {
     }
 
     try {
-      setDecision(await getDecision(conversationId));
+      const refreshedDecision = await getDecision(conversationId);
+      setDecision((currentDecision) => {
+        if (refreshedDecision.status === 'ready') {
+          return refreshedDecision;
+        }
+
+        return currentDecision?.status === 'ready'
+          ? currentDecision
+          : refreshedDecision;
+      });
     } catch (error: unknown) {
       // Decision availability must not block the existing conversation flow.
       console.error('Failed to load current decision:', error);
-      setDecision(null);
     }
   }, [conversationId]);
 
@@ -134,7 +162,10 @@ export default function ConversationFeature() {
       setIsThinking(true);
       setIsStreaming(true);
       try {
-        let hasRefreshedProfile = false;
+        const profileBeforeTurn = profile;
+        let profileRefreshPromise:
+          | ReturnType<typeof loadProfile>
+          | null = null;
 
         await streamMessage({
           conversationId,
@@ -146,10 +177,8 @@ export default function ConversationFeature() {
              * 后端在开始 Streaming 前已经完成 Profile 更新。
              * 因此首个 Chunk 到达时即可刷新 Workspace。
              */
-            if (!hasRefreshedProfile) {
-              hasRefreshedProfile = true;
-              void loadProfile();
-              void loadDecision();
+            if (!profileRefreshPromise) {
+              profileRefreshPromise = loadProfile();
             }
 
             setMessages((currentMessages) => {
@@ -181,14 +210,23 @@ export default function ConversationFeature() {
           },
         });
 
-        /*
-         * 若模型没有返回任何 Chunk，也做一次兜底刷新。
-         */
-        if (!hasRefreshedProfile) {
-          await loadProfile();
-        }
+        const refreshedProfile = await (
+          profileRefreshPromise ?? loadProfile()
+        );
+        const shouldRefreshDecision = Boolean(
+          refreshedProfile
+          && (
+            profileBeforeTurn === null
+            || hasMeaningfulProfileChange(
+              profileBeforeTurn,
+              refreshedProfile,
+            )
+          ),
+        );
 
-        await loadDecision();
+        if (shouldRefreshDecision) {
+          await loadDecision();
+        }
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
 
@@ -207,7 +245,7 @@ export default function ConversationFeature() {
       }
 
     },
-    [conversationId, isStreaming, loadDecision, loadProfile],
+    [conversationId, isStreaming, loadDecision, loadProfile, profile],
   );
 
   useEffect(() => {

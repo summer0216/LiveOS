@@ -44,7 +44,7 @@ class ChatService:
         self,
         conversation_id: str,
         history: list[ConversationMessage],
-    ) -> None:
+    ) -> bool:
         """
         从当前会话历史中生成 Profile Analysis，
         并合并到对应的 Living Profile。
@@ -67,18 +67,19 @@ class ChatService:
             )
 
             merge_started_at = perf_counter()
-            profile_manager.merge(
+            _profile, profile_changed = profile_manager.merge(
                 conversation_id=conversation_id,
                 patch=analysis.patch,
                 latest_insights=analysis.insights,
             )
             logger.warning(
-                "Profile merge complete conversation_id=%s elapsed_ms=%.1f",
+                "Profile merge complete conversation_id=%s changed=%s elapsed_ms=%.1f",
                 conversation_id,
+                profile_changed,
                 (perf_counter() - merge_started_at) * 1000,
             )
 
-            return analysis.insights
+            return profile_changed
 
         except Exception:
             logger.exception(
@@ -87,7 +88,7 @@ class ChatService:
                 (perf_counter() - started_at) * 1000,
             )
 
-            return []
+            return False
 
     def chat(
         self,
