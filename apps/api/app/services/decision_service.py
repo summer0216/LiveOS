@@ -172,9 +172,8 @@ def build_next_actions(
         return result
 
     next_actions = (
-        f"下一步：优先比较{rent_evidence.area}约 {budget} 元的一居室。"
-        f"如果不能接受约 {commute_evidence.commute_minutes} 分钟通勤，"
-        "重新选择距离公司更近的区域；当前预算支持独立居住，暂不优先考虑合租。"
+        "下一步：先验证一次工作日高峰通勤，"
+        f"确认约 {commute_evidence.commute_minutes} 分钟是否可以接受。"
     )
     return result.model_copy(
         update={

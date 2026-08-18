@@ -4,6 +4,9 @@ const renderApiUrl = process.env.RENDER_API_URL?.replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
     output: "standalone",
+    experimental: {
+        proxyTimeout: 100_000,
+    },
     async rewrites() {
         if (!renderApiUrl) {
             return [];

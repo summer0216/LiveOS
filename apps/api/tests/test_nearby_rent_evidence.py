@@ -147,11 +147,12 @@ def test_multi_evidence_produces_one_tradeoff_decision() -> None:
         2200,
     )
 
-    assert "下一步" in recommendation.summary
-    assert "一居室" in recommendation.summary
-    assert "65 分钟通勤" in recommendation.summary
-    assert "独立居住" in recommendation.summary
-    assert "合租" in recommendation.summary
+    assert recommendation.summary is not None
+    decision, primary_action = recommendation.summary.split("下一步：", 1)
+    assert decision.strip() == grounded.summary
+    assert primary_action == "先验证一次工作日高峰通勤，确认约 65 分钟是否可以接受。"
+    assert "重新选择区域" not in primary_action
+    assert "合租" not in primary_action
 
 
 def test_next_actions_do_not_ignore_conflicting_decision() -> None:
