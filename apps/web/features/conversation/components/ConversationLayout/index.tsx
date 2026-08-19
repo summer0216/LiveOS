@@ -20,6 +20,9 @@ export default function ConversationLayout({
     const propertyHref = conversationId
         ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
         : '/workspace/property';
+    const journeyHref = conversationId
+        ? `/workspace/history?conversation_id=${encodeURIComponent(conversationId)}`
+        : '/workspace/history';
 
     return (
         <main className="flex h-screen flex-col overflow-hidden bg-[#050812] text-slate-100">
@@ -41,7 +44,9 @@ export default function ConversationLayout({
                         <Link href={propertyHref} className="text-sm text-slate-400 transition hover:text-blue-400">
                             候选房源
                         </Link>
-                        <span className="text-sm text-slate-600">决策旅程</span>
+                        <Link href={journeyHref} className="text-sm text-slate-400 transition hover:text-blue-400">
+                            决策旅程
+                        </Link>
                     </nav>
 
                     <div className="ml-auto flex shrink-0 items-center gap-3">

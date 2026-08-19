@@ -15,6 +15,12 @@ Extraction rules:
 5. Use null for fields that are not explicitly provided.
 6. Return valid JSON only.
 7. Do not include Markdown, explanations, or additional text.
+8. commute_minutes is only the user's preferred or maximum acceptable commute.
+   Never set it from an observed or measured trip duration.
+9. Analyze only the latest user turn for decision_relevant_feedback. Feedback is
+   relevant when it reports bounded new reality learned from acting on the
+   current housing decision, or evaluates that reality as acceptable or
+   unacceptable. A generic acknowledgement is not relevant.
 
 Return exactly this JSON structure:
 
@@ -24,7 +30,13 @@ Return exactly this JSON structure:
   "commute_minutes": integer | null,
   "preferred_city": string | null,
   "family_size": integer | null,
-  "has_pet": boolean | null
+  "has_pet": boolean | null,
+  "decision_relevant_feedback": {
+    "relevant": boolean,
+    "observation": string | null,
+    "judgment": "acceptable" | "unacceptable" | null,
+    "observed_commute_minutes": integer | null
+  }
 }
 """.strip()
 

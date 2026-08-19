@@ -2,6 +2,7 @@ from pydantic import ValidationError
 
 from app.core.ai_client import ai_client
 from app.core.logger import logger
+from app.models.decision_feedback import DecisionRelevantFeedback
 from app.runtime.decision import build_decision_prompt
 from app.schemas.decision import (
     DecisionInput,
@@ -154,7 +155,28 @@ def build_next_actions(
     rent_evidence: NearbyRentEvidence | None,
     commute_evidence: CommuteEvidence | None,
     budget: int | None,
+    current_feedback: DecisionRelevantFeedback | None = None,
 ) -> DecisionResult:
+    if (
+        result.status == "ready"
+        and result.summary
+        and current_feedback is not None
+        and current_feedback.relevant
+        and current_feedback.observed_commute_minutes is not None
+    ):
+        observed_minutes = current_feedback.observed_commute_minutes
+        if current_feedback.judgment == "unacceptable":
+            next_action = (
+                "下一步：优先比较通勤时间更短的备选区域，"
+                f"先排除实测通勤约 {observed_minutes} 分钟的方案。"
+            )
+        else:
+            next_action = (
+                "下一步：继续比较当前区域的具体房源，"
+                "优先核实租金和房源条件。"
+            )
+        return result.model_copy(update={"summary": f"{result.summary} {next_action}"})
+
     if (
         result.status != "ready"
         or not result.summary
@@ -178,6 +200,61 @@ def build_next_actions(
     return result.model_copy(
         update={
             "summary": f"{result.summary} {next_actions}",
+        }
+    )
+
+
+def apply_decision_feedback(
+    result: DecisionResult,
+    feedback: DecisionRelevantFeedback | None,
+) -> DecisionResult:
+    if (
+        result.status != "ready"
+        or feedback is None
+        or not feedback.relevant
+        or feedback.observed_commute_minutes is None
+    ):
+        return result
+
+    observed_minutes = feedback.observed_commute_minutes
+    feedback_reason = DecisionReason(
+        title="实际通勤反馈",
+        description=feedback.observation or f"实测通勤约 {observed_minutes} 分钟。",
+    )
+    remaining_reasons = [
+        reason for reason in result.reasons if reason.title != "实际通勤反馈"
+    ]
+
+    if feedback.judgment == "unacceptable":
+        summary = (
+            f"实测通勤约 {observed_minutes} 分钟且无法接受，"
+            "当前区域方案不再适合，应优先重新选择通勤更短的区域。"
+        )
+        trade_off = DecisionTradeOff(
+            title="独居与实际通勤取舍",
+            description=(
+                f"独立居住仍可能可行，但实测约 {observed_minutes} 分钟通勤已被明确拒绝，"
+                "当前应优先调整区域。"
+            ),
+        )
+    else:
+        summary = (
+            f"实测约 {observed_minutes} 分钟通勤且可以接受，"
+            "当前独立居住方向可以继续，再比较具体房源条件。"
+        )
+        trade_off = DecisionTradeOff(
+            title="独居与实际通勤取舍",
+            description=(
+                f"用户已确认可以接受实测约 {observed_minutes} 分钟通勤，"
+                "当前无需仅因通勤放弃独立居住方向。"
+            ),
+        )
+
+    return result.model_copy(
+        update={
+            "summary": summary,
+            "reasons": [feedback_reason, *remaining_reasons][:4],
+            "trade_offs": [trade_off, *result.trade_offs][:3],
         }
     )
 
@@ -246,11 +323,16 @@ class DecisionService:
             commute_evidence,
             profile.budget,
         )
+        result = apply_decision_feedback(
+            result,
+            decision_context.current_feedback,
+        )
         result = build_next_actions(
             result,
             nearby_rent_evidence,
             commute_evidence,
             profile.budget,
+            decision_context.current_feedback,
         )
 
         if result.status == "waiting":

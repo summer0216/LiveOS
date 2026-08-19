@@ -9,6 +9,7 @@ from app.models.conversation import (
 from app.models.property import Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_feedback_context import decision_feedback_context
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -72,6 +73,10 @@ class ChatService:
                 patch=analysis.patch,
                 latest_insights=analysis.insights,
             )
+            decision_feedback_context.set(
+                conversation_id,
+                analysis.decision_feedback,
+            )
             logger.warning(
                 "Profile merge complete conversation_id=%s changed=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -82,6 +87,7 @@ class ChatService:
             return profile_changed
 
         except Exception:
+            decision_feedback_context.clear(conversation_id)
             logger.exception(
                 "Failed to update living profile. conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,

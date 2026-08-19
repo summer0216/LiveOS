@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.decision_feedback import DecisionRelevantFeedback
 from app.runtime.memory_context import DecisionMemoryContext
 from app.schemas.decision_record import DecisionRecord
 
@@ -19,3 +20,4 @@ class DecisionContext(BaseModel):
     memory_context: DecisionMemoryContext = Field(
         default_factory=empty_memory_context,
     )
+    current_feedback: DecisionRelevantFeedback | None = None

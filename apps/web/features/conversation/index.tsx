@@ -11,14 +11,8 @@ import MessageBubble from './components/MessageBubble';
 import ThinkingIndicator from './components/ThinkingIndicator';
 import ProfileWorkspace from './components/ProfileWorkspace';
 
-import {
-  getLivingProfile,
-  type LivingProfile,
-} from '@/services/profile';
-import {
-  getDecision,
-  type DecisionResult,
-} from '@/services/decision';
+import { getLivingProfile, type LivingProfile } from '@/services/profile';
+import { getDecision, type DecisionResult } from '@/services/decision';
 import { createClientId } from '@/lib/createClientId';
 
 type MessageRole = 'user' | 'assistant';
@@ -47,8 +41,7 @@ function hasMeaningfulProfileChange(
   );
 }
 
-const STREAM_ERROR_MESSAGE =
-  '抱歉，LiveOS 暂时无法完成回复，请稍后重试。';
+const STREAM_ERROR_MESSAGE = '抱歉，LiveOS 暂时无法完成回复，请稍后重试。';
 
 const WELCOME_MESSAGE: ConversationMessage = {
   id: 'liveos-welcome',
@@ -60,14 +53,13 @@ const WELCOME_MESSAGE: ConversationMessage = {
 export default function ConversationFeature() {
   const searchParams = useSearchParams();
 
-  const conversationId =
-    searchParams.get('conversation_id') ?? '';
+  const conversationId = searchParams.get('conversation_id') ?? '';
 
   const initialMessage = searchParams.get('message') ?? '';
 
-  const [messages, setMessages] = useState<ConversationMessage[]>(
-    [WELCOME_MESSAGE],
-  );
+  const [messages, setMessages] = useState<ConversationMessage[]>([
+    WELCOME_MESSAGE,
+  ]);
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -90,16 +82,12 @@ export default function ConversationFeature() {
     }
     setIsProfileLoading(true);
     try {
-      const livingProfile =
-        await getLivingProfile(conversationId);
+      const livingProfile = await getLivingProfile(conversationId);
 
       setProfile(livingProfile);
       return livingProfile;
     } catch (error: unknown) {
-      console.error(
-        'Failed to load living profile:',
-        error,
-      );
+      console.error('Failed to load living profile:', error);
       return undefined;
     } finally {
       setIsProfileLoading(false);
@@ -153,19 +141,15 @@ export default function ConversationFeature() {
 
       const assistantMessageId = createClientId();
 
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        userMessage,
-      ]);
+      setMessages((currentMessages) => [...currentMessages, userMessage]);
 
       setHasRuntimeError(false);
       setIsThinking(true);
       setIsStreaming(true);
       try {
         const profileBeforeTurn = profile;
-        let profileRefreshPromise:
-          | ReturnType<typeof loadProfile>
-          | null = null;
+        let profileRefreshPromise: ReturnType<typeof loadProfile> | null = null;
+        let hasDecisionRelevantFeedback = false;
 
         await streamMessage({
           conversationId,
@@ -182,10 +166,9 @@ export default function ConversationFeature() {
             }
 
             setMessages((currentMessages) => {
-              const assistantMessageExists =
-                currentMessages.some(
-                  (item) => item.id === assistantMessageId,
-                );
+              const assistantMessageExists = currentMessages.some(
+                (item) => item.id === assistantMessageId,
+              );
 
               if (!assistantMessageExists) {
                 return [
@@ -201,30 +184,26 @@ export default function ConversationFeature() {
               return currentMessages.map((item) =>
                 item.id === assistantMessageId
                   ? {
-                    ...item,
-                    content: item.content + chunk,
-                  }
+                      ...item,
+                      content: item.content + chunk,
+                    }
                   : item,
               );
             });
           },
+          onDecisionRelevantFeedback: () => {
+            hasDecisionRelevantFeedback = true;
+          },
         });
 
-        const refreshedProfile = await (
-          profileRefreshPromise ?? loadProfile()
-        );
+        const refreshedProfile = await (profileRefreshPromise ?? loadProfile());
         const shouldRefreshDecision = Boolean(
-          refreshedProfile
-          && (
-            profileBeforeTurn === null
-            || hasMeaningfulProfileChange(
-              profileBeforeTurn,
-              refreshedProfile,
-            )
-          ),
+          refreshedProfile &&
+          (profileBeforeTurn === null ||
+            hasMeaningfulProfileChange(profileBeforeTurn, refreshedProfile)),
         );
 
-        if (shouldRefreshDecision) {
+        if (shouldRefreshDecision || hasDecisionRelevantFeedback) {
           await loadDecision();
         }
       } catch (error: unknown) {
@@ -243,27 +222,18 @@ export default function ConversationFeature() {
         setIsThinking(false);
         setIsStreaming(false);
       }
-
     },
     [conversationId, isStreaming, loadDecision, loadProfile, profile],
   );
 
   useEffect(() => {
-    if (
-      !initialMessage ||
-      !conversationId ||
-      initialMessageSentRef.current
-    ) {
+    if (!initialMessage || !conversationId || initialMessageSentRef.current) {
       return;
     }
 
     initialMessageSentRef.current = true;
     void sendConversationMessage(initialMessage);
-  }, [
-    conversationId,
-    initialMessage,
-    sendConversationMessage,
-  ]);
+  }, [conversationId, initialMessage, sendConversationMessage]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -272,8 +242,8 @@ export default function ConversationFeature() {
     });
   }, [messages, isThinking]);
 
-  const isInitialTurnStarting = Boolean(initialMessage)
-    && messages.length === 1;
+  const isInitialTurnStarting =
+    Boolean(initialMessage) && messages.length === 1;
 
   return (
     <ConversationLayout
@@ -297,7 +267,7 @@ export default function ConversationFeature() {
               <CurrentProblem profile={profile} />
               <LivingState profile={profile} decision={decision} />
 
-              <p className="mb-4 mt-10 font-mono text-[10px] tracking-[0.16em] text-slate-600">
+              <p className="mt-10 mb-4 font-mono text-[10px] tracking-[0.16em] text-slate-600">
                 RECENT CONVERSATION
               </p>
               {messages.map((message) => (
@@ -326,10 +296,7 @@ export default function ConversationFeature() {
         </section>
 
         <div className="hidden min-h-0 xl:block">
-          <ProfileWorkspace
-            profile={profile}
-            isLoading={isProfileLoading}
-          />
+          <ProfileWorkspace profile={profile} isLoading={isProfileLoading} />
         </div>
       </div>
     </ConversationLayout>
@@ -341,8 +308,14 @@ function CurrentProblem({ profile }: { profile: LivingProfile | null }) {
   const title = location ? `${location}租房` : '当前居住问题';
 
   return (
-    <section aria-labelledby="current-problem" className="border-b border-white/[0.06] pb-7">
-      <p id="current-problem" className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
+    <section
+      aria-labelledby="current-problem"
+      className="border-b border-white/[0.06] pb-7"
+    >
+      <p
+        id="current-problem"
+        className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+      >
         CURRENT PROBLEM
       </p>
       <h1 className="mt-3 text-2xl font-medium tracking-tight text-slate-100 sm:text-3xl">
@@ -371,22 +344,33 @@ function LivingState({
     <section aria-labelledby="living-state" className="pt-8">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p id="living-state" className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
+          <p
+            id="living-state"
+            className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+          >
             {isDecision ? 'CURRENT DECISION' : 'CURRENT UNDERSTANDING'}
           </p>
           <h2 className="mt-2 text-xl font-medium tracking-tight text-slate-100">
             {isDecision ? '当前判断' : 'LiveOS 正在理解你的居住需求'}
           </h2>
         </div>
-        <span className="text-xs text-slate-600">{isDecision ? 'Decision' : 'Understanding'}</span>
+        <span className="text-xs text-slate-600">
+          {isDecision ? 'Decision' : 'Understanding'}
+        </span>
       </div>
 
       {isDecision ? (
         <div className="mt-5 space-y-5">
-          <p className="max-w-3xl text-base leading-7 text-slate-300">{summaryParts[0]}</p>
+          <p className="max-w-3xl text-base leading-7 text-slate-300">
+            {summaryParts[0]}
+          </p>
           {reason && <StateItem label="主要依据" value={reason.description} />}
-          {tradeOff && <StateItem label="主要取舍" value={tradeOff.description} />}
-          {summaryParts[1] && <StateItem label="NEXT" value={summaryParts[1]} />}
+          {tradeOff && (
+            <StateItem label="主要取舍" value={tradeOff.description} />
+          )}
+          {summaryParts[1] && (
+            <StateItem label="NEXT" value={summaryParts[1]} />
+          )}
         </div>
       ) : (
         <div className="mt-5 max-w-3xl space-y-3 text-sm leading-6 text-slate-400">
@@ -401,7 +385,9 @@ function LivingState({
 function StateItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-l border-blue-500/30 pl-4">
-      <p className="font-mono text-[10px] tracking-[0.12em] text-slate-600">{label}</p>
+      <p className="font-mono text-[10px] tracking-[0.12em] text-slate-600">
+        {label}
+      </p>
       <p className="mt-1 text-sm leading-6 text-slate-400">{value}</p>
     </div>
   );
@@ -411,9 +397,13 @@ function getUnderstandingCopy(profile: LivingProfile | null) {
   const location = profile?.work_location || profile?.preferred_city;
   const details = [
     location ? `你正在寻找${location}附近的居住方案。` : null,
-    typeof profile?.budget === 'number' ? `预算约 ¥${profile.budget.toLocaleString('zh-CN')}` : null,
+    typeof profile?.budget === 'number'
+      ? `预算约 ¥${profile.budget.toLocaleString('zh-CN')}`
+      : null,
     profile?.family_size === 1 ? '倾向独立居住' : null,
-    typeof profile?.commute_minutes === 'number' ? `通勤希望 ≤${profile.commute_minutes} 分钟` : null,
+    typeof profile?.commute_minutes === 'number'
+      ? `通勤希望 ≤${profile.commute_minutes} 分钟`
+      : null,
   ].filter(Boolean);
 
   return details.length > 0

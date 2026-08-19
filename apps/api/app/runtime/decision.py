@@ -185,6 +185,22 @@ def format_decision_context(context: DecisionContext) -> str:
     )
 
 
+def format_current_feedback(context: DecisionContext) -> str:
+    feedback = context.current_feedback
+    if feedback is None:
+        return "Current Decision-Relevant Feedback:\nNone."
+
+    payload = json.dumps(feedback.model_dump(mode="json"), ensure_ascii=False)
+    return (
+        "Current Decision-Relevant Feedback:\n"
+        "This bounded meaning comes from the latest user turn. Treat an "
+        "observed commute as current decision evidence, not as the user's "
+        "preferred commute limit. The user's acceptance judgment must influence "
+        "the current decision.\n"
+        f"{payload}"
+    )
+
+
 def build_decision_prompt(
     decision_input: DecisionInput,
     context: DecisionContext,
@@ -206,6 +222,7 @@ def build_decision_prompt(
         ensure_ascii=False,
     )
     history_text = format_decision_context(context)
+    feedback_text = format_current_feedback(context)
     living_model_text = format_living_model_section(
         decision_input.living_model,
     )
@@ -234,6 +251,7 @@ def build_decision_prompt(
         f"{properties_json}\n\n"
         f"{living_model_text}\n\n"
         f"{history_text}\n\n"
+        f"{feedback_text}\n\n"
         f"{grounded_section}"
         "Decision Context Priority Rules:\n"
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"

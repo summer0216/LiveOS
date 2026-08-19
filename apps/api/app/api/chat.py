@@ -10,6 +10,7 @@ from app.api.ownership import COOKIE_NAME, anonymous_user_id, set_anonymous_cook
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_feedback_context import decision_feedback_context
 
 router = APIRouter(
     prefix="/chat",
@@ -22,12 +23,16 @@ STREAM_IDLE_TIMEOUT_SECONDS = 90.0
 STREAM_ERROR_MESSAGE = "抱歉，LiveOS 暂时无法完成回复，请稍后重试。"
 
 
-def _stream_events(chunks: Iterator[str]) -> Iterator[str]:
+def _stream_events(
+    chunks: Iterator[str],
+    conversation_id: str | None = None,
+) -> Iterator[str]:
     # Flush the response headers before the first model token is available.
     yield ": connected\n\n"
 
     executor = ThreadPoolExecutor(max_workers=1)
     iterator = iter(chunks)
+    feedback_event_sent = False
     try:
         while True:
             future = executor.submit(next, iterator)
@@ -45,6 +50,13 @@ def _stream_events(chunks: Iterator[str]) -> Iterator[str]:
                     f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
                 )
                 break
+            if (
+                not feedback_event_sent
+                and conversation_id is not None
+                and decision_feedback_context.is_relevant(conversation_id)
+            ):
+                feedback_event_sent = True
+                yield "event: decision-feedback\ndata: true\n\n"
             yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
     except Exception:
         logger.exception("Streaming chat failed")
@@ -82,7 +94,7 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
     )
 
     stream_response = StreamingResponse(
-        _stream_events(generator),
+        _stream_events(generator, request.conversation_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
