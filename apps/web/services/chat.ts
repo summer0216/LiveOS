@@ -21,6 +21,34 @@ interface StreamMessageOptions {
   message: string;
   onChunk: (chunk: string) => void;
   onDecisionRelevantFeedback?: () => void;
+  onDecisionChange?: (change: DecisionChange) => void;
+}
+
+export interface DecisionChangeCause {
+  source: 'PROFILE_MUTATION' | 'DECISION_RELEVANT_FEEDBACK';
+  field?: string;
+  operation?: 'SET' | 'CLEAR';
+  before?: string | number | boolean | null;
+  after?: string | number | boolean | null;
+  observation?: string;
+  judgment?: 'acceptable' | 'unacceptable' | null;
+  observed_commute_minutes?: number | null;
+}
+
+export interface DecisionChange {
+  causes: DecisionChangeCause[];
+  explanation: string;
+}
+
+function isDecisionChange(value: unknown): value is DecisionChange {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<DecisionChange>;
+  return (
+    Array.isArray(candidate.causes) &&
+    candidate.causes.length > 0 &&
+    typeof candidate.explanation === 'string' &&
+    candidate.explanation.trim().length > 0
+  );
 }
 
 const STREAM_READ_TIMEOUT_MS = 90_000;
@@ -30,6 +58,7 @@ export async function streamMessage({
   message,
   onChunk,
   onDecisionRelevantFeedback,
+  onDecisionChange,
 }: StreamMessageOptions): Promise<void> {
   const request: ChatRequest = {
     conversation_id: conversationId,
@@ -74,6 +103,13 @@ export async function streamMessage({
       }
 
       const chunk: unknown = JSON.parse(data.slice(6));
+      if (eventType === 'event: decision-change') {
+        if (isDecisionChange(chunk)) {
+          onDecisionChange?.(chunk);
+          continue;
+        }
+        throw new Error('Streaming API returned an invalid decision change.');
+      }
       if (eventType === 'event: decision-feedback') {
         if (chunk === true) {
           onDecisionRelevantFeedback?.();

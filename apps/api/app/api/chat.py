@@ -10,6 +10,10 @@ from app.api.ownership import COOKIE_NAME, anonymous_user_id, set_anonymous_cook
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_change import (
+    decision_change_context,
+    decision_change_payload,
+)
 from app.services.decision_feedback_context import decision_feedback_context
 
 router = APIRouter(
@@ -32,6 +36,7 @@ def _stream_events(
 
     executor = ThreadPoolExecutor(max_workers=1)
     iterator = iter(chunks)
+    change_event_sent = False
     feedback_event_sent = False
     try:
         while True:
@@ -50,6 +55,14 @@ def _stream_events(
                     f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
                 )
                 break
+            if not change_event_sent and conversation_id is not None:
+                change_event_sent = True
+                causes = decision_change_context.consume(conversation_id)
+                if causes:
+                    yield (
+                        "event: decision-change\n"
+                        f"data: {json.dumps(decision_change_payload(causes), ensure_ascii=False)}\n\n"
+                    )
             if (
                 not feedback_event_sent
                 and conversation_id is not None
@@ -65,6 +78,8 @@ def _stream_events(
             f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
         )
     finally:
+        if conversation_id is not None:
+            decision_change_context.clear(conversation_id)
         executor.shutdown(wait=False, cancel_futures=True)
 
 

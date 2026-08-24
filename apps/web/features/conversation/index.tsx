@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import { streamMessage } from '@/services/chat';
+import { streamMessage, type DecisionChange } from '@/services/chat';
 
 import ConversationComposer from './components/ConversationComposer';
 import ConversationLayout from './components/ConversationLayout';
@@ -69,6 +69,9 @@ export default function ConversationFeature() {
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [decision, setDecision] = useState<DecisionResult | null>(null);
+  const [changeExplanation, setChangeExplanation] = useState<string | null>(
+    null,
+  );
 
   const initialMessageSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -97,7 +100,7 @@ export default function ConversationFeature() {
 
   const refreshDecision = useCallback(async () => {
     if (!conversationId) {
-      return;
+      return false;
     }
 
     try {
@@ -111,9 +114,11 @@ export default function ConversationFeature() {
           ? currentDecision
           : refreshedDecision;
       });
+      return true;
     } catch (error: unknown) {
       // Decision availability must not block the existing conversation flow.
       console.error('Failed to load current decision:', error);
+      return false;
     }
   }, [conversationId]);
 
@@ -160,12 +165,14 @@ export default function ConversationFeature() {
       setMessages((currentMessages) => [...currentMessages, userMessage]);
 
       setHasRuntimeError(false);
+      setChangeExplanation(null);
       setIsThinking(true);
       setIsStreaming(true);
       try {
         const profileBeforeTurn = profile;
         let profileRefreshPromise: ReturnType<typeof loadProfile> | null = null;
         let hasDecisionRelevantFeedback = false;
+        const decisionChanges: DecisionChange[] = [];
 
         await streamMessage({
           conversationId,
@@ -210,6 +217,9 @@ export default function ConversationFeature() {
           onDecisionRelevantFeedback: () => {
             hasDecisionRelevantFeedback = true;
           },
+          onDecisionChange: (change) => {
+            decisionChanges.push(change);
+          },
         });
 
         const refreshedProfile = await (profileRefreshPromise ?? loadProfile());
@@ -220,7 +230,10 @@ export default function ConversationFeature() {
         );
 
         if (shouldRefreshDecision || hasDecisionRelevantFeedback) {
-          await refreshDecision();
+          const refreshed = await refreshDecision();
+          if (refreshed && decisionChanges.length > 0) {
+            setChangeExplanation(decisionChanges[0].explanation);
+          }
         }
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
@@ -281,6 +294,7 @@ export default function ConversationFeature() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 lg:px-12">
             <div className="mx-auto w-full max-w-5xl">
               <CurrentProblem profile={profile} />
+              <DecisionChangeExplanation explanation={changeExplanation} />
               <LivingState profile={profile} decision={decision} />
 
               <p className="mt-10 mb-4 font-mono text-[10px] tracking-[0.16em] text-slate-600">
@@ -316,6 +330,31 @@ export default function ConversationFeature() {
         </div>
       </div>
     </ConversationLayout>
+  );
+}
+
+function DecisionChangeExplanation({
+  explanation,
+}: {
+  explanation: string | null;
+}) {
+  if (!explanation) return null;
+
+  return (
+    <section
+      aria-labelledby="decision-change-explanation"
+      className="border-b border-white/[0.06] py-6"
+    >
+      <p
+        id="decision-change-explanation"
+        className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+      >
+        WHAT CHANGED
+      </p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+        {explanation} LiveOS 已根据这项变化重新评估当前方案。
+      </p>
+    </section>
   );
 }
 

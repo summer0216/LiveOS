@@ -1,3 +1,6 @@
+from dataclasses import replace
+
+from app.models.decision_change import ProfileMergeResult, profile_mutation_causes
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 from app.services.conversation_manager import conversation_manager
@@ -26,31 +29,25 @@ class ProfileManager:
         conversation_id: str,
         patch: LivingProfilePatch,
         latest_insights: list[str],
-    ) -> tuple[LivingProfile, bool]:
+    ) -> ProfileMergeResult:
         profile = self.get_or_create(conversation_id)
-        previous_values = (
-            profile.work_location,
-            profile.budget,
-            profile.commute_minutes,
-            profile.preferred_city,
-            profile.family_size,
-            profile.has_pet,
-        )
+        previous_profile = replace(profile)
 
         profile.apply_patch(patch)
         profile.latest_insights = latest_insights.copy()
 
         saved_profile = profile_store.save(conversation_id, profile)
-        current_values = (
-            saved_profile.work_location,
-            saved_profile.budget,
-            saved_profile.commute_minutes,
-            saved_profile.preferred_city,
-            saved_profile.family_size,
-            saved_profile.has_pet,
+        causes = profile_mutation_causes(
+            previous_profile,
+            saved_profile,
+            patch.clear_fields,
         )
 
-        return saved_profile, previous_values != current_values
+        return ProfileMergeResult(
+            profile=saved_profile,
+            changed=bool(causes),
+            causes=causes,
+        )
 
     def delete(
         self,
