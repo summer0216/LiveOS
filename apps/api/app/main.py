@@ -8,6 +8,7 @@ from app.api.decisions import router as decisions_router
 from app.api.memories import router as memories_router
 from app.api.profile import router as profile_router
 from app.api.properties import router as properties_router
+from app.api.resume import router as resume_router
 from app.core.config import settings
 from app.stores.runtime import database
 
@@ -33,6 +34,7 @@ app.include_router(properties_router, prefix="/api")
 app.include_router(decisions_router, prefix="/api")
 app.include_router(decision_history_router, prefix="/api")
 app.include_router(memories_router, prefix="/api")
+app.include_router(resume_router, prefix="/api")
 
 
 @app.get("/")

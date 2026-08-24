@@ -13,6 +13,7 @@ import ProfileWorkspace from './components/ProfileWorkspace';
 
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 import { getDecision, type DecisionResult } from '@/services/decision';
+import { getLivingDecisionResume } from '@/services/resume';
 import { createClientId } from '@/lib/createClientId';
 
 type MessageRole = 'user' | 'assistant';
@@ -94,7 +95,7 @@ export default function ConversationFeature() {
     }
   }, [conversationId]);
 
-  const loadDecision = useCallback(async () => {
+  const refreshDecision = useCallback(async () => {
     if (!conversationId) {
       return;
     }
@@ -116,14 +117,29 @@ export default function ConversationFeature() {
     }
   }, [conversationId]);
 
+  const loadResumeState = useCallback(async () => {
+    if (!conversationId) {
+      return;
+    }
+
+    setIsProfileLoading(true);
+    try {
+      const resumeState = await getLivingDecisionResume(conversationId);
+      setProfile(resumeState.profile);
+      setDecision(resumeState.decision);
+    } catch (error: unknown) {
+      console.error('Failed to resume living decision:', error);
+    } finally {
+      setIsProfileLoading(false);
+    }
+  }, [conversationId]);
+
   useEffect(() => {
-    // These loaders synchronize the existing profile/decision APIs on entry.
     if (!initialMessage) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      void loadProfile();
-      void loadDecision();
+      void loadResumeState();
     }
-  }, [initialMessage, loadDecision, loadProfile]);
+  }, [initialMessage, loadResumeState]);
 
   const sendConversationMessage = useCallback(
     async (content: string) => {
@@ -204,7 +220,7 @@ export default function ConversationFeature() {
         );
 
         if (shouldRefreshDecision || hasDecisionRelevantFeedback) {
-          await loadDecision();
+          await refreshDecision();
         }
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
@@ -223,7 +239,7 @@ export default function ConversationFeature() {
         setIsStreaming(false);
       }
     },
-    [conversationId, isStreaming, loadDecision, loadProfile, profile],
+    [conversationId, isStreaming, loadProfile, profile, refreshDecision],
   );
 
   useEffect(() => {

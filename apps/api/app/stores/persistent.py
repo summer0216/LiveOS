@@ -136,6 +136,22 @@ class ConversationStore:
         owner_id = resolve_owner_id(self._database, conversation_id)
         return str(owner_id) if owner_id is not None else None
 
+    def list_ids_by_owner_activity(self, user_id: str) -> list[str]:
+        user_uuid = optional_uuid(user_id)
+        if user_uuid is None:
+            return []
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id
+                FROM conversations
+                WHERE anonymous_user_id = %s
+                ORDER BY updated_at DESC, created_at DESC, id DESC
+                """,
+                (user_uuid,),
+            ).fetchall()
+        return [str(row["id"]) for row in rows]
+
     def append(self, conversation_id: str, role: str, content: str) -> None:
         conversation_uuid = uuid_value(conversation_id)
         with self._database.connect() as connection:
