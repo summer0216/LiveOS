@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from app.models.profile_patch import LivingProfilePatch
+from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch
 
 PREFERENCE_TAG_CATEGORIES = (
     "preference",
@@ -31,21 +31,11 @@ class LivingProfile:
         self,
         patch: LivingProfilePatch,
     ) -> None:
+        for field_name in PROFILE_FIELDS:
+            if field_name in patch.clear_fields:
+                setattr(self, field_name, None)
+                continue
 
-        if patch.work_location is not None:
-            self.work_location = patch.work_location
-
-        if patch.budget is not None:
-            self.budget = patch.budget
-
-        if patch.commute_minutes is not None:
-            self.commute_minutes = patch.commute_minutes
-
-        if patch.preferred_city is not None:
-            self.preferred_city = patch.preferred_city
-
-        if patch.family_size is not None:
-            self.family_size = patch.family_size
-
-        if patch.has_pet is not None:
-            self.has_pet = patch.has_pet
+            value = getattr(patch, field_name)
+            if value is not None:
+                setattr(self, field_name, value)

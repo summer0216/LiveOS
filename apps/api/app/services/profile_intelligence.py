@@ -9,7 +9,7 @@ from app.models.decision_feedback import (
     DecisionRelevantFeedback,
 )
 from app.models.profile_analysis import ProfileAnalysis
-from app.models.profile_patch import LivingProfilePatch
+from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch, ProfileField
 from app.runtime.prompt import build_profile_extraction_prompt
 
 
@@ -61,6 +61,7 @@ class ProfileIntelligence:
         data = self._parse_json(json_text)
 
         patch = self._build_patch(data)
+        patch = self._protect_explicit_clears(patch, latest_user_message)
         insights = self._build_insights(data)
         decision_feedback = self._build_decision_feedback(data)
         patch = self._protect_commute_preference(
@@ -100,13 +101,29 @@ class ProfileIntelligence:
         将解析后的数据转换为 LivingProfilePatch。
         """
 
+        raw_clear_fields = data.get("clear_fields")
+        clear_fields: frozenset[ProfileField] = frozenset(
+            field
+            for field in (
+                raw_clear_fields if isinstance(raw_clear_fields, list) else []
+            )
+            if field in PROFILE_FIELDS
+        )
+
+        values = {
+            "work_location": data.get("work_location"),
+            "budget": data.get("budget"),
+            "commute_minutes": data.get("commute_minutes"),
+            "preferred_city": data.get("preferred_city"),
+            "family_size": data.get("family_size"),
+            "has_pet": data.get("has_pet"),
+        }
+        for field in clear_fields:
+            values[field] = None
+
         return LivingProfilePatch(
-            work_location=data.get("work_location"),
-            budget=data.get("budget"),
-            commute_minutes=data.get("commute_minutes"),
-            preferred_city=data.get("preferred_city"),
-            family_size=data.get("family_size"),
-            has_pet=data.get("has_pet"),
+            **values,
+            clear_fields=clear_fields,
         )
 
     def _build_insights(
@@ -144,6 +161,26 @@ class ProfileIntelligence:
             return DecisionRelevantFeedback.model_validate(raw_feedback)
         except (TypeError, ValueError):
             return NO_DECISION_FEEDBACK
+
+    @staticmethod
+    def _protect_explicit_clears(
+        patch: LivingProfilePatch,
+        latest_user_message: str,
+    ) -> LivingProfilePatch:
+        if not patch.clear_fields:
+            return patch
+
+        explicit_clear = re.search(
+            (
+                r"取消|撤销|作废|不作数|不算了|先不设|不设限制|"
+                r"没有明确要求|不确定|没想好|不要继续按|先不考虑"
+            ),
+            latest_user_message,
+        )
+        if explicit_clear is not None:
+            return patch
+
+        return replace(patch, clear_fields=frozenset())
 
     @staticmethod
     def _protect_commute_preference(

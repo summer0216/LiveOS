@@ -12,7 +12,8 @@ Extraction rules:
 2. Do not guess or infer missing information.
 3. Ignore assistant assumptions and suggestions.
 4. If the user updates a previous preference, use the latest value.
-5. Use null for fields that are not explicitly provided.
+5. Use null for fields that are not explicitly provided or are explicitly
+   cleared. Distinguish these cases with clear_fields.
 6. Return valid JSON only.
 7. Do not include Markdown, explanations, or additional text.
 8. commute_minutes is only the user's preferred or maximum acceptable commute.
@@ -21,6 +22,11 @@ Extraction rules:
    relevant when it reports bounded new reality learned from acting on the
    current housing decision, or evaluates that reality as acceptable or
    unacceptable. A generic acknowledgement is not relevant.
+10. clear_fields contains only profile field names that the latest user turn
+    explicitly withdraws, cancels, marks uncertain, or says must no longer be
+    used. Do not add a field merely because it was not mentioned.
+11. When a field is listed in clear_fields, return null for that field. A new or
+    corrected value is returned normally and is not listed in clear_fields.
 
 Return exactly this JSON structure:
 
@@ -31,6 +37,10 @@ Return exactly this JSON structure:
   "preferred_city": string | null,
   "family_size": integer | null,
   "has_pet": boolean | null,
+  "clear_fields": [
+    "work_location" | "budget" | "commute_minutes" |
+    "preferred_city" | "family_size" | "has_pet"
+  ],
   "decision_relevant_feedback": {
     "relevant": boolean,
     "observation": string | null,
