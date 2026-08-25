@@ -25,7 +25,10 @@ interface StreamMessageOptions {
 }
 
 export interface DecisionChangeCause {
-  source: 'PROFILE_MUTATION' | 'DECISION_RELEVANT_FEEDBACK';
+  source:
+    | 'PROFILE_MUTATION'
+    | 'DECISION_RELEVANT_FEEDBACK'
+    | 'DECISION_CHALLENGE';
   field?: string;
   operation?: 'SET' | 'CLEAR';
   before?: string | number | boolean | null;
@@ -33,6 +36,10 @@ export interface DecisionChangeCause {
   observation?: string;
   judgment?: 'acceptable' | 'unacceptable' | null;
   observed_commute_minutes?: number | null;
+  kind?: 'DIRECT' | 'TRADE_OFF' | 'PRIORITY' | 'ALTERNATIVE';
+  subject?: string | null;
+  statement?: string;
+  target_property_id?: string | null;
 }
 
 export interface DecisionChange {

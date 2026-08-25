@@ -201,6 +201,24 @@ def format_current_feedback(context: DecisionContext) -> str:
     )
 
 
+def format_current_challenge(context: DecisionContext) -> str:
+    challenge = context.current_challenge
+    if challenge is None:
+        return "Current Decision Challenge:\nNone."
+
+    payload = json.dumps(challenge.model_dump(mode="json"), ensure_ascii=False)
+    return (
+        "Current Decision Challenge:\n"
+        "This is a bounded objection or reconsideration request from the latest "
+        "user turn. Reconsider the current decision using the current Living "
+        "Profile, Property List, prior Decision context, and Grounded Evidence. "
+        "The challenge is not a new fact and must never override Grounded "
+        "Evidence. The decision may change, remain supported, or become waiting "
+        "when evidence is insufficient. Do not automatically agree with it.\n"
+        f"{payload}"
+    )
+
+
 def build_decision_prompt(
     decision_input: DecisionInput,
     context: DecisionContext,
@@ -223,6 +241,7 @@ def build_decision_prompt(
     )
     history_text = format_decision_context(context)
     feedback_text = format_current_feedback(context)
+    challenge_text = format_current_challenge(context)
     living_model_text = format_living_model_section(
         decision_input.living_model,
     )
@@ -252,6 +271,7 @@ def build_decision_prompt(
         f"{living_model_text}\n\n"
         f"{history_text}\n\n"
         f"{feedback_text}\n\n"
+        f"{challenge_text}\n\n"
         f"{grounded_section}"
         "Decision Context Priority Rules:\n"
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"

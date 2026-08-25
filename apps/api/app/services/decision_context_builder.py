@@ -3,6 +3,7 @@ from typing import Protocol
 from app.core.logger import logger
 from app.runtime.memory_context import DecisionMemoryContext
 from app.schemas.decision_context import DecisionContext
+from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_context_service import decision_context_service
 from app.services.decision_feedback_context import decision_feedback_context
 from app.services.decision_memory_context_builder import (
@@ -72,6 +73,9 @@ class DecisionContextBuilder:
             recent_decisions=history_context.recent_decisions,
             memory_context=memory_context,
             current_feedback=decision_feedback_context.consume(
+                normalized_conversation_id,
+            ),
+            current_challenge=decision_challenge_context.consume(
                 normalized_conversation_id,
             ),
         )

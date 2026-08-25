@@ -3,6 +3,7 @@ from threading import RLock
 from typing import Any
 
 from app.models.decision_change import (
+    ChallengeCause,
     DecisionChangeCause,
     FeedbackCause,
     ProfileMutationCause,
@@ -56,13 +57,26 @@ def _format_feedback_cause(cause: FeedbackCause) -> str:
     return f"{observation}。"
 
 
+def _format_challenge_cause(cause: ChallengeCause) -> str:
+    if cause.kind == "TRADE_OFF":
+        return "你对当前取舍提出了质疑，已重新评估。"
+    if cause.kind == "PRIORITY":
+        return "你质疑当前判断中过度强调某项条件，已重新评估。"
+    if cause.kind == "ALTERNATIVE":
+        return "你对当前推荐方向提出了不同选择，已重新评估。"
+    return "你对当前判断提出了质疑，已重新评估。"
+
+
 def format_decision_change(causes: tuple[DecisionChangeCause, ...]) -> str:
-    return "".join(
-        _format_profile_cause(cause)
-        if isinstance(cause, ProfileMutationCause)
-        else _format_feedback_cause(cause)
-        for cause in causes
-    )
+    explanations: list[str] = []
+    for cause in causes:
+        if isinstance(cause, ProfileMutationCause):
+            explanations.append(_format_profile_cause(cause))
+        elif isinstance(cause, FeedbackCause):
+            explanations.append(_format_feedback_cause(cause))
+        else:
+            explanations.append(_format_challenge_cause(cause))
+    return "".join(explanations)
 
 
 def decision_change_payload(

@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
 
+from app.models.decision_challenge import DecisionChallenge
 from app.models.decision_feedback import DecisionRelevantFeedback
 from app.models.profile import LivingProfile
 from app.models.profile_patch import PROFILE_FIELDS, ProfileField
@@ -26,7 +27,16 @@ class FeedbackCause:
     observed_commute_minutes: int | None
 
 
-type DecisionChangeCause = ProfileMutationCause | FeedbackCause
+@dataclass(frozen=True)
+class ChallengeCause:
+    source: Literal["DECISION_CHALLENGE"]
+    kind: Literal["DIRECT", "TRADE_OFF", "PRIORITY", "ALTERNATIVE"]
+    subject: str | None
+    statement: str
+    target_property_id: str | None
+
+
+type DecisionChangeCause = ProfileMutationCause | FeedbackCause | ChallengeCause
 
 
 @dataclass(frozen=True)
@@ -74,4 +84,16 @@ def feedback_cause(
         observation=feedback.observation,
         judgment=feedback.judgment,
         observed_commute_minutes=feedback.observed_commute_minutes,
+    )
+
+
+def challenge_cause(challenge: DecisionChallenge) -> ChallengeCause | None:
+    if not challenge.relevant or challenge.kind is None or challenge.statement is None:
+        return None
+    return ChallengeCause(
+        source="DECISION_CHALLENGE",
+        kind=challenge.kind,
+        subject=challenge.subject,
+        statement=challenge.statement,
+        target_property_id=challenge.target_property_id,
     )

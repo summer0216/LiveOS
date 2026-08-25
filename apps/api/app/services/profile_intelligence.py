@@ -4,6 +4,10 @@ from dataclasses import replace
 
 from app.core.ai_client import ai_client
 from app.models.conversation import ConversationMessage
+from app.models.decision_challenge import (
+    NO_DECISION_CHALLENGE,
+    DecisionChallenge,
+)
 from app.models.decision_feedback import (
     NO_DECISION_FEEDBACK,
     DecisionRelevantFeedback,
@@ -64,9 +68,23 @@ class ProfileIntelligence:
         patch = self._protect_explicit_clears(patch, latest_user_message)
         insights = self._build_insights(data)
         decision_feedback = self._build_decision_feedback(data)
+        decision_challenge = self._build_decision_challenge(
+            data,
+            latest_user_message,
+        )
+        decision_feedback = self._protect_challenge_feedback(
+            decision_feedback,
+            decision_challenge,
+            latest_user_message,
+        )
         patch = self._protect_commute_preference(
             patch,
             decision_feedback,
+            latest_user_message,
+        )
+        patch = self._protect_challenge_profile(
+            patch,
+            decision_challenge,
             latest_user_message,
         )
 
@@ -74,6 +92,7 @@ class ProfileIntelligence:
             patch=patch,
             insights=insights,
             decision_feedback=decision_feedback,
+            decision_challenge=decision_challenge,
         )
 
     def _parse_json(
@@ -162,6 +181,63 @@ class ProfileIntelligence:
         except (TypeError, ValueError):
             return NO_DECISION_FEEDBACK
 
+    def _build_decision_challenge(
+        self,
+        data: dict,
+        latest_user_message: str,
+    ) -> DecisionChallenge:
+        raw_challenge = data.get("decision_challenge")
+        if isinstance(raw_challenge, dict):
+            try:
+                challenge = DecisionChallenge.model_validate(raw_challenge)
+                if challenge.relevant:
+                    return challenge
+            except (TypeError, ValueError):
+                pass
+
+        message = latest_user_message.strip()
+        kind: str | None = None
+        subject: str | None = None
+        if re.search(r"(?:取舍|权衡).*(?:不值得|不合理|太久)|太久.*(?:取舍|值得)", message):
+            kind = "TRADE_OFF"
+            subject = "当前取舍"
+        elif re.search(r"(?:太|过度)(?:看重|强调|依赖)", message):
+            kind = "PRIORITY"
+            subject = "当前判断优先级"
+        elif re.search(r"(?:更倾向|更想选|另一个房源|其他房源|别的房源)", message):
+            kind = "ALTERNATIVE"
+            subject = "备选房源"
+        elif re.search(
+            r"(?:不认同|不同意|不赞同|重新考虑|再考虑|"
+            r"判断.{0,8}(?:有问题|不合理)|推荐.{0,8}(?:有问题|不合理))",
+            message,
+        ):
+            kind = "DIRECT"
+            subject = "当前判断"
+
+        if kind is None:
+            return NO_DECISION_CHALLENGE
+        return DecisionChallenge(
+            relevant=True,
+            kind=kind,
+            subject=subject,
+            statement=message[:240],
+        )
+
+    @staticmethod
+    def _protect_challenge_feedback(
+        feedback: DecisionRelevantFeedback,
+        challenge: DecisionChallenge,
+        latest_user_message: str,
+    ) -> DecisionRelevantFeedback:
+        if not challenge.relevant or not feedback.relevant:
+            return feedback
+        observed_reality = re.search(
+            r"实际|实测|试过|体验|走过|看过|去了|结果|当天|今天|早高峰",
+            latest_user_message,
+        )
+        return feedback if observed_reality is not None else NO_DECISION_FEEDBACK
+
     @staticmethod
     def _protect_explicit_clears(
         patch: LivingProfilePatch,
@@ -196,13 +272,45 @@ class ProfileIntelligence:
             return patch
 
         explicit_preference = re.search(
-            r"(?:最多|最大|上限|只能接受|最多接受|希望|控制在).{0,12}\d+\s*分钟",
+            r"(?:最多|最大|上限|只能接受|最多接受|希望|控制在).{0,12}\d+\s*分钟|"
+            r"通勤.{0,8}(?:改|调整|设|按|恢复|变成|为).{0,8}\d+\s*分钟",
             latest_user_message,
         )
         if explicit_preference is not None:
             return patch
 
         return replace(patch, commute_minutes=None)
+
+    @staticmethod
+    def _protect_challenge_profile(
+        patch: LivingProfilePatch,
+        challenge: DecisionChallenge,
+        latest_user_message: str,
+    ) -> LivingProfilePatch:
+        if not challenge.relevant:
+            return patch
+
+        updates: dict[str, object] = {}
+        explicit_commute_preference = re.search(
+            r"(?:最多|最大|上限|只能接受|最多接受|希望|控制在).{0,12}\d+\s*分钟|"
+            r"通勤.{0,8}(?:改|调整|设|按|恢复|变成|为).{0,8}\d+\s*分钟",
+            latest_user_message,
+        )
+        if patch.commute_minutes is not None and explicit_commute_preference is None:
+            updates["commute_minutes"] = None
+
+        explicit_budget_change = re.search(
+            r"预算.{0,10}(?:改|调整|设|定|按|恢复|提高|降低|增加|减少|变成|为).{0,10}\d+",
+            latest_user_message,
+        )
+        if (
+            challenge.kind == "PRIORITY"
+            and patch.budget is not None
+            and explicit_budget_change is None
+        ):
+            updates["budget"] = None
+
+        return replace(patch, **updates) if updates else patch
 
 
 profile_intelligence = ProfileIntelligence()

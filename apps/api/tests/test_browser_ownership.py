@@ -6,7 +6,13 @@ from app.api.chat import _stream_events
 from app.api.ownership import COOKIE_NAME
 from app.core.config import settings
 from app.main import app
+from app.models.decision_challenge import DecisionChallenge
+from app.models.decision_change import ChallengeCause
+from app.models.decision_feedback import DecisionRelevantFeedback
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_challenge_context import decision_challenge_context
+from app.services.decision_change import decision_change_context
+from app.services.decision_feedback_context import decision_feedback_context
 from app.services.property_manager import property_manager
 from tests.ids import uuid_for
 
@@ -151,3 +157,118 @@ def test_stream_events_turns_a_first_token_timeout_into_a_terminal_error_event(
 
     assert events[0] == ": connected\n\n"
     assert events[-1].startswith("event: error\n")
+
+
+def test_pre_stream_work_and_first_token_have_separate_timeout_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    conversation_id = uuid_for("browser-stream-separated-boundaries")
+
+    def prepare_then_stream(*, conversation_id: str, message: str):
+        del conversation_id, message
+        time.sleep(0.02)
+
+        def first_token_stream():
+            time.sleep(0.02)
+            yield "reply"
+
+        return first_token_stream()
+
+    monkeypatch.setattr(chat_api.chat_service, "chat_stream", prepare_then_stream)
+    monkeypatch.setattr(chat_api, "STREAM_IDLE_TIMEOUT_SECONDS", 0.03)
+
+    response = TestClient(app).post(
+        "/api/chat/stream",
+        json={"conversation_id": conversation_id, "message": "hello"},
+    )
+
+    assert response.status_code == 200
+    assert response.text == ': connected\n\ndata: "reply"\n\n'
+    conversation_manager.delete(conversation_id)
+
+
+def test_control_events_precede_first_token_and_later_silence_still_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    conversation_id = uuid_for("browser-stream-early-control")
+    decision_change_context.set(
+        conversation_id,
+        (
+            ChallengeCause(
+                source="DECISION_CHALLENGE",
+                kind="DIRECT",
+                subject="当前判断",
+                statement="我不认同这个判断。",
+                target_property_id=None,
+            ),
+        ),
+    )
+    decision_feedback_context.set(
+        conversation_id,
+        DecisionRelevantFeedback(
+            relevant=True,
+            observation="实测通勤约80分钟。",
+            judgment="unacceptable",
+            observed_commute_minutes=80,
+        ),
+    )
+    decision_challenge_context.set(
+        conversation_id,
+        DecisionChallenge(
+            relevant=True,
+            kind="DIRECT",
+            subject="当前判断",
+            statement="我不认同这个判断。",
+        ),
+    )
+
+    def stalled_after_control():
+        time.sleep(0.05)
+        yield "late"
+
+    monkeypatch.setattr(chat_api, "STREAM_IDLE_TIMEOUT_SECONDS", 0.001)
+    events = list(_stream_events(stalled_after_control(), conversation_id))
+
+    assert events[0] == ": connected\n\n"
+    assert events[1].startswith("event: decision-change\n")
+    assert events[2] == "event: decision-feedback\ndata: true\n\n"
+    assert events[3].startswith("event: error\n")
+    assert decision_change_context.consume(conversation_id) == ()
+    assert decision_feedback_context.consume(conversation_id) is None
+    assert decision_challenge_context.consume(conversation_id) is None
+
+
+def test_disconnect_after_connected_clears_transient_context() -> None:
+    conversation_id = uuid_for("browser-stream-disconnect-cleanup")
+    decision_change_context.set(
+        conversation_id,
+        (
+            ChallengeCause(
+                source="DECISION_CHALLENGE",
+                kind="DIRECT",
+                subject="当前判断",
+                statement="我不认同这个判断。",
+                target_property_id=None,
+            ),
+        ),
+    )
+    decision_challenge_context.set(
+        conversation_id,
+        DecisionChallenge(
+            relevant=True,
+            kind="DIRECT",
+            subject="当前判断",
+            statement="我不认同这个判断。",
+        ),
+    )
+
+    events = _stream_events(iter(["reply"]), conversation_id)
+    assert next(events) == ": connected\n\n"
+    events.close()
+
+    assert decision_change_context.consume(conversation_id) == ()
+    assert decision_challenge_context.consume(conversation_id) is None

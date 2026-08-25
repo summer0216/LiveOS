@@ -6,10 +6,15 @@ from app.models.conversation import (
     Conversation,
     ConversationMessage,
 )
-from app.models.decision_change import DecisionChangeCause, feedback_cause
+from app.models.decision_change import (
+    DecisionChangeCause,
+    challenge_cause,
+    feedback_cause,
+)
 from app.models.property import Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
 from app.services.profile_intelligence import profile_intelligence
@@ -79,6 +84,10 @@ class ChatService:
                 conversation_id,
                 analysis.decision_feedback,
             )
+            decision_challenge_context.set(
+                conversation_id,
+                analysis.decision_challenge,
+            )
             logger.warning(
                 "Profile merge complete conversation_id=%s changed=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -87,13 +96,16 @@ class ChatService:
             )
 
             current_feedback_cause = feedback_cause(analysis.decision_feedback)
+            current_challenge_cause = challenge_cause(analysis.decision_challenge)
             return (
                 *merge_result.causes,
                 *((current_feedback_cause,) if current_feedback_cause else ()),
+                *((current_challenge_cause,) if current_challenge_cause else ()),
             )
 
         except Exception:
             decision_feedback_context.clear(conversation_id)
+            decision_challenge_context.clear(conversation_id)
             logger.exception(
                 "Failed to update living profile. conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -139,6 +151,14 @@ class ChatService:
             history=history,
         )
         decision_change_context.set(conversation_id, change_causes)
+
+        return self._stream_assistant_reply(conversation_id, history)
+
+    def _stream_assistant_reply(
+        self,
+        conversation_id: str,
+        history: list[ConversationMessage],
+    ) -> Iterator[str]:
 
         assistant_reply_parts: list[str] = []
 

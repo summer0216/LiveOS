@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.decision_challenge import DecisionChallenge
 from app.models.decision_feedback import DecisionRelevantFeedback
 from app.runtime.memory_context import DecisionMemoryContext
 from app.schemas.decision_record import DecisionRecord
@@ -21,3 +22,4 @@ class DecisionContext(BaseModel):
         default_factory=empty_memory_context,
     )
     current_feedback: DecisionRelevantFeedback | None = None
+    current_challenge: DecisionChallenge | None = None

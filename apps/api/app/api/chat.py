@@ -5,11 +5,13 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.api.ownership import COOKIE_NAME, anonymous_user_id, set_anonymous_cookie
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import (
     decision_change_context,
     decision_change_payload,
@@ -31,19 +33,29 @@ def _stream_events(
     chunks: Iterator[str],
     conversation_id: str | None = None,
 ) -> Iterator[str]:
-    # Flush the response headers before the first model token is available.
-    yield ": connected\n\n"
-
     executor = ThreadPoolExecutor(max_workers=1)
     iterator = iter(chunks)
-    change_event_sent = False
-    feedback_event_sent = False
+    stream_completed = False
     try:
+        # Profile Intelligence has already completed before this iterator starts.
+        # Flush current-turn control activity before waiting for the first token.
+        yield ": connected\n\n"
+        if conversation_id is not None:
+            causes = decision_change_context.consume(conversation_id)
+            if causes:
+                yield (
+                    "event: decision-change\n"
+                    f"data: {json.dumps(decision_change_payload(causes), ensure_ascii=False)}\n\n"
+                )
+            if decision_feedback_context.is_relevant(conversation_id):
+                yield "event: decision-feedback\ndata: true\n\n"
+
         while True:
             future = executor.submit(next, iterator)
             try:
                 chunk = future.result(timeout=STREAM_IDLE_TIMEOUT_SECONDS)
             except StopIteration:
+                stream_completed = True
                 break
             except TimeoutError:
                 logger.error(
@@ -55,21 +67,6 @@ def _stream_events(
                     f"data: {json.dumps(STREAM_ERROR_MESSAGE, ensure_ascii=False)}\n\n"
                 )
                 break
-            if not change_event_sent and conversation_id is not None:
-                change_event_sent = True
-                causes = decision_change_context.consume(conversation_id)
-                if causes:
-                    yield (
-                        "event: decision-change\n"
-                        f"data: {json.dumps(decision_change_payload(causes), ensure_ascii=False)}\n\n"
-                    )
-            if (
-                not feedback_event_sent
-                and conversation_id is not None
-                and decision_feedback_context.is_relevant(conversation_id)
-            ):
-                feedback_event_sent = True
-                yield "event: decision-feedback\ndata: true\n\n"
             yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
     except Exception:
         logger.exception("Streaming chat failed")
@@ -80,6 +77,9 @@ def _stream_events(
     finally:
         if conversation_id is not None:
             decision_change_context.clear(conversation_id)
+            if not stream_completed:
+                decision_feedback_context.clear(conversation_id)
+                decision_challenge_context.clear(conversation_id)
         executor.shutdown(wait=False, cancel_futures=True)
 
 
@@ -103,7 +103,8 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
     user_id = anonymous_user_id(raw_request, response)
     conversation_manager.get_or_create(request.conversation_id, user_id)
 
-    generator = chat_service.chat_stream(
+    generator = await run_in_threadpool(
+        chat_service.chat_stream,
         conversation_id=request.conversation_id,
         message=request.message,
     )

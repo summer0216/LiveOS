@@ -228,8 +228,17 @@ export default function ConversationFeature() {
           (profileBeforeTurn === null ||
             hasMeaningfulProfileChange(profileBeforeTurn, refreshedProfile)),
         );
+        const hasDecisionChallenge = decisionChanges.some((change) =>
+          change.causes.some(
+            (cause) => cause.source === 'DECISION_CHALLENGE',
+          ),
+        );
 
-        if (shouldRefreshDecision || hasDecisionRelevantFeedback) {
+        if (
+          shouldRefreshDecision ||
+          hasDecisionRelevantFeedback ||
+          hasDecisionChallenge
+        ) {
           const refreshed = await refreshDecision();
           if (refreshed && decisionChanges.length > 0) {
             setChangeExplanation(decisionChanges[0].explanation);

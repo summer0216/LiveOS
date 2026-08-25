@@ -27,6 +27,16 @@ Extraction rules:
     used. Do not add a field merely because it was not mentioned.
 11. When a field is listed in clear_fields, return null for that field. A new or
     corrected value is returned normally and is not listed in clear_fields.
+12. Analyze only the latest user turn for decision_challenge. A challenge is an
+    explicit disagreement with, objection to, or request to reconsider the
+    current decision, trade-off, priority, or recommendation direction.
+13. A request asking why something was recommended is an explanation request,
+    not a challenge, unless the user also disagrees or asks for reconsideration.
+14. A decision challenge is not a profile mutation and is not observed-reality
+    feedback. Preserve all real semantics when the latest turn contains more
+    than one of them.
+15. For an unresolved alternative such as "another property", never invent a
+    target_property_id. Use null unless an existing property id is explicit.
 
 Return exactly this JSON structure:
 
@@ -46,6 +56,13 @@ Return exactly this JSON structure:
     "observation": string | null,
     "judgment": "acceptable" | "unacceptable" | null,
     "observed_commute_minutes": integer | null
+  },
+  "decision_challenge": {
+    "relevant": boolean,
+    "kind": "DIRECT" | "TRADE_OFF" | "PRIORITY" | "ALTERNATIVE" | null,
+    "subject": string | null,
+    "statement": string | null,
+    "target_property_id": string | null
   }
 }
 """.strip()
