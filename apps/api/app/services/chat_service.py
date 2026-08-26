@@ -14,6 +14,7 @@ from app.models.decision_change import (
 from app.models.property import Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_action_progress import decision_action_progress_service
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
@@ -88,6 +89,17 @@ class ChatService:
                 conversation_id,
                 analysis.decision_challenge,
             )
+            if analysis.action_progress_update.relevant:
+                try:
+                    decision_action_progress_service.apply_update(
+                        conversation_id,
+                        analysis.action_progress_update,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to persist Action Progress for conversation %s.",
+                        conversation_id,
+                    )
             logger.warning(
                 "Profile merge complete conversation_id=%s changed=%s elapsed_ms=%.1f",
                 conversation_id,

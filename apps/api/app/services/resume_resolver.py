@@ -2,9 +2,11 @@ from dataclasses import dataclass
 
 from pydantic import ValidationError
 
+from app.models.action_progress import CurrentActionProgress
 from app.models.profile import LivingProfile
 from app.schemas.decision import DecisionResult
 from app.schemas.decision_record import DecisionRecord
+from app.services.decision_action_progress import decision_action_progress_service
 from app.stores.runtime import conversation_store, decision_record_store, profile_store
 
 
@@ -13,6 +15,7 @@ class ResumableLivingState:
     conversation_id: str
     profile: LivingProfile | None
     decision: DecisionResult | None
+    action_progress: CurrentActionProgress | None
 
 
 class ResumeResolver:
@@ -32,11 +35,11 @@ class ResumeResolver:
         except ValidationError:
             return None
 
-    def _latest_ready_decision(
+    def _latest_ready_record(
         self,
         conversation_id: str,
         records: list[DecisionRecord],
-    ) -> DecisionResult | None:
+    ) -> DecisionRecord | None:
         matching_records = sorted(
             (
                 record
@@ -47,10 +50,27 @@ class ResumeResolver:
             reverse=True,
         )
         for record in matching_records:
-            decision = self._as_ready_decision(record)
-            if decision is not None:
-                return decision
+            if self._as_ready_decision(record) is not None:
+                return record
         return None
+
+    def _state(
+        self,
+        conversation_id: str,
+        profile: LivingProfile | None,
+        records: list[DecisionRecord],
+    ) -> ResumableLivingState:
+        record = self._latest_ready_record(conversation_id, records)
+        return ResumableLivingState(
+            conversation_id=conversation_id,
+            profile=profile,
+            decision=self._as_ready_decision(record) if record is not None else None,
+            action_progress=(
+                decision_action_progress_service.resolve_for_record(record)
+                if record is not None
+                else None
+            ),
+        )
 
     def resolve_for_owner(self, owner_id: str) -> ResumableLivingState | None:
         conversation_ids = conversation_store.list_ids_by_owner_activity(owner_id)
@@ -60,12 +80,13 @@ class ResumeResolver:
         profile = profile_store.get_by_owner(owner_id)
         records = decision_record_store.list_by_owner(owner_id)
         for conversation_id in conversation_ids:
-            decision = self._latest_ready_decision(conversation_id, records)
+            record = self._latest_ready_record(conversation_id, records)
+            decision = self._as_ready_decision(record) if record is not None else None
             if profile is not None or decision is not None:
-                return ResumableLivingState(
+                return self._state(
                     conversation_id=conversation_id,
                     profile=profile,
-                    decision=decision,
+                    records=records,
                 )
         return None
 
@@ -77,13 +98,10 @@ class ResumeResolver:
         if not conversation_store.belongs_to(conversation_id, owner_id):
             return None
 
-        return ResumableLivingState(
+        return self._state(
             conversation_id=conversation_id,
             profile=profile_store.get_by_owner(owner_id),
-            decision=self._latest_ready_decision(
-                conversation_id,
-                decision_record_store.list_by_owner(owner_id),
-            ),
+            records=decision_record_store.list_by_owner(owner_id),
         )
 
 

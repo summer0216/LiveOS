@@ -5,6 +5,7 @@ from app.schemas.decision import (
     DecisionInput,
     DecisionReason,
     DecisionResult,
+    DecisionTradeOff,
     PropertyDecisionInput,
 )
 from app.schemas.decision_context import DecisionContext
@@ -13,6 +14,7 @@ from app.services.decision_service import (
     apply_grounded_tradeoff,
     apply_nearby_rent_evidence,
     build_next_actions,
+    has_recoverable_primary_next,
 )
 from app.services.nearby_rent_evidence import get_nearby_rent_evidence
 
@@ -183,4 +185,57 @@ def test_next_actions_do_not_ignore_conflicting_decision() -> None:
         2200,
     )
 
-    assert recommendation == conflicting_decision
+    assert recommendation.summary is not None
+    decision, primary_action = recommendation.summary.split("下一步：", 1)
+    assert decision.strip() == conflicting_decision.summary
+    assert "核实当前推荐房源" in primary_action
+    assert "验证一次工作日高峰通勤" not in primary_action
+    assert recommendation.summary.count("下一步：") == 1
+
+
+def test_ordinary_ready_gets_one_decision_aligned_primary_next() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前房源整体匹配，但城市信息仍需确认。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前匹配", description="预算和通勤符合要求。")],
+        trade_offs=[
+            DecisionTradeOff(
+                title="城市信息缺失",
+                description="需要确认房源所在城市。",
+            )
+        ],
+        confidence=0.7,
+    )
+
+    recommendation = build_next_actions(result, None, None, 3500)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    assert "核实“城市信息缺失”对应的关键信息" in recommendation.summary
+    assert has_recoverable_primary_next(recommendation.summary)
+
+
+def test_existing_primary_next_is_not_duplicated() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前房源可以继续考虑。下一步：核实房源城市信息。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前匹配", description="预算和通勤符合要求。")],
+        confidence=0.7,
+    )
+
+    recommendation = build_next_actions(result, None, None, 3500)
+
+    assert recommendation == result
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+
+
+def test_waiting_decision_does_not_require_primary_next() -> None:
+    result = DecisionResult(
+        status="waiting",
+        summary="当前信息不足，需要进一步确认候选对象。",
+    )
+
+    assert build_next_actions(result, None, None, None) == result

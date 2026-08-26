@@ -3,6 +3,11 @@ import re
 from dataclasses import replace
 
 from app.core.ai_client import ai_client
+from app.models.action_progress import (
+    NO_ACTION_PROGRESS_UPDATE,
+    ActionProgressStatus,
+    ActionProgressUpdate,
+)
 from app.models.conversation import ConversationMessage
 from app.models.decision_challenge import (
     NO_DECISION_CHALLENGE,
@@ -72,9 +77,23 @@ class ProfileIntelligence:
             data,
             latest_user_message,
         )
+        action_progress_update = self._build_action_progress_update(
+            data,
+            latest_user_message,
+        )
+        decision_challenge = self._protect_action_progress_challenge(
+            decision_challenge,
+            action_progress_update,
+            latest_user_message,
+        )
         decision_feedback = self._protect_challenge_feedback(
             decision_feedback,
             decision_challenge,
+            latest_user_message,
+        )
+        decision_feedback = self._protect_action_progress_feedback(
+            decision_feedback,
+            action_progress_update,
             latest_user_message,
         )
         patch = self._protect_commute_preference(
@@ -93,6 +112,7 @@ class ProfileIntelligence:
             insights=insights,
             decision_feedback=decision_feedback,
             decision_challenge=decision_challenge,
+            action_progress_update=action_progress_update,
         )
 
     def _parse_json(
@@ -223,6 +243,94 @@ class ProfileIntelligence:
             subject=subject,
             statement=message[:240],
         )
+
+    def _build_action_progress_update(
+        self,
+        data: dict,
+        latest_user_message: str,
+    ) -> ActionProgressUpdate:
+        message = latest_user_message.strip()
+        deterministic_status = self._explicit_action_progress_status(message)
+        if deterministic_status is not None:
+            return ActionProgressUpdate(
+                relevant=True,
+                status=deterministic_status,
+            )
+
+        raw_update = data.get("action_progress_update")
+        if not isinstance(raw_update, dict):
+            return NO_ACTION_PROGRESS_UPDATE
+        try:
+            update = ActionProgressUpdate.model_validate(raw_update)
+        except (TypeError, ValueError):
+            return NO_ACTION_PROGRESS_UPDATE
+        if not update.relevant or update.status is None:
+            return NO_ACTION_PROGRESS_UPDATE
+        if not self._has_explicit_action_evidence(update.status, message):
+            return NO_ACTION_PROGRESS_UPDATE
+        return update
+
+    @staticmethod
+    def _explicit_action_progress_status(
+        message: str,
+    ) -> ActionProgressStatus | None:
+        if re.search(r"还没|尚未|没来得及|其实没(?:去|试|看|开始|做)", message):
+            return ActionProgressStatus.NOT_STARTED
+        if re.search(r"不打算|先不做|不准备再|不想再|不再(?:去|试|看|做)", message):
+            return ActionProgressStatus.ABANDONED
+        if re.search(
+            r"已经.{0,12}(?:去|试|看|跑|走|做|完成)|"
+            r"(?:去|试|看|跑|走|做)过|实际.{0,10}(?:跑|走|试|看).{0,8}(?:一遍|一次)",
+            message,
+        ):
+            return ActionProgressStatus.COMPLETED
+        if re.search(r"也许|可能|或许", message):
+            return None
+        if re.search(
+            r"(?:明天|后天|周末|下班后|今晚|明早|早上).{0,14}(?:去|试|看|跑|走|做)|"
+            r"(?:准备|打算|计划|决定|会|要).{0,8}(?:去|试|看|跑|走|做)",
+            message,
+        ):
+            return ActionProgressStatus.PLANNED
+        return None
+
+    @classmethod
+    def _has_explicit_action_evidence(
+        cls,
+        status: ActionProgressStatus,
+        message: str,
+    ) -> bool:
+        return cls._explicit_action_progress_status(message) == status
+
+    @staticmethod
+    def _protect_action_progress_feedback(
+        feedback: DecisionRelevantFeedback,
+        update: ActionProgressUpdate,
+        latest_user_message: str,
+    ) -> DecisionRelevantFeedback:
+        if not update.relevant or not feedback.relevant:
+            return feedback
+        has_decision_outcome = re.search(
+            r"\d+\s*分钟|接受不了|不能接受|不接受|可以接受|能接受|太久|"
+            r"结果|实际.{0,10}\d+",
+            latest_user_message,
+        )
+        return feedback if has_decision_outcome is not None else NO_DECISION_FEEDBACK
+
+    @staticmethod
+    def _protect_action_progress_challenge(
+        challenge: DecisionChallenge,
+        update: ActionProgressUpdate,
+        latest_user_message: str,
+    ) -> DecisionChallenge:
+        if not update.relevant or not challenge.relevant:
+            return challenge
+        explicit_challenge = re.search(
+            r"不认同|不同意|不赞同|重新考虑|再考虑|"
+            r"判断.{0,8}(?:有问题|不合理)|推荐.{0,8}(?:有问题|不合理)",
+            latest_user_message,
+        )
+        return challenge if explicit_challenge is not None else NO_DECISION_CHALLENGE
 
     @staticmethod
     def _protect_challenge_feedback(

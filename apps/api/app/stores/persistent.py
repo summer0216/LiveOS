@@ -6,6 +6,10 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
+from app.models.action_progress import (
+    ActionProgressStatus,
+    DecisionActionState,
+)
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.profile import LivingProfile
 from app.models.property import Property
@@ -548,5 +552,86 @@ class DecisionRecordStore:
         with self._database.connect() as connection:
             connection.execute(
                 "DELETE FROM decision_records WHERE conversation_id = %s",
+                (conversation_uuid,),
+            )
+
+
+class DecisionActionStateStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    def save(self, state: DecisionActionState) -> DecisionActionState:
+        owner_id = resolve_owner_id(self._database, state.conversation_id)
+        if owner_id is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        validate_owner_source(self._database, owner_id, state.conversation_id)
+        with self._database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO decision_action_states(
+                    id, owner_id, conversation_id, decision_record_id,
+                    action_key, next_text, status, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
+                    id = EXCLUDED.id,
+                    decision_record_id = EXCLUDED.decision_record_id,
+                    action_key = EXCLUDED.action_key,
+                    next_text = EXCLUDED.next_text,
+                    status = EXCLUDED.status,
+                    created_at = EXCLUDED.created_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    uuid_value(state.id),
+                    owner_id,
+                    uuid_value(state.conversation_id),
+                    uuid_value(state.decision_record_id),
+                    state.action_key,
+                    state.next_text,
+                    state.status.value if state.status is not None else None,
+                    state.created_at,
+                    state.updated_at,
+                ),
+            )
+        return state.model_copy(deep=True)
+
+    def get(self, conversation_id: str) -> DecisionActionState | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM decision_action_states
+                WHERE owner_id = %s AND conversation_id = %s
+                """,
+                (owner_id, conversation_uuid),
+            ).fetchone()
+        if row is None:
+            return None
+        return DecisionActionState(
+            id=str(row["id"]),
+            conversation_id=str(row["conversation_id"]),
+            decision_record_id=str(row["decision_record_id"]),
+            action_key=row["action_key"],
+            next_text=row["next_text"],
+            status=(
+                ActionProgressStatus(row["status"])
+                if row["status"] is not None
+                else None
+            ),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def delete_conversation(self, conversation_id: str) -> None:
+        conversation_uuid = optional_uuid(conversation_id)
+        if conversation_uuid is None:
+            return
+        with self._database.connect() as connection:
+            connection.execute(
+                "DELETE FROM decision_action_states WHERE conversation_id = %s",
                 (conversation_uuid,),
             )

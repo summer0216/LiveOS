@@ -1,3 +1,5 @@
+import re
+
 from pydantic import ValidationError
 
 from app.core.ai_client import ai_client
@@ -12,6 +14,7 @@ from app.schemas.decision import (
     PropertyDecisionInput,
 )
 from app.services.commute_evidence import CommuteEvidence, get_commute_evidence
+from app.services.decision_action_progress import decision_action_progress_service
 from app.services.decision_context_builder import decision_context_builder
 from app.services.decision_record_service import decision_record_service
 from app.services.living_model_builder import living_model_builder
@@ -21,6 +24,33 @@ from app.services.nearby_rent_evidence import (
 )
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+
+PRIMARY_NEXT_DELIMITER = "下一步："
+
+
+def has_recoverable_primary_next(summary: str | None) -> bool:
+    if summary is None or summary.count(PRIMARY_NEXT_DELIMITER) != 1:
+        return False
+    decision_text, next_text = summary.split(PRIMARY_NEXT_DELIMITER, 1)
+    if not decision_text.strip() or not next_text.strip():
+        return False
+    return not bool(re.search(r"\n|(?:^|\s)[1-9][.、)]|[•·]", next_text))
+
+
+def _decision_without_primary_next(summary: str) -> str:
+    return summary.split(PRIMARY_NEXT_DELIMITER, 1)[0].strip()
+
+
+def _fallback_primary_next(result: DecisionResult) -> str:
+    if result.trade_offs:
+        return (
+            f"{PRIMARY_NEXT_DELIMITER}核实“{result.trade_offs[0].title}”对应的关键信息，"
+            "再决定是否继续当前方案。"
+        )
+    return (
+        f"{PRIMARY_NEXT_DELIMITER}核实当前推荐房源的实际条件，"
+        "再决定是否继续该方案。"
+    )
 
 
 def waiting_decision(summary: str) -> DecisionResult:
@@ -157,10 +187,14 @@ def build_next_actions(
     budget: int | None,
     current_feedback: DecisionRelevantFeedback | None = None,
 ) -> DecisionResult:
+    if result.status != "ready" or not result.summary:
+        return result
+
+    if has_recoverable_primary_next(result.summary):
+        return result
+
     if (
-        result.status == "ready"
-        and result.summary
-        and current_feedback is not None
+        current_feedback is not None
         and current_feedback.relevant
         and current_feedback.observed_commute_minutes is not None
     ):
@@ -175,12 +209,11 @@ def build_next_actions(
                 "下一步：继续比较当前区域的具体房源，"
                 "优先核实租金和房源条件。"
             )
-        return result.model_copy(update={"summary": f"{result.summary} {next_action}"})
+        decision_text = _decision_without_primary_next(result.summary)
+        return result.model_copy(update={"summary": f"{decision_text} {next_action}"})
 
     if (
-        result.status != "ready"
-        or not result.summary
-        or rent_evidence is None
+        rent_evidence is None
         or commute_evidence is None
         or budget is None
         or not rent_evidence.supports_budget(budget)
@@ -191,7 +224,12 @@ def build_next_actions(
             for trade_off in result.trade_offs
         )
     ):
-        return result
+        decision_text = _decision_without_primary_next(result.summary)
+        return result.model_copy(
+            update={
+                "summary": f"{decision_text} {_fallback_primary_next(result)}",
+            }
+        )
 
     next_actions = (
         "下一步：先验证一次工作日高峰通勤，"
@@ -338,6 +376,13 @@ class DecisionService:
         if result.status == "waiting":
             return result
 
+        if not has_recoverable_primary_next(result.summary):
+            logger.warning(
+                "Ready Decision has no recoverable Primary NEXT for conversation %s.",
+                conversation_id,
+            )
+            return waiting_decision("AI 暂时无法形成可执行的下一步，请稍后重试。")
+
         property_ids = {
             property_.id for property_ in properties if property_.id is not None
         }
@@ -350,13 +395,14 @@ class DecisionService:
             return waiting_decision("AI 暂时无法验证推荐房源，请稍后重试。")
 
         try:
-            decision_record_service.save(
+            record = decision_record_service.save(
                 conversation_id=conversation_id,
                 decision=result,
             )
+            decision_action_progress_service.reconcile_ready_record(record)
         except Exception:  # noqa: BLE001 - Record persistence must not block a Ready Decision.
             logger.exception(
-                "Failed to save Decision Record for conversation %s.",
+                "Failed to save Decision Record or Action State for conversation %s.",
                 conversation_id,
             )
 

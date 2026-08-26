@@ -69,6 +69,7 @@ def test_empty_owner_keeps_normal_entry_without_creating_conversation() -> None:
         "conversation_id": None,
         "profile": None,
         "decision": None,
+        "action_progress": None,
     }
     with database.connect() as connection:
         count = connection.execute(

@@ -1,5 +1,9 @@
 from pydantic import BaseModel, Field
 
+from app.models.action_progress import (
+    NO_ACTION_PROGRESS_UPDATE,
+    ActionProgressUpdate,
+)
 from app.models.decision_challenge import (
     NO_DECISION_CHALLENGE,
     DecisionChallenge,
@@ -19,4 +23,7 @@ class ProfileAnalysis(BaseModel):
     )
     decision_challenge: DecisionChallenge = Field(
         default_factory=lambda: NO_DECISION_CHALLENGE,
+    )
+    action_progress_update: ActionProgressUpdate = Field(
+        default_factory=lambda: NO_ACTION_PROGRESS_UPDATE,
     )

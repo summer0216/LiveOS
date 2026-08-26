@@ -13,7 +13,11 @@ import ProfileWorkspace from './components/ProfileWorkspace';
 
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 import { getDecision, type DecisionResult } from '@/services/decision';
-import { getLivingDecisionResume } from '@/services/resume';
+import {
+  getLivingDecisionResume,
+  type ActionProgressStatus,
+  type CurrentActionProgress,
+} from '@/services/resume';
 import { createClientId } from '@/lib/createClientId';
 
 type MessageRole = 'user' | 'assistant';
@@ -69,6 +73,8 @@ export default function ConversationFeature() {
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [decision, setDecision] = useState<DecisionResult | null>(null);
+  const [actionProgress, setActionProgress] =
+    useState<CurrentActionProgress | null>(null);
   const [changeExplanation, setChangeExplanation] = useState<string | null>(
     null,
   );
@@ -105,6 +111,9 @@ export default function ConversationFeature() {
 
     try {
       const refreshedDecision = await getDecision(conversationId);
+      // Never carry a previous Action Progress label across a Decision transition.
+      // The matching current state is restored after the new Decision is settled.
+      setActionProgress(null);
       setDecision((currentDecision) => {
         if (refreshedDecision.status === 'ready') {
           return refreshedDecision;
@@ -132,10 +141,21 @@ export default function ConversationFeature() {
       const resumeState = await getLivingDecisionResume(conversationId);
       setProfile(resumeState.profile);
       setDecision(resumeState.decision);
+      setActionProgress(resumeState.action_progress);
     } catch (error: unknown) {
       console.error('Failed to resume living decision:', error);
     } finally {
       setIsProfileLoading(false);
+    }
+  }, [conversationId]);
+
+  const loadActionProgress = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const resumeState = await getLivingDecisionResume(conversationId);
+      setActionProgress(resumeState.action_progress);
+    } catch (error: unknown) {
+      console.error('Failed to load current Action Progress:', error);
     }
   }, [conversationId]);
 
@@ -244,6 +264,7 @@ export default function ConversationFeature() {
             setChangeExplanation(decisionChanges[0].explanation);
           }
         }
+        await loadActionProgress();
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
 
@@ -261,7 +282,14 @@ export default function ConversationFeature() {
         setIsStreaming(false);
       }
     },
-    [conversationId, isStreaming, loadProfile, profile, refreshDecision],
+    [
+      conversationId,
+      isStreaming,
+      loadActionProgress,
+      loadProfile,
+      profile,
+      refreshDecision,
+    ],
   );
 
   useEffect(() => {
@@ -304,7 +332,11 @@ export default function ConversationFeature() {
             <div className="mx-auto w-full max-w-5xl">
               <CurrentProblem profile={profile} />
               <DecisionChangeExplanation explanation={changeExplanation} />
-              <LivingState profile={profile} decision={decision} />
+              <LivingState
+                profile={profile}
+                decision={decision}
+                actionProgress={actionProgress}
+              />
 
               <p className="mt-10 mb-4 font-mono text-[10px] tracking-[0.16em] text-slate-600">
                 RECENT CONVERSATION
@@ -395,9 +427,11 @@ function CurrentProblem({ profile }: { profile: LivingProfile | null }) {
 function LivingState({
   profile,
   decision,
+  actionProgress,
 }: {
   profile: LivingProfile | null;
   decision: DecisionResult | null;
+  actionProgress: CurrentActionProgress | null;
 }) {
   const isDecision = decision?.status === 'ready' && Boolean(decision.summary);
   const summaryParts = decision?.summary?.split(' 下一步：', 2) ?? [];
@@ -433,7 +467,11 @@ function LivingState({
             <StateItem label="主要取舍" value={tradeOff.description} />
           )}
           {summaryParts[1] && (
-            <StateItem label="NEXT" value={summaryParts[1]} />
+            <StateItem
+              label="NEXT"
+              value={summaryParts[1]}
+              detail={getActionProgressLabel(actionProgress?.status ?? null)}
+            />
           )}
         </div>
       ) : (
@@ -446,15 +484,34 @@ function LivingState({
   );
 }
 
-function StateItem({ label, value }: { label: string; value: string }) {
+function StateItem({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string | null;
+}) {
   return (
     <div className="border-l border-blue-500/30 pl-4">
       <p className="font-mono text-[10px] tracking-[0.12em] text-slate-600">
         {label}
       </p>
       <p className="mt-1 text-sm leading-6 text-slate-400">{value}</p>
+      {detail && <p className="mt-1 text-xs text-blue-300">{detail}</p>}
     </div>
   );
+}
+
+function getActionProgressLabel(
+  status: ActionProgressStatus | null,
+): string | null {
+  if (status === 'NOT_STARTED') return '尚未开始';
+  if (status === 'PLANNED') return '已计划';
+  if (status === 'COMPLETED') return '已完成';
+  if (status === 'ABANDONED') return '已放弃';
+  return null;
 }
 
 function getUnderstandingCopy(profile: LivingProfile | null) {

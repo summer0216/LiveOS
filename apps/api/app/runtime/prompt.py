@@ -37,6 +37,15 @@ Extraction rules:
     than one of them.
 15. For an unresolved alternative such as "another property", never invent a
     target_property_id. Use null unless an existing property id is explicit.
+16. Analyze only the latest user turn for action_progress_update. It describes
+    explicit progress on the current Primary NEXT, not an arbitrary task.
+17. Use PLANNED only for explicit action intent, COMPLETED only when the user
+    explicitly says the action was carried out, ABANDONED only for an explicit
+    decision not to do the action, and NOT_STARTED only when the user explicitly
+    says it has not started. Ambiguous intent is not relevant.
+18. Action Progress is independent from profile mutation, observed-reality
+    feedback, and decision challenge. Preserve every real semantic when they
+    coexist in the latest turn.
 
 Return exactly this JSON structure:
 
@@ -63,6 +72,10 @@ Return exactly this JSON structure:
     "subject": string | null,
     "statement": string | null,
     "target_property_id": string | null
+  },
+  "action_progress_update": {
+    "relevant": boolean,
+    "status": "NOT_STARTED" | "PLANNED" | "COMPLETED" | "ABANDONED" | null
   }
 }
 """.strip()

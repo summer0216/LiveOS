@@ -13,6 +13,7 @@ REQUIRED_TABLES = {
     "living_profiles",
     "properties",
     "decision_records",
+    "decision_action_states",
     "decision_memories",
 }
 
@@ -88,6 +89,24 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS decision_action_states (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        decision_record_id UUID NOT NULL,
+        action_key TEXT NOT NULL,
+        next_text TEXT NOT NULL,
+        status TEXT CHECK (
+            status IS NULL OR status IN (
+                'NOT_STARTED', 'PLANNED', 'COMPLETED', 'ABANDONED'
+            )
+        ),
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (owner_id, conversation_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS decision_memories (
         id UUID PRIMARY KEY,
         owner_id UUID NOT NULL REFERENCES anonymous_users(id),
@@ -152,6 +171,7 @@ OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_living_profiles_owner ON living_profiles(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_records_owner_created ON decision_records(owner_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_action_states_owner ON decision_action_states(owner_id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_category_content ON decision_memories(owner_id, category, normalized_content)",
     "CREATE INDEX IF NOT EXISTS idx_memories_owner_updated ON decision_memories(owner_id, updated_at DESC)",
 )

@@ -385,8 +385,13 @@ def test_challenge_can_hold_or_change_ready_decision(
 
         assert result.status == "ready"
         assert result.best_property_id == target_id
+        assert result.summary is not None
+        assert result.summary.count("下一步：") == 1
         assert "我不认同这个判断，请重新考虑" in prompts[0]
-        assert len(decision_record_service.list(conversation_id)) == 2
+        records = decision_record_service.list(conversation_id)
+        assert len(records) == 2
+        assert records[0].summary == result.summary
+        assert records[0].summary.count("下一步：") == 1
     finally:
         profile_manager.delete(conversation_id)
         property_manager.delete_conversation(conversation_id)
