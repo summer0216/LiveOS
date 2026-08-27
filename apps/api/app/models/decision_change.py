@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
 
+from app.models.action_progress import VerificationOutcomeUpdate
 from app.models.decision_challenge import DecisionChallenge
 from app.models.decision_feedback import DecisionRelevantFeedback
 from app.models.profile import LivingProfile
@@ -36,7 +37,19 @@ class ChallengeCause:
     target_property_id: str | None
 
 
-type DecisionChangeCause = ProfileMutationCause | FeedbackCause | ChallengeCause
+@dataclass(frozen=True)
+class VerificationOutcomeCause:
+    source: Literal["VERIFICATION_OUTCOME"]
+    status: Literal["CONFIRMED", "DISCONFIRMED", "INCONCLUSIVE"]
+    evidence: tuple[dict[str, str | int], ...]
+
+
+type DecisionChangeCause = (
+    ProfileMutationCause
+    | FeedbackCause
+    | ChallengeCause
+    | VerificationOutcomeCause
+)
 
 
 @dataclass(frozen=True)
@@ -96,4 +109,16 @@ def challenge_cause(challenge: DecisionChallenge) -> ChallengeCause | None:
         subject=challenge.subject,
         statement=challenge.statement,
         target_property_id=challenge.target_property_id,
+    )
+
+
+def verification_outcome_cause(
+    outcome: VerificationOutcomeUpdate,
+) -> VerificationOutcomeCause | None:
+    if not outcome.relevant or outcome.status is None:
+        return None
+    return VerificationOutcomeCause(
+        source="VERIFICATION_OUTCOME",
+        status=outcome.status.value,
+        evidence=tuple(item.model_dump(mode="json") for item in outcome.evidence),
     )

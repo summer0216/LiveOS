@@ -101,6 +101,12 @@ SCHEMA_STATEMENTS = (
                 'NOT_STARTED', 'PLANNED', 'COMPLETED', 'ABANDONED'
             )
         ),
+        outcome_status TEXT CHECK (
+            outcome_status IS NULL OR outcome_status IN (
+                'CONFIRMED', 'DISCONFIRMED', 'INCONCLUSIVE'
+            )
+        ),
+        verification_evidence_json JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
         UNIQUE (owner_id, conversation_id)
@@ -123,6 +129,10 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS outcome_status TEXT",
+    "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS verification_evidence_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE decision_action_states DROP CONSTRAINT IF EXISTS decision_action_states_outcome_status_check",
+    "ALTER TABLE decision_action_states ADD CONSTRAINT decision_action_states_outcome_status_check CHECK (outcome_status IS NULL OR outcome_status IN ('CONFIRMED', 'DISCONFIRMED', 'INCONCLUSIVE'))",
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",

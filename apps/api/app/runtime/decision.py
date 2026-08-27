@@ -219,6 +219,33 @@ def format_current_challenge(context: DecisionContext) -> str:
     )
 
 
+def format_current_verification(context: DecisionContext) -> str:
+    action = context.current_action
+    if action is None or action.outcome_status is None:
+        return "Current User-Reported Verification Evidence:\nNone."
+
+    payload = json.dumps(
+        {
+            "action_id": action.action_id,
+            "primary_next": action.next_text,
+            "outcome": action.outcome_status.value,
+            "evidence": [
+                item.model_dump(mode="json")
+                for item in action.verification_evidence
+            ],
+        },
+        ensure_ascii=False,
+    )
+    return (
+        "Current User-Reported Verification Evidence:\n"
+        "This evidence belongs only to the current logical Primary NEXT and "
+        "was reported by the user. Use it for the current decision, but do not "
+        "treat it as canonical Property data, Living Profile preference, or "
+        "official ground truth.\n"
+        f"{payload}"
+    )
+
+
 def build_decision_prompt(
     decision_input: DecisionInput,
     context: DecisionContext,
@@ -242,6 +269,7 @@ def build_decision_prompt(
     history_text = format_decision_context(context)
     feedback_text = format_current_feedback(context)
     challenge_text = format_current_challenge(context)
+    verification_text = format_current_verification(context)
     living_model_text = format_living_model_section(
         decision_input.living_model,
     )
@@ -272,6 +300,7 @@ def build_decision_prompt(
         f"{history_text}\n\n"
         f"{feedback_text}\n\n"
         f"{challenge_text}\n\n"
+        f"{verification_text}\n\n"
         f"{grounded_section}"
         "Decision Context Priority Rules:\n"
         f"{DECISION_CONTEXT_PRIORITY_RULES}\n\n"

@@ -8,10 +8,24 @@ export type ActionProgressStatus =
   | 'COMPLETED'
   | 'ABANDONED';
 
+export type VerificationOutcomeStatus =
+  | 'CONFIRMED'
+  | 'DISCONFIRMED'
+  | 'INCONCLUSIVE';
+
+export interface VerificationEvidence {
+  field: 'city' | 'commute_minutes' | 'rent' | 'statement';
+  value: number | string;
+  statement: string;
+  provenance: 'USER_REPORTED';
+}
+
 export interface CurrentActionProgress {
   action_id: string | null;
   next_text: string;
   status: ActionProgressStatus | null;
+  outcome_status: VerificationOutcomeStatus | null;
+  verification_evidence: VerificationEvidence[];
 }
 
 export interface LivingDecisionResume {

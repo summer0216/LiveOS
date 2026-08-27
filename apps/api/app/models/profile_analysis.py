@@ -2,7 +2,9 @@ from pydantic import BaseModel, Field
 
 from app.models.action_progress import (
     NO_ACTION_PROGRESS_UPDATE,
+    NO_VERIFICATION_OUTCOME_UPDATE,
     ActionProgressUpdate,
+    VerificationOutcomeUpdate,
 )
 from app.models.decision_challenge import (
     NO_DECISION_CHALLENGE,
@@ -26,4 +28,7 @@ class ProfileAnalysis(BaseModel):
     )
     action_progress_update: ActionProgressUpdate = Field(
         default_factory=lambda: NO_ACTION_PROGRESS_UPDATE,
+    )
+    verification_outcome_update: VerificationOutcomeUpdate = Field(
+        default_factory=lambda: NO_VERIFICATION_OUTCOME_UPDATE,
     )

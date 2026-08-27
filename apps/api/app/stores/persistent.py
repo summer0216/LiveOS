@@ -9,6 +9,8 @@ from psycopg.types.json import Jsonb
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
+    VerificationEvidence,
+    VerificationOutcomeStatus,
 )
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.profile import LivingProfile
@@ -570,15 +572,18 @@ class DecisionActionStateStore:
                 """
                 INSERT INTO decision_action_states(
                     id, owner_id, conversation_id, decision_record_id,
-                    action_key, next_text, status, created_at, updated_at
+                    action_key, next_text, status, outcome_status,
+                    verification_evidence_json, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
                     id = EXCLUDED.id,
                     decision_record_id = EXCLUDED.decision_record_id,
                     action_key = EXCLUDED.action_key,
                     next_text = EXCLUDED.next_text,
                     status = EXCLUDED.status,
+                    outcome_status = EXCLUDED.outcome_status,
+                    verification_evidence_json = EXCLUDED.verification_evidence_json,
                     created_at = EXCLUDED.created_at,
                     updated_at = EXCLUDED.updated_at
                 """,
@@ -590,6 +595,17 @@ class DecisionActionStateStore:
                     state.action_key,
                     state.next_text,
                     state.status.value if state.status is not None else None,
+                    (
+                        state.outcome_status.value
+                        if state.outcome_status is not None
+                        else None
+                    ),
+                    Jsonb(
+                        [
+                            item.model_dump(mode="json")
+                            for item in state.verification_evidence
+                        ]
+                    ),
                     state.created_at,
                     state.updated_at,
                 ),
@@ -621,6 +637,15 @@ class DecisionActionStateStore:
                 ActionProgressStatus(row["status"])
                 if row["status"] is not None
                 else None
+            ),
+            outcome_status=(
+                VerificationOutcomeStatus(row["outcome_status"])
+                if row["outcome_status"] is not None
+                else None
+            ),
+            verification_evidence=tuple(
+                VerificationEvidence.model_validate(item)
+                for item in row["verification_evidence_json"]
             ),
             created_at=row["created_at"],
             updated_at=row["updated_at"],

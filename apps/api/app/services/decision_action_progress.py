@@ -7,9 +7,11 @@ from threading import RLock
 from uuid import uuid4
 
 from app.models.action_progress import (
+    NO_VERIFICATION_OUTCOME_UPDATE,
     ActionProgressUpdate,
     CurrentActionProgress,
     DecisionActionState,
+    VerificationOutcomeUpdate,
 )
 from app.schemas.decision_record import DecisionRecord
 from app.stores.runtime import decision_action_state_store, decision_record_store
@@ -25,29 +27,6 @@ class LogicalActionDescriptor:
 
 def _normalized(value: str) -> str:
     return re.sub(r"\s+", "", value.strip().lower())
-
-
-def _decision_signals(value: str) -> str:
-    normalized_value = _normalized(value).replace("单人", "1人")
-    numbers = re.findall(r"\d+(?:\.\d+)?", normalized_value)
-    keywords = [
-        keyword
-        for keyword in (
-            "不可行",
-            "可行",
-            "不建议",
-            "建议",
-            "不适合",
-            "适合",
-            "不接受",
-            "接受",
-            "不优先",
-            "优先",
-        )
-        if keyword in normalized_value
-    ]
-    signals = "|".join([*numbers, *keywords])
-    return signals or normalized_value
 
 
 def _split_primary_next(summary: str) -> tuple[str, str] | None:
@@ -67,17 +46,9 @@ def describe_logical_action(record: DecisionRecord) -> LogicalActionDescriptor |
     parts = _split_primary_next(record.summary)
     if parts is None:
         return None
-    decision_text, next_text = parts
+    _, next_text = parts
     payload = {
         "best_property_id": record.best_property_id,
-        "decision_signals": _decision_signals(decision_text),
-        "trade_offs": [
-            {
-                "title": _normalized(trade_off.title),
-                "description": _normalized(trade_off.description),
-            }
-            for trade_off in record.trade_offs
-        ],
         "next_text": _normalized(next_text),
     }
     action_key = hashlib.sha256(
@@ -99,6 +70,10 @@ class DecisionActionProgressService:
             action_id=state.id if state is not None else None,
             next_text=descriptor.next_text,
             status=state.status if state is not None else None,
+            outcome_status=(state.outcome_status if state is not None else None),
+            verification_evidence=(
+                state.verification_evidence if state is not None else ()
+            ),
         )
 
     @staticmethod
@@ -157,8 +132,12 @@ class DecisionActionProgressService:
         self,
         conversation_id: str,
         update: ActionProgressUpdate,
+        outcome_update: VerificationOutcomeUpdate = NO_VERIFICATION_OUTCOME_UPDATE,
     ) -> CurrentActionProgress | None:
-        if not update.relevant or update.status is None:
+        if (
+            (not update.relevant or update.status is None)
+            and not outcome_update.relevant
+        ):
             return self.resolve_current(conversation_id)
 
         with self._lock:
@@ -171,7 +150,19 @@ class DecisionActionProgressService:
             state = decision_action_state_store.save(
                 state.model_copy(
                     update={
-                        "status": update.status,
+                        "status": (
+                            update.status if update.relevant else state.status
+                        ),
+                        "outcome_status": (
+                            outcome_update.status
+                            if outcome_update.relevant
+                            else state.outcome_status
+                        ),
+                        "verification_evidence": (
+                            outcome_update.evidence
+                            if outcome_update.relevant
+                            else state.verification_evidence
+                        ),
                         "updated_at": datetime.now(UTC),
                     }
                 )
@@ -180,6 +171,8 @@ class DecisionActionProgressService:
                 action_id=state.id,
                 next_text=state.next_text,
                 status=state.status,
+                outcome_status=state.outcome_status,
+                verification_evidence=state.verification_evidence,
             )
 
     def resolve_for_record(

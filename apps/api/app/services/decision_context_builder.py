@@ -3,6 +3,7 @@ from typing import Protocol
 from app.core.logger import logger
 from app.runtime.memory_context import DecisionMemoryContext
 from app.schemas.decision_context import DecisionContext
+from app.services.decision_action_progress import decision_action_progress_service
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_context_service import decision_context_service
 from app.services.decision_feedback_context import decision_feedback_context
@@ -76,6 +77,9 @@ class DecisionContextBuilder:
                 normalized_conversation_id,
             ),
             current_challenge=decision_challenge_context.consume(
+                normalized_conversation_id,
+            ),
+            current_action=decision_action_progress_service.resolve_current(
                 normalized_conversation_id,
             ),
         )

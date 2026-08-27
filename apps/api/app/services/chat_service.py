@@ -10,6 +10,7 @@ from app.models.decision_change import (
     DecisionChangeCause,
     challenge_cause,
     feedback_cause,
+    verification_outcome_cause,
 )
 from app.models.property import Property
 from app.runtime.runtime import ai_runtime
@@ -89,11 +90,15 @@ class ChatService:
                 conversation_id,
                 analysis.decision_challenge,
             )
-            if analysis.action_progress_update.relevant:
+            if (
+                analysis.action_progress_update.relevant
+                or analysis.verification_outcome_update.relevant
+            ):
                 try:
                     decision_action_progress_service.apply_update(
                         conversation_id,
                         analysis.action_progress_update,
+                        analysis.verification_outcome_update,
                     )
                 except Exception:
                     logger.exception(
@@ -109,10 +114,14 @@ class ChatService:
 
             current_feedback_cause = feedback_cause(analysis.decision_feedback)
             current_challenge_cause = challenge_cause(analysis.decision_challenge)
+            current_outcome_cause = verification_outcome_cause(
+                analysis.verification_outcome_update,
+            )
             return (
                 *merge_result.causes,
                 *((current_feedback_cause,) if current_feedback_cause else ()),
                 *((current_challenge_cause,) if current_challenge_cause else ()),
+                *((current_outcome_cause,) if current_outcome_cause else ()),
             )
 
         except Exception:

@@ -17,6 +17,7 @@ import {
   getLivingDecisionResume,
   type ActionProgressStatus,
   type CurrentActionProgress,
+  type VerificationOutcomeStatus,
 } from '@/services/resume';
 import { createClientId } from '@/lib/createClientId';
 
@@ -253,11 +254,17 @@ export default function ConversationFeature() {
             (cause) => cause.source === 'DECISION_CHALLENGE',
           ),
         );
+        const hasVerificationOutcome = decisionChanges.some((change) =>
+          change.causes.some(
+            (cause) => cause.source === 'VERIFICATION_OUTCOME',
+          ),
+        );
 
         if (
           shouldRefreshDecision ||
           hasDecisionRelevantFeedback ||
-          hasDecisionChallenge
+          hasDecisionChallenge ||
+          hasVerificationOutcome
         ) {
           const refreshed = await refreshDecision();
           if (refreshed && decisionChanges.length > 0) {
@@ -470,7 +477,7 @@ function LivingState({
             <StateItem
               label="NEXT"
               value={summaryParts[1]}
-              detail={getActionProgressLabel(actionProgress?.status ?? null)}
+              detail={getActionStateLabel(actionProgress)}
             />
           )}
         </div>
@@ -512,6 +519,26 @@ function getActionProgressLabel(
   if (status === 'COMPLETED') return '已完成';
   if (status === 'ABANDONED') return '已放弃';
   return null;
+}
+
+function getVerificationOutcomeLabel(
+  status: VerificationOutcomeStatus | null,
+): string | null {
+  if (status === 'CONFIRMED') return '已确认';
+  if (status === 'DISCONFIRMED') return '已证伪';
+  if (status === 'INCONCLUSIVE') return '未能确认';
+  return null;
+}
+
+function getActionStateLabel(
+  actionProgress: CurrentActionProgress | null,
+): string | null {
+  if (!actionProgress) return null;
+  const labels = [
+    getActionProgressLabel(actionProgress.status),
+    getVerificationOutcomeLabel(actionProgress.outcome_status),
+  ].filter((label): label is string => Boolean(label));
+  return labels.length ? labels.join(' · ') : null;
 }
 
 function getUnderstandingCopy(profile: LivingProfile | null) {

@@ -46,6 +46,14 @@ Extraction rules:
 18. Action Progress is independent from profile mutation, observed-reality
     feedback, and decision challenge. Preserve every real semantic when they
     coexist in the latest turn.
+19. Analyze only the latest user turn for verification_outcome_update. It is
+    the explicit result of verifying the current Primary NEXT. Use CONFIRMED
+    when the expected fact was verified, DISCONFIRMED when it was disproved,
+    and INCONCLUSIVE when the user explicitly could not verify it. Ambiguous
+    guesses are not outcomes. Preserve short, bounded user-reported evidence
+    and never convert it into canonical Property or Living Profile truth.
+20. An explicit Verification Outcome also means the current action was
+    COMPLETED. COMPLETED alone does not imply a Verification Outcome.
 
 Return exactly this JSON structure:
 
@@ -76,6 +84,18 @@ Return exactly this JSON structure:
   "action_progress_update": {
     "relevant": boolean,
     "status": "NOT_STARTED" | "PLANNED" | "COMPLETED" | "ABANDONED" | null
+  },
+  "verification_outcome_update": {
+    "relevant": boolean,
+    "status": "CONFIRMED" | "DISCONFIRMED" | "INCONCLUSIVE" | null,
+    "evidence": [
+      {
+        "field": "city" | "commute_minutes" | "rent" | "statement",
+        "value": string | integer,
+        "statement": string,
+        "provenance": "USER_REPORTED"
+      }
+    ]
   }
 }
 """.strip()

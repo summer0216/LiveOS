@@ -28,7 +28,8 @@ export interface DecisionChangeCause {
   source:
     | 'PROFILE_MUTATION'
     | 'DECISION_RELEVANT_FEEDBACK'
-    | 'DECISION_CHALLENGE';
+    | 'DECISION_CHALLENGE'
+    | 'VERIFICATION_OUTCOME';
   field?: string;
   operation?: 'SET' | 'CLEAR';
   before?: string | number | boolean | null;
@@ -40,6 +41,8 @@ export interface DecisionChangeCause {
   subject?: string | null;
   statement?: string;
   target_property_id?: string | null;
+  status?: 'CONFIRMED' | 'DISCONFIRMED' | 'INCONCLUSIVE';
+  evidence?: Array<Record<string, string | number>>;
 }
 
 export interface DecisionChange {

@@ -7,6 +7,7 @@ from app.models.decision_change import (
     DecisionChangeCause,
     FeedbackCause,
     ProfileMutationCause,
+    VerificationOutcomeCause,
 )
 
 PROFILE_LABELS = {
@@ -67,6 +68,14 @@ def _format_challenge_cause(cause: ChallengeCause) -> str:
     return "你对当前判断提出了质疑，已重新评估。"
 
 
+def _format_verification_outcome_cause(cause: VerificationOutcomeCause) -> str:
+    if cause.status == "CONFIRMED":
+        return "你已确认当前行动需要核实的信息，LiveOS 已据此重新评估。"
+    if cause.status == "DISCONFIRMED":
+        return "你已证伪当前行动需要核实的信息，LiveOS 已据此重新评估。"
+    return "你完成了核实，但目前仍无法确认结果，LiveOS 已据此重新评估。"
+
+
 def format_decision_change(causes: tuple[DecisionChangeCause, ...]) -> str:
     explanations: list[str] = []
     for cause in causes:
@@ -74,8 +83,10 @@ def format_decision_change(causes: tuple[DecisionChangeCause, ...]) -> str:
             explanations.append(_format_profile_cause(cause))
         elif isinstance(cause, FeedbackCause):
             explanations.append(_format_feedback_cause(cause))
-        else:
+        elif isinstance(cause, ChallengeCause):
             explanations.append(_format_challenge_cause(cause))
+        else:
+            explanations.append(_format_verification_outcome_cause(cause))
     return "".join(explanations)
 
 

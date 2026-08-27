@@ -5,8 +5,12 @@ from dataclasses import replace
 from app.core.ai_client import ai_client
 from app.models.action_progress import (
     NO_ACTION_PROGRESS_UPDATE,
+    NO_VERIFICATION_OUTCOME_UPDATE,
     ActionProgressStatus,
     ActionProgressUpdate,
+    VerificationEvidence,
+    VerificationOutcomeStatus,
+    VerificationOutcomeUpdate,
 )
 from app.models.conversation import ConversationMessage
 from app.models.decision_challenge import (
@@ -77,10 +81,19 @@ class ProfileIntelligence:
             data,
             latest_user_message,
         )
+        verification_outcome_update = self._build_verification_outcome_update(
+            data,
+            latest_user_message,
+        )
         action_progress_update = self._build_action_progress_update(
             data,
             latest_user_message,
         )
+        if verification_outcome_update.relevant:
+            action_progress_update = ActionProgressUpdate(
+                relevant=True,
+                status=ActionProgressStatus.COMPLETED,
+            )
         decision_challenge = self._protect_action_progress_challenge(
             decision_challenge,
             action_progress_update,
@@ -96,6 +109,11 @@ class ProfileIntelligence:
             action_progress_update,
             latest_user_message,
         )
+        decision_feedback = self._protect_verification_feedback(
+            decision_feedback,
+            verification_outcome_update,
+            latest_user_message,
+        )
         patch = self._protect_commute_preference(
             patch,
             decision_feedback,
@@ -106,6 +124,11 @@ class ProfileIntelligence:
             decision_challenge,
             latest_user_message,
         )
+        patch = self._protect_verification_profile(
+            patch,
+            verification_outcome_update,
+            latest_user_message,
+        )
 
         return ProfileAnalysis(
             patch=patch,
@@ -113,6 +136,7 @@ class ProfileIntelligence:
             decision_feedback=decision_feedback,
             decision_challenge=decision_challenge,
             action_progress_update=action_progress_update,
+            verification_outcome_update=verification_outcome_update,
         )
 
     def _parse_json(
@@ -244,6 +268,106 @@ class ProfileIntelligence:
             statement=message[:240],
         )
 
+    def _build_verification_outcome_update(
+        self,
+        data: dict,
+        latest_user_message: str,
+    ) -> VerificationOutcomeUpdate:
+        message = latest_user_message.strip()
+        status = self._explicit_verification_outcome_status(message)
+        if status is None:
+            return NO_VERIFICATION_OUTCOME_UPDATE
+
+        deterministic_evidence = self._verification_evidence(message)
+        raw_update = data.get("verification_outcome_update")
+        if isinstance(raw_update, dict):
+            try:
+                parsed = VerificationOutcomeUpdate.model_validate(raw_update)
+                if parsed.relevant and parsed.status == status:
+                    return parsed.model_copy(
+                        update={"evidence": deterministic_evidence or parsed.evidence}
+                    )
+            except (TypeError, ValueError):
+                pass
+
+        return VerificationOutcomeUpdate(
+            relevant=True,
+            status=status,
+            evidence=deterministic_evidence,
+        )
+
+    @staticmethod
+    def _explicit_verification_outcome_status(
+        message: str,
+    ) -> VerificationOutcomeStatus | None:
+        if re.search(r"好像|听说|可能|也许|或许", message):
+            return None
+        if re.search(r"确认不了|无法确认|没法确认|不能确认|也不知道|也不清楚", message):
+            return VerificationOutcomeStatus.INCONCLUSIVE
+        if re.search(
+            r"(?:确认(?:过)?了|核实(?:过)?了|查证(?:过)?了|试过了).{0,40}"
+            r"(?:不在|不是|不对|错误|有误|接受不了|不能接受|不接受)",
+            message,
+        ) or re.search(r"实际.{0,12}\d+\s*分钟.{0,20}最多只能接受", message):
+            return VerificationOutcomeStatus.DISCONFIRMED
+        if re.search(
+            r"(?:确认(?:过)?了|核实(?:过)?了|查证(?:过)?了).{0,40}"
+            r"(?:就在|确实|位于|租金|房租|通勤|实际|是)",
+            message,
+        ):
+            return VerificationOutcomeStatus.CONFIRMED
+        return None
+
+    @staticmethod
+    def _verification_evidence(message: str) -> tuple[VerificationEvidence, ...]:
+        evidence: list[VerificationEvidence] = []
+        commute = re.search(
+            r"实际.{0,10}?(\d+)\s*分钟|(?:实测|跑下来).{0,8}?(\d+)\s*分钟",
+            message,
+        )
+        if commute is not None:
+            minutes = int(next(value for value in commute.groups() if value))
+            evidence.append(
+                VerificationEvidence(
+                    field="commute_minutes",
+                    value=minutes,
+                    statement=message[:500],
+                )
+            )
+
+        rent = re.search(r"(?:租金|房租|实际租金).{0,8}?(\d+)\s*元", message)
+        if rent is not None:
+            evidence.append(
+                VerificationEvidence(
+                    field="rent",
+                    value=int(rent.group(1)),
+                    statement=message[:500],
+                )
+            )
+
+        cities = re.findall(
+            r"(?<!不)(?:就在|位于|在)([\u4e00-\u9fff]{2,12})",
+            message,
+        )
+        if cities:
+            evidence.append(
+                VerificationEvidence(
+                    field="city",
+                    value=cities[-1],
+                    statement=message[:500],
+                )
+            )
+
+        if not evidence:
+            evidence.append(
+                VerificationEvidence(
+                    field="statement",
+                    value=message[:240],
+                    statement=message[:500],
+                )
+            )
+        return tuple(evidence[:4])
+
     def _build_action_progress_update(
         self,
         data: dict,
@@ -279,8 +403,10 @@ class ProfileIntelligence:
         if re.search(r"不打算|先不做|不准备再|不想再|不再(?:去|试|看|做)", message):
             return ActionProgressStatus.ABANDONED
         if re.search(
-            r"已经.{0,12}(?:去|试|看|跑|走|做|完成)|"
-            r"(?:去|试|看|跑|走|做)过|实际.{0,10}(?:跑|走|试|看).{0,8}(?:一遍|一次)",
+            r"已经.{0,12}(?:去|试|看|查|问|确认|核实|跑|走|做|完成)|"
+            r"(?:去|试|看|查|问|确认|核实|跑|走|做)过|"
+            r"(?:确认|核实|查证)(?:过)?了|"
+            r"实际.{0,10}(?:跑|走|试|看).{0,8}(?:一遍|一次)",
             message,
         ):
             return ActionProgressStatus.COMPLETED
@@ -316,6 +442,75 @@ class ProfileIntelligence:
             latest_user_message,
         )
         return feedback if has_decision_outcome is not None else NO_DECISION_FEEDBACK
+
+    @staticmethod
+    def _protect_verification_feedback(
+        feedback: DecisionRelevantFeedback,
+        outcome: VerificationOutcomeUpdate,
+        latest_user_message: str,
+    ) -> DecisionRelevantFeedback:
+        if not outcome.relevant or not feedback.relevant:
+            return feedback
+        has_feedback_semantics = (
+            feedback.observed_commute_minutes is not None
+            or feedback.judgment is not None
+            or re.search(
+                r"接受不了|不能接受|不接受|可以接受|能接受|太久|实际.{0,10}\d+",
+                latest_user_message,
+            )
+            is not None
+        )
+        return feedback if has_feedback_semantics else NO_DECISION_FEEDBACK
+
+    @staticmethod
+    def _protect_verification_profile(
+        patch: LivingProfilePatch,
+        outcome: VerificationOutcomeUpdate,
+        latest_user_message: str,
+    ) -> LivingProfilePatch:
+        if not outcome.relevant:
+            return patch
+
+        explicit_profile_evidence = {
+            "work_location": re.search(
+                r"(?:我|本人).{0,8}(?:在|到).{1,20}(?:工作|上班)|"
+                r"工作地点|上班地点",
+                latest_user_message,
+            ),
+            "preferred_city": re.search(
+                r"意向城市|想住|希望住|准备搬|打算搬",
+                latest_user_message,
+            ),
+            "budget": re.search(
+                r"预算.{0,10}\d+|(?:最多|上限|控制在).{0,8}\d+\s*元",
+                latest_user_message,
+            ),
+            "commute_minutes": re.search(
+                r"(?:最多|最大|上限|只能接受|最多接受|希望|控制在).{0,12}"
+                r"\d+\s*分钟|通勤.{0,8}(?:改|调整|设|按|恢复|变成|为).{0,8}"
+                r"\d+\s*分钟",
+                latest_user_message,
+            ),
+            "family_size": re.search(
+                r"(?:一家|家庭|我们).{0,8}\d+\s*人|\d+\s*人(?:住|居住)",
+                latest_user_message,
+            ),
+            "has_pet": re.search(
+                r"养宠物|有宠物|没有宠物|没宠物|不养宠物",
+                latest_user_message,
+            ),
+        }
+        updates: dict[str, object] = {
+            field: None
+            for field, evidence in explicit_profile_evidence.items()
+            if evidence is None
+        }
+        clear_fields = set(patch.clear_fields)
+        clear_fields.difference_update(updates)
+        if updates or clear_fields != set(patch.clear_fields):
+            updates["clear_fields"] = frozenset(clear_fields)
+            return replace(patch, **updates)
+        return patch
 
     @staticmethod
     def _protect_action_progress_challenge(
