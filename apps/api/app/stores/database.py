@@ -122,6 +122,14 @@ SCHEMA_STATEMENTS = (
         normalized_content TEXT NOT NULL,
         confidence DOUBLE PRECISION NOT NULL,
         evidence_record_ids_json JSONB NOT NULL,
+        source_action_id UUID,
+        source_action_key TEXT,
+        source_outcome_status TEXT CHECK (
+            source_outcome_status IS NULL OR source_outcome_status IN (
+                'CONFIRMED', 'DISCONFIRMED', 'INCONCLUSIVE'
+            )
+        ),
+        source_decision_record_id UUID,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
     )
@@ -137,6 +145,12 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
+    "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_action_id UUID",
+    "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_action_key TEXT",
+    "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_outcome_status TEXT",
+    "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_decision_record_id UUID",
+    "ALTER TABLE decision_memories DROP CONSTRAINT IF EXISTS decision_memories_source_outcome_status_check",
+    "ALTER TABLE decision_memories ADD CONSTRAINT decision_memories_source_outcome_status_check CHECK (source_outcome_status IS NULL OR source_outcome_status IN ('CONFIRMED', 'DISCONFIRMED', 'INCONCLUSIVE'))",
     """
     UPDATE living_profiles AS item
     SET owner_id = conversation.anonymous_user_id
@@ -182,7 +196,9 @@ OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_properties_owner ON properties(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_records_owner_created ON decision_records(owner_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_action_states_owner ON decision_action_states(owner_id)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_category_content ON decision_memories(owner_id, category, normalized_content)",
+    "DROP INDEX IF EXISTS uq_memories_owner_category_content",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_category_content ON decision_memories(owner_id, category, normalized_content) WHERE source_action_id IS NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_source_action ON decision_memories(owner_id, source_action_id) WHERE source_action_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_memories_owner_updated ON decision_memories(owner_id, updated_at DESC)",
 )
 

@@ -4,9 +4,11 @@ from datetime import UTC, datetime
 from threading import RLock
 from uuid import UUID, uuid4
 
+from app.models.action_progress import DecisionActionState, VerificationOutcomeStatus
 from app.models.decision_memory import (
     DecisionMemory,
     DecisionMemoryCandidate,
+    DecisionMemoryCategory,
 )
 from app.runtime.memory_evolution import MemoryEvolutionCandidate
 from app.services.conversation_manager import conversation_manager
@@ -115,6 +117,43 @@ class DecisionMemoryService:
                     deep=True,
                 )
 
+            return self._store.save(memory)
+
+    def upsert_verification_learning(
+        self,
+        state: DecisionActionState,
+    ) -> DecisionMemory | None:
+        if state.outcome_status is None or not state.verification_evidence:
+            return None
+
+        normalized_conversation_id = self._validate_conversation_id(
+            state.conversation_id,
+        )
+        source_action_id = UUID(state.id)
+        source_record_id = UUID(state.decision_record_id)
+        content = self._verification_learning_content(state.outcome_status)
+        now = datetime.now(UTC)
+
+        with self._lock:
+            existing = self._store.find_by_source_action_id(
+                normalized_conversation_id,
+                source_action_id,
+            )
+            memory = DecisionMemory(
+                id=existing.id if existing is not None else uuid4(),
+                conversation_id=normalized_conversation_id,
+                category=DecisionMemoryCategory.EVIDENCE_RELIABILITY,
+                content=content,
+                normalized_content=normalize_memory_content(content),
+                confidence=0.8,
+                evidence_record_ids=[source_record_id],
+                source_action_id=source_action_id,
+                source_action_key=state.action_key,
+                source_outcome_status=state.outcome_status,
+                source_decision_record_id=source_record_id,
+                created_at=existing.created_at if existing is not None else now,
+                updated_at=now,
+            )
             return self._store.save(memory)
 
     def evolve_candidates(
@@ -230,6 +269,16 @@ class DecisionMemoryService:
             normalized_conversation_id,
             memory_id,
         )
+
+    @staticmethod
+    def _verification_learning_content(
+        outcome_status: VerificationOutcomeStatus,
+    ) -> str:
+        if outcome_status == VerificationOutcomeStatus.CONFIRMED:
+            return "关键事实已确认，可据此评估对应约束。"
+        if outcome_status == VerificationOutcomeStatus.DISCONFIRMED:
+            return "关键事实被证伪时，不应高置信度判断其满足对应约束。"
+        return "关键事实未能确认时，不应高置信度判断其满足对应约束。"
 
     @staticmethod
     def _find_equivalent(

@@ -19,6 +19,7 @@ from app.services.decision_action_progress import decision_action_progress_servi
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
+from app.services.decision_memory_service import decision_memory_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -100,6 +101,14 @@ class ChatService:
                         analysis.action_progress_update,
                         analysis.verification_outcome_update,
                     )
+                    if analysis.verification_outcome_update.relevant:
+                        action_state = decision_action_progress_service.current_state(
+                            conversation_id,
+                        )
+                        if action_state is not None:
+                            decision_memory_service.upsert_verification_learning(
+                                action_state,
+                            )
                 except Exception:
                     logger.exception(
                         "Failed to persist Action Progress for conversation %s.",

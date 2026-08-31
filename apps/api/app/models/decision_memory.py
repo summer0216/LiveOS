@@ -4,12 +4,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.action_progress import VerificationOutcomeStatus
+
 
 class DecisionMemoryCategory(str, Enum):
     PRIORITY = "priority"
     PREFERENCE = "preference"
     CONSTRAINT = "constraint"
     TRADE_OFF = "trade_off"
+    EVIDENCE_RELIABILITY = "evidence_reliability"
 
 
 class DecisionMemoryCandidate(BaseModel):
@@ -31,5 +34,9 @@ class DecisionMemory(BaseModel):
     normalized_content: str
     confidence: float
     evidence_record_ids: list[UUID]
+    source_action_id: UUID | None = None
+    source_action_key: str | None = None
+    source_outcome_status: VerificationOutcomeStatus | None = None
+    source_decision_record_id: UUID | None = None
     created_at: datetime
     updated_at: datetime

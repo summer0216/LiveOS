@@ -191,6 +191,9 @@ class DecisionActionProgressService:
         record = self._latest_record(conversation_id)
         return self.resolve_for_record(record) if record is not None else None
 
+    def current_state(self, conversation_id: str) -> DecisionActionState | None:
+        return decision_action_state_store.get(conversation_id)
+
     def delete_conversation(self, conversation_id: str) -> None:
         decision_action_state_store.delete_conversation(conversation_id)
 

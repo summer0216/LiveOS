@@ -3,6 +3,7 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
+from app.models.action_progress import VerificationOutcomeStatus
 from app.models.decision_memory import DecisionMemory, DecisionMemoryCategory
 from app.stores.persistent import (
     optional_uuid,
@@ -32,6 +33,9 @@ class DecisionMemoryStoreProtocol(Protocol):
         self, conversation_id: str, memory_id: UUID
     ) -> DecisionMemory | None: ...
     def list_by_conversation(self, conversation_id: str) -> list[DecisionMemory]: ...
+    def find_by_source_action_id(
+        self, conversation_id: str, source_action_id: UUID
+    ) -> DecisionMemory | None: ...
     def list_by_owner(self, owner_id: str | UUID) -> list[DecisionMemory]: ...
     def replace_conversation(
         self, conversation_id: str, memories: list[DecisionMemory]
@@ -61,6 +65,14 @@ class DecisionMemoryStore:
             evidence_record_ids=[
                 UUID(value) for value in row["evidence_record_ids_json"]
             ],
+            source_action_id=row["source_action_id"],
+            source_action_key=row["source_action_key"],
+            source_outcome_status=(
+                VerificationOutcomeStatus(row["source_outcome_status"])
+                if row["source_outcome_status"] is not None
+                else None
+            ),
+            source_decision_record_id=row["source_decision_record_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -80,15 +92,21 @@ class DecisionMemoryStore:
                 """
                 INSERT INTO decision_memories(
                     id, owner_id, conversation_id, category, content, normalized_content,
-                    confidence, evidence_record_ids_json, created_at, updated_at
+                    confidence, evidence_record_ids_json, source_action_id,
+                    source_action_key, source_outcome_status,
+                    source_decision_record_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     conversation_id = EXCLUDED.conversation_id,
                     content = EXCLUDED.content,
                     normalized_content = EXCLUDED.normalized_content,
                     confidence = EXCLUDED.confidence,
                     evidence_record_ids_json = EXCLUDED.evidence_record_ids_json,
+                    source_action_id = EXCLUDED.source_action_id,
+                    source_action_key = EXCLUDED.source_action_key,
+                    source_outcome_status = EXCLUDED.source_outcome_status,
+                    source_decision_record_id = EXCLUDED.source_decision_record_id,
                     updated_at = EXCLUDED.updated_at
                 """,
                 (
@@ -100,6 +118,14 @@ class DecisionMemoryStore:
                     memory.normalized_content,
                     memory.confidence,
                     Jsonb([str(value) for value in memory.evidence_record_ids]),
+                    memory.source_action_id,
+                    memory.source_action_key,
+                    (
+                        memory.source_outcome_status.value
+                        if memory.source_outcome_status is not None
+                        else None
+                    ),
+                    memory.source_decision_record_id,
                     memory.created_at,
                     memory.updated_at,
                 ),
@@ -171,6 +197,24 @@ class DecisionMemoryStore:
             return []
         return self.list_by_owner(owner_id)
 
+    def find_by_source_action_id(
+        self,
+        conversation_id: str,
+        source_action_id: UUID,
+    ) -> DecisionMemory | None:
+        owner_id = resolve_owner_id(database, conversation_id)
+        if owner_id is None:
+            return None
+        with database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM decision_memories
+                WHERE owner_id = %s AND source_action_id = %s
+                """,
+                (owner_id, source_action_id),
+            ).fetchone()
+        return self._from(row) if row else None
+
     def list_by_owner(self, owner_id: str | UUID) -> list[DecisionMemory]:
         owner_uuid = optional_uuid(owner_id)
         if owner_uuid is None:
@@ -215,9 +259,11 @@ class DecisionMemoryStore:
                     INSERT INTO decision_memories(
                         id, owner_id, conversation_id, category, content,
                         normalized_content,
-                        confidence, evidence_record_ids_json, created_at, updated_at
+                        confidence, evidence_record_ids_json, source_action_id,
+                        source_action_key, source_outcome_status,
+                        source_decision_record_id, created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -232,6 +278,14 @@ class DecisionMemoryStore:
                             memory.normalized_content,
                             memory.confidence,
                             Jsonb([str(value) for value in memory.evidence_record_ids]),
+                            memory.source_action_id,
+                            memory.source_action_key,
+                            (
+                                memory.source_outcome_status.value
+                                if memory.source_outcome_status is not None
+                                else None
+                            ),
+                            memory.source_decision_record_id,
                             memory.created_at,
                             memory.updated_at,
                         )
