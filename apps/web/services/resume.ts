@@ -28,11 +28,20 @@ export interface CurrentActionProgress {
   verification_evidence: VerificationEvidence[];
 }
 
+export interface LatestVerifiedAction {
+  action_id: string;
+  next_text: string;
+  status: 'COMPLETED';
+  outcome_status: VerificationOutcomeStatus;
+  verification_evidence: VerificationEvidence[];
+}
+
 export interface LivingDecisionResume {
   conversation_id: string | null;
   profile: LivingProfile | null;
   decision: DecisionResult | null;
   action_progress: CurrentActionProgress | null;
+  latest_verified_action: LatestVerifiedAction | null;
 }
 
 export async function getLivingDecisionResume(

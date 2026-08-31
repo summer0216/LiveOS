@@ -19,6 +19,7 @@ import {
   getLivingDecisionResume,
   type ActionProgressStatus,
   type CurrentActionProgress,
+  type LatestVerifiedAction,
   type VerificationOutcomeStatus,
 } from '@/services/resume';
 import { createClientId } from '@/lib/createClientId';
@@ -79,6 +80,8 @@ export default function ConversationFeature() {
   const [candidate, setCandidate] = useState<Property | null>(null);
   const [actionProgress, setActionProgress] =
     useState<CurrentActionProgress | null>(null);
+  const [latestVerifiedAction, setLatestVerifiedAction] =
+    useState<LatestVerifiedAction | null>(null);
   const [changeExplanation, setChangeExplanation] = useState<string | null>(
     null,
   );
@@ -142,6 +145,7 @@ export default function ConversationFeature() {
       setProfile(resumeState.profile);
       setDecision(resumeState.decision);
       setActionProgress(resumeState.action_progress);
+      setLatestVerifiedAction(resumeState.latest_verified_action);
     } catch (error: unknown) {
       console.error('Failed to resume living decision:', error);
     } finally {
@@ -154,6 +158,7 @@ export default function ConversationFeature() {
     try {
       const resumeState = await getLivingDecisionResume(conversationId);
       setActionProgress(resumeState.action_progress);
+      setLatestVerifiedAction(resumeState.latest_verified_action);
     } catch (error: unknown) {
       console.error('Failed to load current Action Progress:', error);
     }
@@ -179,9 +184,13 @@ export default function ConversationFeature() {
   }, [initialMessage, loadResumeState]);
 
   useEffect(() => {
+    if (initialMessage) {
+      return;
+    }
+
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCandidate();
-  }, [loadCandidate]);
+  }, [initialMessage, loadCandidate]);
 
   const sendConversationMessage = useCallback(
     async (content: string) => {
@@ -287,6 +296,7 @@ export default function ConversationFeature() {
             setChangeExplanation(decisionChanges[0].explanation);
           }
         }
+        await loadCandidate();
         await loadActionProgress();
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
@@ -309,6 +319,7 @@ export default function ConversationFeature() {
       conversationId,
       isStreaming,
       loadActionProgress,
+      loadCandidate,
       loadProfile,
       profile,
       refreshDecision,
@@ -359,6 +370,7 @@ export default function ConversationFeature() {
                 profile={profile}
                 decision={decision}
                 actionProgress={actionProgress}
+                latestVerifiedAction={latestVerifiedAction}
               />
 
               <p className="mt-10 mb-4 font-mono text-[10px] tracking-[0.16em] text-slate-600">
@@ -505,10 +517,12 @@ function LivingState({
   profile,
   decision,
   actionProgress,
+  latestVerifiedAction,
 }: {
   profile: LivingProfile | null;
   decision: DecisionResult | null;
   actionProgress: CurrentActionProgress | null;
+  latestVerifiedAction: LatestVerifiedAction | null;
 }) {
   const isDecision = decision?.status === 'ready' && Boolean(decision.summary);
   const summaryParts = decision?.summary?.split(' 下一步：', 2) ?? [];
@@ -544,11 +558,16 @@ function LivingState({
             <StateItem label="主要取舍" value={tradeOff.description} />
           )}
           {summaryParts[1] && (
-            <StateItem
-              label="NEXT"
-              value={summaryParts[1]}
-              detail={getActionStateLabel(actionProgress)}
-            />
+            <>
+              <StateItem
+                label="下一步"
+                value={summaryParts[1]}
+                detail={getActionProgressLabel(actionProgress?.status ?? null)}
+              />
+              <VerificationOutcome
+                outcome={actionProgress?.outcome_status ?? null}
+              />
+            </>
           )}
         </div>
       ) : (
@@ -557,6 +576,7 @@ function LivingState({
           <p className="text-slate-600">LiveOS 会继续基于这些信息推进判断。</p>
         </div>
       )}
+      <LatestReality action={latestVerifiedAction} />
     </section>
   );
 }
@@ -600,15 +620,47 @@ function getVerificationOutcomeLabel(
   return null;
 }
 
-function getActionStateLabel(
-  actionProgress: CurrentActionProgress | null,
-): string | null {
-  if (!actionProgress) return null;
-  const labels = [
-    getActionProgressLabel(actionProgress.status),
-    getVerificationOutcomeLabel(actionProgress.outcome_status),
-  ].filter((label): label is string => Boolean(label));
-  return labels.length ? labels.join(' · ') : null;
+function VerificationOutcome({
+  outcome,
+}: {
+  outcome: VerificationOutcomeStatus | null;
+}) {
+  const label = getVerificationOutcomeLabel(outcome);
+  if (!label) return null;
+
+  return <p className="text-sm text-slate-500">{label}</p>;
+}
+
+function LatestReality({
+  action,
+}: {
+  action: LatestVerifiedAction | null;
+}) {
+  if (!action) return null;
+
+  const outcome = getVerificationOutcomeLabel(action.outcome_status);
+
+  return (
+    <section
+      aria-labelledby="latest-reality"
+      className="border-t border-white/[0.06] pt-5"
+    >
+      <p
+        id="latest-reality"
+        className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+      >
+        LATEST REALITY
+      </p>
+      {outcome && <p className="mt-2 text-sm text-slate-300">{outcome}</p>}
+      <div className="mt-2 space-y-1.5 text-sm leading-6 text-slate-500">
+        {action.verification_evidence.map((evidence) => (
+          <p key={`${evidence.field}-${evidence.statement}`}>
+            {evidence.statement}
+          </p>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function getUnderstandingCopy(profile: LivingProfile | null) {
