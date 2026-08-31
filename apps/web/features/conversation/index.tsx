@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 import { streamMessage, type DecisionChange } from '@/services/chat';
 
@@ -13,6 +14,7 @@ import ProfileWorkspace from './components/ProfileWorkspace';
 
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 import { getDecision, type DecisionResult } from '@/services/decision';
+import { getProperty, type Property } from '@/services/property';
 import {
   getLivingDecisionResume,
   type ActionProgressStatus,
@@ -74,6 +76,7 @@ export default function ConversationFeature() {
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [decision, setDecision] = useState<DecisionResult | null>(null);
+  const [candidate, setCandidate] = useState<Property | null>(null);
   const [actionProgress, setActionProgress] =
     useState<CurrentActionProgress | null>(null);
   const [changeExplanation, setChangeExplanation] = useState<string | null>(
@@ -156,12 +159,29 @@ export default function ConversationFeature() {
     }
   }, [conversationId]);
 
+  const loadCandidate = useCallback(async () => {
+    if (!conversationId) {
+      return;
+    }
+
+    try {
+      setCandidate(await getProperty(conversationId));
+    } catch (error: unknown) {
+      console.error('Failed to load candidate property:', error);
+    }
+  }, [conversationId]);
+
   useEffect(() => {
     if (!initialMessage) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadResumeState();
     }
   }, [initialMessage, loadResumeState]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadCandidate();
+  }, [loadCandidate]);
 
   const sendConversationMessage = useCallback(
     async (content: string) => {
@@ -333,6 +353,7 @@ export default function ConversationFeature() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 lg:px-12">
             <div className="mx-auto w-full max-w-5xl">
               <CurrentProblem profile={profile} />
+              <CandidateCard candidate={candidate} conversationId={conversationId} />
               <DecisionChangeExplanation explanation={changeExplanation} />
               <LivingState
                 profile={profile}
@@ -371,6 +392,62 @@ export default function ConversationFeature() {
         </div>
       </div>
     </ConversationLayout>
+  );
+}
+
+function CandidateCard({
+  candidate,
+  conversationId,
+}: {
+  candidate: Property | null;
+  conversationId: string;
+}) {
+  if (!candidate) return null;
+
+  const propertyTitle = candidate.title?.trim() || '候选房源';
+  const layout = [
+    typeof candidate.bedrooms === 'number' ? `${candidate.bedrooms}室` : null,
+    typeof candidate.bathrooms === 'number' ? `${candidate.bathrooms}卫` : null,
+    typeof candidate.area === 'number' ? `${candidate.area}㎡` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' · ');
+
+  return (
+    <section
+      aria-labelledby="candidate-title"
+      className="mt-7 border-y border-white/[0.06] py-5"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
+            CANDIDATE
+          </p>
+          <h2
+            id="candidate-title"
+            className="mt-2 truncate text-lg font-medium text-slate-200"
+          >
+            {propertyTitle}
+          </h2>
+        </div>
+        <Link
+          href={`/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`}
+          className="shrink-0 text-xs text-blue-300 transition hover:text-blue-200"
+        >
+          查看详情
+        </Link>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
+        {typeof candidate.rent === 'number' && (
+          <span>租金 ¥{candidate.rent.toLocaleString('zh-CN')} / 月</span>
+        )}
+        {typeof candidate.commute_minutes === 'number' && (
+          <span>通勤 {candidate.commute_minutes} 分钟</span>
+        )}
+        {layout && <span>{layout}</span>}
+      </div>
+    </section>
   );
 }
 
