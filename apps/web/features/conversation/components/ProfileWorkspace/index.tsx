@@ -120,7 +120,7 @@ export default function ProfileWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-7">
                 <div className="flex items-center justify-between gap-4">
                     <h2 className="text-lg font-medium tracking-tight text-slate-100">
-                        Live Context
+                        生活信息
                     </h2>
                     <span
                         aria-live="polite"

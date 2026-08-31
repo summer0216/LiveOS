@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import { streamMessage, type DecisionChange } from '@/services/chat';
@@ -49,6 +55,19 @@ function hasMeaningfulProfileChange(
   );
 }
 
+function hasActionStateChanged(
+  currentAction: CurrentActionProgress | null,
+  latestVerifiedAction: LatestVerifiedAction | null,
+  nextAction: CurrentActionProgress | null,
+  nextLatestVerifiedAction: LatestVerifiedAction | null,
+): boolean {
+  return (
+    JSON.stringify(currentAction) !== JSON.stringify(nextAction) ||
+    JSON.stringify(latestVerifiedAction) !==
+      JSON.stringify(nextLatestVerifiedAction)
+  );
+}
+
 const STREAM_ERROR_MESSAGE = '抱歉，LiveOS 暂时无法完成回复，请稍后重试。';
 
 const WELCOME_MESSAGE: ConversationMessage = {
@@ -84,9 +103,11 @@ export default function ConversationFeature() {
   const [changeExplanation, setChangeExplanation] = useState<string | null>(
     null,
   );
+  const [isConversationExpanded, setIsConversationExpanded] = useState(false);
 
   const initialMessageSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const decisionSurfaceRef = useRef<HTMLElement>(null);
 
   const loadProfile = useCallback(async () => {
     if (!conversationId) {
@@ -158,8 +179,10 @@ export default function ConversationFeature() {
       const resumeState = await getLivingDecisionResume(conversationId);
       setActionProgress(resumeState.action_progress);
       setLatestVerifiedAction(resumeState.latest_verified_action);
+      return resumeState;
     } catch (error: unknown) {
       console.error('Failed to load current Action Progress:', error);
+      return undefined;
     }
   }, [conversationId]);
 
@@ -208,6 +231,7 @@ export default function ConversationFeature() {
       const assistantMessageId = createClientId();
 
       setMessages((currentMessages) => [...currentMessages, userMessage]);
+      setIsConversationExpanded(true);
 
       setHasRuntimeError(false);
       setChangeExplanation(null);
@@ -215,6 +239,8 @@ export default function ConversationFeature() {
       setIsStreaming(true);
       try {
         const profileBeforeTurn = profile;
+        const actionProgressBeforeTurn = actionProgress;
+        const latestVerifiedActionBeforeTurn = latestVerifiedAction;
         let profileRefreshPromise: ReturnType<typeof loadProfile> | null = null;
         let hasDecisionRelevantFeedback = false;
         const decisionChanges: DecisionChange[] = [];
@@ -296,7 +322,31 @@ export default function ConversationFeature() {
           }
         }
         await loadCandidate();
-        await loadActionProgress();
+        const refreshedActionState = await loadActionProgress();
+        const hasActionStateUpdate = refreshedActionState
+          ? hasActionStateChanged(
+              actionProgressBeforeTurn,
+              latestVerifiedActionBeforeTurn,
+              refreshedActionState.action_progress,
+              refreshedActionState.latest_verified_action,
+            )
+          : false;
+
+        if (
+          shouldRefreshDecision ||
+          hasDecisionRelevantFeedback ||
+          hasDecisionChallenge ||
+          hasVerificationOutcome ||
+          hasActionStateUpdate
+        ) {
+          setIsConversationExpanded(false);
+          requestAnimationFrame(() => {
+            decisionSurfaceRef.current?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          });
+        }
       } catch (error: unknown) {
         console.error('Failed to stream message:', error);
 
@@ -320,8 +370,10 @@ export default function ConversationFeature() {
       loadActionProgress,
       loadCandidate,
       loadProfile,
+      latestVerifiedAction,
       profile,
       refreshDecision,
+      actionProgress,
     ],
   );
 
@@ -363,29 +415,47 @@ export default function ConversationFeature() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 lg:px-12">
             <div className="mx-auto w-full max-w-5xl">
               <CurrentProblem profile={profile} />
-              <CandidateCard candidate={candidate} />
-              <DecisionChangeExplanation explanation={changeExplanation} />
               <LivingState
                 profile={profile}
                 decision={decision}
                 actionProgress={actionProgress}
                 latestVerifiedAction={latestVerifiedAction}
+                decisionSurfaceRef={decisionSurfaceRef}
               />
+              <DecisionChangeExplanation explanation={changeExplanation} />
+              <CandidateCard candidate={candidate} />
 
-              <p className="mt-10 mb-4 font-mono text-[10px] tracking-[0.16em] text-slate-600">
-                RECENT CONVERSATION
-              </p>
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  role={message.role}
-                  content={message.content}
-                />
-              ))}
+              <section className="mt-10 border-t border-white/[0.06] pt-5">
+                <button
+                  type="button"
+                  aria-expanded={isConversationExpanded}
+                  onClick={() => setIsConversationExpanded((value) => !value)}
+                  className="flex w-full items-center justify-between gap-4 text-left"
+                >
+                  <span className="font-mono text-[10px] tracking-[0.16em] text-slate-600">
+                    最近对话
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {isConversationExpanded ? '收起' : '查看最近对话'}
+                  </span>
+                </button>
 
-              {isThinking && <ThinkingIndicator />}
+                {isConversationExpanded && (
+                  <div className="mt-5">
+                    {messages.map((message) => (
+                      <MessageBubble
+                        key={message.id}
+                        role={message.role}
+                        content={message.content}
+                      />
+                    ))}
 
-              <div ref={bottomRef} />
+                    {isThinking && <ThinkingIndicator />}
+
+                    <div ref={bottomRef} />
+                  </div>
+                )}
+              </section>
             </div>
           </div>
 
@@ -421,7 +491,7 @@ function CandidateCard({
           id="candidate-title"
           className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
         >
-          CANDIDATE
+          候选房源
         </p>
         <h2 className="mt-2 text-lg font-medium text-slate-200">
           还没有候选房源
@@ -448,7 +518,7 @@ function CandidateCard({
       className="mt-7 border-y border-white/[0.06] py-5"
     >
       <p className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
-        CANDIDATE
+        候选房源
       </p>
       <h2
         id="candidate-title"
@@ -512,9 +582,9 @@ function CurrentProblem({ profile }: { profile: LivingProfile | null }) {
         id="current-problem"
         className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
       >
-        CURRENT PROBLEM
+        当前问题
       </p>
-      <h1 className="mt-3 text-2xl font-medium tracking-tight text-slate-100 sm:text-3xl">
+      <h1 className="mt-3 text-xl font-medium tracking-tight text-slate-200 sm:text-2xl">
         {title}
       </h1>
       <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
@@ -529,11 +599,13 @@ function LivingState({
   decision,
   actionProgress,
   latestVerifiedAction,
+  decisionSurfaceRef,
 }: {
   profile: LivingProfile | null;
   decision: DecisionResult | null;
   actionProgress: CurrentActionProgress | null;
   latestVerifiedAction: LatestVerifiedAction | null;
+  decisionSurfaceRef: RefObject<HTMLElement | null>;
 }) {
   const isDecision = decision?.status === 'ready' && Boolean(decision.summary);
   const summaryParts = decision?.summary?.split(' 下一步：', 2) ?? [];
@@ -541,41 +613,48 @@ function LivingState({
   const tradeOff = decision?.trade_offs[0];
 
   return (
-    <section aria-labelledby="living-state" className="pt-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p
-            id="living-state"
-            className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
-          >
-            {isDecision ? 'CURRENT DECISION' : 'CURRENT UNDERSTANDING'}
-          </p>
-          <h2 className="mt-2 text-xl font-medium tracking-tight text-slate-100">
-            {isDecision ? '当前判断' : 'LiveOS 正在理解你的居住需求'}
-          </h2>
-        </div>
-      </div>
+    <section
+      ref={decisionSurfaceRef}
+      aria-labelledby="living-state"
+      className="pt-9"
+    >
+      <p
+        id="living-state"
+        className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+      >
+        {isDecision ? '当前判断' : '正在形成判断'}
+      </p>
+      <h2 className="mt-2 text-2xl font-medium tracking-tight text-slate-100 sm:text-3xl">
+        {isDecision ? '当前判断' : 'LiveOS 正在形成关于这件事的判断'}
+      </h2>
 
       {isDecision ? (
-        <div className="mt-5 space-y-5">
-          <p className="max-w-3xl text-base leading-7 text-slate-300">
+        <div className="mt-6 space-y-6">
+          <p className="max-w-4xl text-lg leading-8 text-slate-200 sm:text-xl">
             {summaryParts[0]}
           </p>
-          {reason && <StateItem label="主要依据" value={reason.description} />}
-          {tradeOff && (
-            <StateItem label="主要取舍" value={tradeOff.description} />
-          )}
+          <div className="space-y-4 border-y border-white/[0.06] py-5">
+            {reason && <StateItem label="为什么这样判断" value={reason.description} />}
+            {tradeOff && <StateItem label="需要注意" value={tradeOff.description} />}
+          </div>
+          <RealityProgress
+            actionProgress={actionProgress}
+            latestVerifiedAction={latestVerifiedAction}
+          />
           {summaryParts[1] && (
-            <>
-              <StateItem
-                label="下一步"
-                value={summaryParts[1]}
-                detail={getActionProgressLabel(actionProgress?.status ?? null)}
-              />
-              <VerificationOutcome
-                outcome={actionProgress?.outcome_status ?? null}
-              />
-            </>
+            <div className="border border-blue-400/25 bg-blue-500/[0.07] px-5 py-4 sm:px-6">
+              <p className="font-mono text-[10px] tracking-[0.16em] text-blue-300">
+                下一步
+              </p>
+              <p className="mt-2 text-base leading-7 text-slate-100 sm:text-lg">
+                → {summaryParts[1]}
+              </p>
+              {getActionProgressLabel(actionProgress?.status ?? null) && (
+                <p className="mt-2 text-xs text-blue-200">
+                  {getActionProgressLabel(actionProgress?.status ?? null)}
+                </p>
+              )}
+            </div>
           )}
         </div>
       ) : decision?.status === 'waiting' ? (
@@ -589,7 +668,6 @@ function LivingState({
           <p className="text-slate-600">LiveOS 会继续基于这些信息推进判断。</p>
         </div>
       )}
-      <LatestReality action={latestVerifiedAction} />
     </section>
   );
 }
@@ -633,45 +711,57 @@ function getVerificationOutcomeLabel(
   return null;
 }
 
-function VerificationOutcome({
-  outcome,
+function RealityProgress({
+  actionProgress,
+  latestVerifiedAction,
 }: {
-  outcome: VerificationOutcomeStatus | null;
+  actionProgress: CurrentActionProgress | null;
+  latestVerifiedAction: LatestVerifiedAction | null;
 }) {
-  const label = getVerificationOutcomeLabel(outcome);
-  if (!label) return null;
+  const currentProgress = getActionProgressLabel(actionProgress?.status ?? null);
+  const currentOutcome = getVerificationOutcomeLabel(
+    actionProgress?.outcome_status ?? null,
+  );
+  const latestOutcome = getVerificationOutcomeLabel(
+    latestVerifiedAction?.outcome_status ?? null,
+  );
 
-  return <p className="text-sm text-slate-500">{label}</p>;
-}
-
-function LatestReality({
-  action,
-}: {
-  action: LatestVerifiedAction | null;
-}) {
-  if (!action) return null;
-
-  const outcome = getVerificationOutcomeLabel(action.outcome_status);
+  if (!currentProgress && !currentOutcome && !latestVerifiedAction) {
+    return null;
+  }
 
   return (
-    <section
-      aria-labelledby="latest-reality"
-      className="border-t border-white/[0.06] pt-5"
-    >
+    <section aria-labelledby="reality-progress" className="space-y-4">
       <p
-        id="latest-reality"
+        id="reality-progress"
         className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
       >
-        LATEST REALITY
+        现实进展
       </p>
-      {outcome && <p className="mt-2 text-sm text-slate-300">{outcome}</p>}
-      <div className="mt-2 space-y-1.5 text-sm leading-6 text-slate-500">
-        {action.verification_evidence.map((evidence) => (
-          <p key={`${evidence.field}-${evidence.statement}`}>
-            {evidence.statement}
+      {currentProgress && (
+        <div className="border-l border-white/15 pl-4">
+          <p className="text-sm text-slate-300">当前行动</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {currentProgress}
+            {currentOutcome ? ` · ${currentOutcome}` : ''}
           </p>
-        ))}
-      </div>
+        </div>
+      )}
+      {latestVerifiedAction && (
+        <div className="border-l border-blue-400/35 pl-4">
+          <p className="text-sm text-slate-300">已确认的现实</p>
+          {latestOutcome && (
+            <p className="mt-1 text-sm text-slate-400">{latestOutcome}</p>
+          )}
+          <div className="mt-2 space-y-1.5 text-sm leading-6 text-slate-500">
+            {latestVerifiedAction.verification_evidence.map((evidence) => (
+              <p key={`${evidence.field}-${evidence.statement}`}>
+                {evidence.statement}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
