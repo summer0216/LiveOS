@@ -50,8 +50,8 @@ function getProfileFieldItems(
     return [
         {
             key: 'work_location',
-            label: '工作地点',
-            value: workLocation,
+            label: '工作',
+            value: workLocation ? `${workLocation}工作` : null,
             isIdentified: workLocation !== null,
             icon: MapPin,
         },
@@ -59,32 +59,34 @@ function getProfileFieldItems(
             key: 'budget',
             label: '预算',
             value: hasBudget
-                ? `¥${profile.budget?.toLocaleString('zh-CN')} / 月`
+                ? `约 ¥${profile.budget?.toLocaleString('zh-CN')} / 月`
                 : null,
             isIdentified: hasBudget,
             icon: WalletCards,
         },
         {
             key: 'commute_minutes',
-            label: '通勤要求',
+            label: '通勤',
             value: hasCommute
-                ? `${profile.commute_minutes} 分钟以内`
+                ? `${profile.commute_minutes} 分钟通勤可接受`
                 : null,
             isIdentified: hasCommute,
             icon: Clock3,
         },
         {
             key: 'preferred_city',
-            label: '意向城市',
+            label: '当前考虑',
             value: preferredCity,
             isIdentified: preferredCity !== null,
             icon: Building2,
         },
         {
             key: 'family_size',
-            label: '居住人数',
+            label: '居住方式',
             value: hasFamilySize
-                ? `${profile.family_size} 人`
+                ? profile.family_size === 1
+                  ? '独居'
+                  : `${profile.family_size} 人居住`
                 : null,
             isIdentified: hasFamilySize,
             icon: Users,

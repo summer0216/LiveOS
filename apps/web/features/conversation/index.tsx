@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 
 import { streamMessage, type DecisionChange } from '@/services/chat';
 
@@ -364,7 +363,7 @@ export default function ConversationFeature() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-7 sm:px-8 lg:px-12">
             <div className="mx-auto w-full max-w-5xl">
               <CurrentProblem profile={profile} />
-              <CandidateCard candidate={candidate} conversationId={conversationId} />
+              <CandidateCard candidate={candidate} />
               <DecisionChangeExplanation explanation={changeExplanation} />
               <LivingState
                 profile={profile}
@@ -409,12 +408,30 @@ export default function ConversationFeature() {
 
 function CandidateCard({
   candidate,
-  conversationId,
 }: {
   candidate: Property | null;
-  conversationId: string;
 }) {
-  if (!candidate) return null;
+  if (!candidate) {
+    return (
+      <section
+        aria-labelledby="candidate-title"
+        className="mt-7 border-y border-white/[0.06] py-5"
+      >
+        <p
+          id="candidate-title"
+          className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
+        >
+          CANDIDATE
+        </p>
+        <h2 className="mt-2 text-lg font-medium text-slate-200">
+          还没有候选房源
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          把你正在考虑的房源告诉 LiveOS。
+        </p>
+      </section>
+    );
+  }
 
   const propertyTitle = candidate.title?.trim() || '候选房源';
   const layout = [
@@ -430,25 +447,15 @@ function CandidateCard({
       aria-labelledby="candidate-title"
       className="mt-7 border-y border-white/[0.06] py-5"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
-            CANDIDATE
-          </p>
-          <h2
-            id="candidate-title"
-            className="mt-2 truncate text-lg font-medium text-slate-200"
-          >
-            {propertyTitle}
-          </h2>
-        </div>
-        <Link
-          href={`/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`}
-          className="shrink-0 text-xs text-blue-300 transition hover:text-blue-200"
-        >
-          查看详情
-        </Link>
-      </div>
+      <p className="font-mono text-[10px] tracking-[0.16em] text-blue-400">
+        CANDIDATE
+      </p>
+      <h2
+        id="candidate-title"
+        className="mt-2 truncate text-lg font-medium text-slate-200"
+      >
+        {propertyTitle}
+      </h2>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
         {typeof candidate.rent === 'number' && (
@@ -458,6 +465,10 @@ function CandidateCard({
           <span>通勤 {candidate.commute_minutes} 分钟</span>
         )}
         {layout && <span>{layout}</span>}
+        {candidate.district && <span>{candidate.district}</span>}
+        {candidate.pet_friendly != null && (
+          <span>{candidate.pet_friendly ? '可养宠物' : '不接受宠物'}</span>
+        )}
       </div>
     </section>
   );
@@ -479,7 +490,7 @@ function DecisionChangeExplanation({
         id="decision-change-explanation"
         className="font-mono text-[10px] tracking-[0.16em] text-blue-400"
       >
-        WHAT CHANGED
+        判断已更新
       </p>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
         {explanation} LiveOS 已根据这项变化重新评估当前方案。
@@ -543,9 +554,6 @@ function LivingState({
             {isDecision ? '当前判断' : 'LiveOS 正在理解你的居住需求'}
           </h2>
         </div>
-        <span className="text-xs text-slate-600">
-          {isDecision ? 'Decision' : 'Understanding'}
-        </span>
       </div>
 
       {isDecision ? (
@@ -569,6 +577,11 @@ function LivingState({
               />
             </>
           )}
+        </div>
+      ) : decision?.status === 'waiting' ? (
+        <div className="mt-5 max-w-3xl space-y-3 text-sm leading-6 text-slate-400">
+          <p>{decision.summary || '我还不能给出可靠建议。'}</p>
+          <p className="text-slate-600">目前还缺少足够信息或候选方案。</p>
         </div>
       ) : (
         <div className="mt-5 max-w-3xl space-y-3 text-sm leading-6 text-slate-400">
@@ -604,7 +617,7 @@ function StateItem({
 function getActionProgressLabel(
   status: ActionProgressStatus | null,
 ): string | null {
-  if (status === 'NOT_STARTED') return '尚未开始';
+  if (status === 'NOT_STARTED') return null;
   if (status === 'PLANNED') return '已计划';
   if (status === 'COMPLETED') return '已完成';
   if (status === 'ABANDONED') return '已放弃';
@@ -614,9 +627,9 @@ function getActionProgressLabel(
 function getVerificationOutcomeLabel(
   status: VerificationOutcomeStatus | null,
 ): string | null {
-  if (status === 'CONFIRMED') return '已确认';
-  if (status === 'DISCONFIRMED') return '已证伪';
-  if (status === 'INCONCLUSIVE') return '未能确认';
+  if (status === 'CONFIRMED') return '✓ 已确认';
+  if (status === 'DISCONFIRMED') return '× 已证伪';
+  if (status === 'INCONCLUSIVE') return '— 暂未确认';
   return null;
 }
 
