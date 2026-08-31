@@ -8,22 +8,13 @@ import AICore, {
 
 interface ConversationLayoutProps {
     children: ReactNode;
-    conversationId: string;
     coreState: AICoreState;
 }
 
 export default function ConversationLayout({
     children,
-    conversationId,
     coreState,
 }: ConversationLayoutProps) {
-    const propertyHref = conversationId
-        ? `/workspace/property?conversation_id=${encodeURIComponent(conversationId)}`
-        : '/workspace/property';
-    const journeyHref = conversationId
-        ? `/workspace/history?conversation_id=${encodeURIComponent(conversationId)}`
-        : '/workspace/history';
-
     return (
         <main className="flex h-screen flex-col overflow-hidden bg-[#050812] text-slate-100">
             <header className="shrink-0 border-b border-white/[0.06] bg-[#050812]/95">
@@ -40,22 +31,13 @@ export default function ConversationLayout({
                         </span>
                     </Link>
 
-                    <nav aria-label="LiveOS 主导航" className="hidden items-center gap-6 xl:flex">
-                        <Link href={propertyHref} className="text-sm text-slate-400 transition hover:text-blue-400">
-                            候选房源
-                        </Link>
-                        <Link href={journeyHref} className="text-sm text-slate-400 transition hover:text-blue-400">
-                            决策旅程
-                        </Link>
-                    </nav>
-
                     <div className="ml-auto flex shrink-0 items-center gap-3">
                         <Link
-                            href={conversationId ? `/conversation?conversation_id=${encodeURIComponent(conversationId)}` : '/conversation'}
+                            href="/"
                             className="hidden items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-400 transition hover:border-white/20 hover:text-slate-200 sm:flex"
                         >
                             <Plus size={15} />
-                            新对话
+                            新问题
                         </Link>
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-500 text-sm font-medium text-white">
                             我

@@ -2,21 +2,16 @@
 
 import type { KeyboardEvent } from 'react';
 import { useState } from 'react';
-import Link from 'next/link';
-import { ArrowRight, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 interface ConversationComposerProps {
     disabled?: boolean;
-    profileHref: string;
-    profileReady: boolean;
     onSubmit: (message: string) => void;
     onListeningChange: (isListening: boolean) => void;
 }
 
 export default function ConversationComposer({
     disabled = false,
-    profileHref,
-    profileReady,
     onSubmit,
     onListeningChange,
 }: ConversationComposerProps) {
@@ -56,29 +51,19 @@ export default function ConversationComposer({
                         onListeningChange(Boolean(nextMessage.trim()));
                     }}
                     onKeyDown={handleKeyDown}
-                    placeholder="继续对话……"
+                    placeholder="告诉 LiveOS 新情况……"
                     className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-3 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
                 />
 
-                {profileReady && !message.trim() ? (
-                    <Link
-                        href={profileHref}
-                        className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-blue-500 px-5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(59,105,255,0.22)]"
-                    >
-                        查看生活模型
-                        <ArrowRight size={15} />
-                    </Link>
-                ) : (
-                    <button
-                        type="button"
-                        aria-label="发送消息"
-                        disabled={disabled || !message.trim()}
-                        onClick={submit}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
-                    >
-                        <Send size={16} />
-                    </button>
-                )}
+                <button
+                    type="button"
+                    aria-label="发送消息"
+                    disabled={disabled || !message.trim()}
+                    onClick={submit}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
+                >
+                    <Send size={16} />
+                </button>
             </div>
 
             <p className="mt-2 text-center font-mono text-[10px] text-slate-700">

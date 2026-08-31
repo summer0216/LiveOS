@@ -83,10 +83,6 @@ export default function ConversationFeature() {
   const initialMessageSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const profileHref = conversationId
-    ? `/workspace/profile?conversation_id=${encodeURIComponent(conversationId)}`
-    : '/workspace/profile';
-
   const loadProfile = useCallback(async () => {
     if (!conversationId) {
       return;
@@ -320,7 +316,6 @@ export default function ConversationFeature() {
 
   return (
     <ConversationLayout
-      conversationId={conversationId}
       coreState={
         hasRuntimeError
           ? 'error'
@@ -364,8 +359,6 @@ export default function ConversationFeature() {
 
           <ConversationComposer
             disabled={isStreaming}
-            profileHref={profileHref}
-            profileReady={Boolean(profile)}
             onSubmit={(message) => {
               void sendConversationMessage(message);
             }}
