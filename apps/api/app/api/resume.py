@@ -37,6 +37,7 @@ def build_resume_response(
         ),
         decision=state.decision,
         action_progress=state.action_progress,
+        latest_verified_action=state.latest_verified_action,
     )
 
 

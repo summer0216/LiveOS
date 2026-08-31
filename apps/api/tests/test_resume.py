@@ -51,9 +51,7 @@ def save_ready(
             summary=summary,
             best_property_id=str(uuid4()),
             reasons=[DecisionReason(title=f"{label}依据", description=label)],
-            trade_offs=[
-                DecisionTradeOff(title=f"{label}取舍", description=label)
-            ],
+            trade_offs=[DecisionTradeOff(title=f"{label}取舍", description=label)],
             confidence=0.8,
         ),
     )
@@ -70,6 +68,7 @@ def test_empty_owner_keeps_normal_entry_without_creating_conversation() -> None:
         "profile": None,
         "decision": None,
         "action_progress": None,
+        "latest_verified_action": None,
     }
     with database.connect() as connection:
         count = connection.execute(
@@ -163,10 +162,13 @@ def test_resume_rejects_conversation_owned_by_another_owner() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Conversation not found."
-    assert owner_client.get(
-        "/api/resume",
-        params={"conversation_id": conversation_id},
-    ).status_code == 200
+    assert (
+        owner_client.get(
+            "/api/resume",
+            params={"conversation_id": conversation_id},
+        ).status_code
+        == 200
+    )
 
 
 def test_legacy_record_without_conversation_scope_is_not_resumable() -> None:

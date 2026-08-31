@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from app.models.action_progress import CurrentActionProgress
+from app.models.action_progress import CurrentActionProgress, LatestVerifiedAction
 from app.schemas.decision import DecisionResult
 from app.schemas.profile import LivingProfileResponse
 
@@ -10,3 +10,4 @@ class LivingDecisionResumeResponse(BaseModel):
     profile: LivingProfileResponse | None = None
     decision: DecisionResult | None = None
     action_progress: CurrentActionProgress | None = None
+    latest_verified_action: LatestVerifiedAction | None = None

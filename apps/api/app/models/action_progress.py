@@ -40,7 +40,9 @@ class VerificationOutcomeUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_relevance(self) -> "VerificationOutcomeUpdate":
         if self.relevant and (self.status is None or not self.evidence):
-            raise ValueError("Relevant Verification Outcome requires status and evidence.")
+            raise ValueError(
+                "Relevant Verification Outcome requires status and evidence."
+            )
         if not self.relevant and (self.status is not None or self.evidence):
             raise ValueError("Non-relevant Verification Outcome must be empty.")
         return self
@@ -83,6 +85,32 @@ class DecisionActionState(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+
+
+class LatestVerifiedAction(BaseModel):
+    """The single most recent user-verified action for a conversation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action_id: str
+    conversation_id: str
+    decision_record_id: str
+    action_key: str = Field(min_length=1)
+    next_text: str = Field(min_length=1)
+    status: ActionProgressStatus
+    outcome_status: VerificationOutcomeStatus
+    verification_evidence: tuple[VerificationEvidence, ...] = Field(
+        min_length=1,
+        max_length=4,
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_verified_action(self) -> "LatestVerifiedAction":
+        if self.status != ActionProgressStatus.COMPLETED:
+            raise ValueError("Latest Verified Action must be completed.")
+        return self
 
 
 class CurrentActionProgress(BaseModel):

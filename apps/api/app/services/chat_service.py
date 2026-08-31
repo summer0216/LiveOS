@@ -102,12 +102,14 @@ class ChatService:
                         analysis.verification_outcome_update,
                     )
                     if analysis.verification_outcome_update.relevant:
-                        action_state = decision_action_progress_service.current_state(
-                            conversation_id,
+                        verified_action = (
+                            decision_action_progress_service.latest_verified_state(
+                                conversation_id,
+                            )
                         )
-                        if action_state is not None:
+                        if verified_action is not None:
                             decision_memory_service.upsert_verification_learning(
-                                action_state,
+                                verified_action,
                             )
                 except Exception:
                     logger.exception(
@@ -193,7 +195,9 @@ class ChatService:
         assistant_reply_parts: list[str] = []
 
         runtime_started_at = perf_counter()
-        logger.warning("Runtime context build start conversation_id=%s", conversation_id)
+        logger.warning(
+            "Runtime context build start conversation_id=%s", conversation_id
+        )
         stream_started = False
         for chunk in ai_runtime.chat_stream(
             history,

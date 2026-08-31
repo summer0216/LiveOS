@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from threading import RLock
 from uuid import UUID, uuid4
 
-from app.models.action_progress import DecisionActionState, VerificationOutcomeStatus
+from app.models.action_progress import LatestVerifiedAction, VerificationOutcomeStatus
 from app.models.decision_memory import (
     DecisionMemory,
     DecisionMemoryCandidate,
@@ -121,17 +121,14 @@ class DecisionMemoryService:
 
     def upsert_verification_learning(
         self,
-        state: DecisionActionState,
+        action: LatestVerifiedAction,
     ) -> DecisionMemory | None:
-        if state.outcome_status is None or not state.verification_evidence:
-            return None
-
         normalized_conversation_id = self._validate_conversation_id(
-            state.conversation_id,
+            action.conversation_id,
         )
-        source_action_id = UUID(state.id)
-        source_record_id = UUID(state.decision_record_id)
-        content = self._verification_learning_content(state.outcome_status)
+        source_action_id = UUID(action.action_id)
+        source_record_id = UUID(action.decision_record_id)
+        content = self._verification_learning_content(action.outcome_status)
         now = datetime.now(UTC)
 
         with self._lock:
@@ -148,8 +145,8 @@ class DecisionMemoryService:
                 confidence=0.8,
                 evidence_record_ids=[source_record_id],
                 source_action_id=source_action_id,
-                source_action_key=state.action_key,
-                source_outcome_status=state.outcome_status,
+                source_action_key=action.action_key,
+                source_outcome_status=action.outcome_status,
                 source_decision_record_id=source_record_id,
                 created_at=existing.created_at if existing is not None else now,
                 updated_at=now,

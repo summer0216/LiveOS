@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
+    LatestVerifiedAction,
     VerificationEvidence,
     VerificationOutcomeStatus,
 )
@@ -336,9 +337,7 @@ class PropertyStore:
             raise ValueError("Conversation owner could not be resolved.")
         return self.create_for_owner(owner_id, property_)
 
-    def create_for_owner(
-        self, owner_id: str | UUID, property_: Property
-    ) -> Property:
+    def create_for_owner(self, owner_id: str | UUID, property_: Property) -> Property:
         if property_.id is None:
             raise ValueError("Stored Property requires an ID.")
         validate_owner_source(self._database, owner_id, property_.conversation_id)
@@ -658,5 +657,97 @@ class DecisionActionStateStore:
         with self._database.connect() as connection:
             connection.execute(
                 "DELETE FROM decision_action_states WHERE conversation_id = %s",
+                (conversation_uuid,),
+            )
+
+
+class LatestVerifiedActionStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    def save(self, action: LatestVerifiedAction) -> LatestVerifiedAction:
+        owner_id = resolve_owner_id(self._database, action.conversation_id)
+        if owner_id is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        validate_owner_source(self._database, owner_id, action.conversation_id)
+        with self._database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO latest_verified_actions(
+                    owner_id, conversation_id, action_id, decision_record_id,
+                    action_key, next_text, status, outcome_status,
+                    verification_evidence_json, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
+                    action_id = EXCLUDED.action_id,
+                    decision_record_id = EXCLUDED.decision_record_id,
+                    action_key = EXCLUDED.action_key,
+                    next_text = EXCLUDED.next_text,
+                    status = EXCLUDED.status,
+                    outcome_status = EXCLUDED.outcome_status,
+                    verification_evidence_json = EXCLUDED.verification_evidence_json,
+                    created_at = EXCLUDED.created_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    owner_id,
+                    uuid_value(action.conversation_id),
+                    uuid_value(action.action_id),
+                    uuid_value(action.decision_record_id),
+                    action.action_key,
+                    action.next_text,
+                    action.status.value,
+                    action.outcome_status.value,
+                    Jsonb(
+                        [
+                            item.model_dump(mode="json")
+                            for item in action.verification_evidence
+                        ]
+                    ),
+                    action.created_at,
+                    action.updated_at,
+                ),
+            )
+        return action.model_copy(deep=True)
+
+    def get(self, conversation_id: str) -> LatestVerifiedAction | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM latest_verified_actions
+                WHERE owner_id = %s AND conversation_id = %s
+                """,
+                (owner_id, conversation_uuid),
+            ).fetchone()
+        if row is None:
+            return None
+        return LatestVerifiedAction(
+            action_id=str(row["action_id"]),
+            conversation_id=str(row["conversation_id"]),
+            decision_record_id=str(row["decision_record_id"]),
+            action_key=row["action_key"],
+            next_text=row["next_text"],
+            status=ActionProgressStatus(row["status"]),
+            outcome_status=VerificationOutcomeStatus(row["outcome_status"]),
+            verification_evidence=tuple(
+                VerificationEvidence.model_validate(item)
+                for item in row["verification_evidence_json"]
+            ),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def delete_conversation(self, conversation_id: str) -> None:
+        conversation_uuid = optional_uuid(conversation_id)
+        if conversation_uuid is None:
+            return
+        with self._database.connect() as connection:
+            connection.execute(
+                "DELETE FROM latest_verified_actions WHERE conversation_id = %s",
                 (conversation_uuid,),
             )
