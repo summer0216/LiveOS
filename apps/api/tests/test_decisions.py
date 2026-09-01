@@ -10,6 +10,7 @@ from app.main import app
 from app.models.action_progress import (
     ActionProgressStatus,
     ActionProgressUpdate,
+    CurrentActionProgress,
     VerificationEvidence,
     VerificationOutcomeStatus,
     VerificationOutcomeUpdate,
@@ -23,7 +24,10 @@ from app.services.decision_action_progress import decision_action_progress_servi
 from app.services.decision_change import decision_change_context
 from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
-from app.services.decision_service import decision_service
+from app.services.decision_service import (
+    decision_service,
+    repeats_resolved_verification,
+)
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -38,6 +42,7 @@ CONVERSATION_IDS = (
     uuid_for("decision-no-property"),
     uuid_for("decision-grounded-waiting"),
     uuid_for("decision-verification-redecision-gap"),
+    uuid_for("decision-resolved-verification-repeat"),
     uuid_for("decision-single"),
     uuid_for("decision-multiple"),
     uuid_for("decision-isolation-a"),
@@ -326,6 +331,128 @@ def test_verification_redecision_persists_new_gap_and_isolates_action(
     finally:
         decision_action_progress_service.delete_conversation(conversation_id)
         decision_memory_store.replace_conversation(conversation_id, [])
+
+
+def test_completed_verification_blocks_repeated_gap_and_next() -> None:
+    current_action = CurrentActionProgress(
+        action_id="action-1",
+        next_text="在工作日高峰实测一次门到门通勤。",
+        status=ActionProgressStatus.COMPLETED,
+        outcome_status=VerificationOutcomeStatus.DISCONFIRMED,
+        verification_evidence=(
+            VerificationEvidence(
+                field="commute_minutes",
+                value=55,
+                statement="工作日高峰实测通勤55分钟，无法接受。",
+            ),
+        ),
+    )
+    repeated = DecisionResult(
+        status="ready",
+        summary="当前方案仍需核实。下一步：再实测一次工作日高峰门到门通勤。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="通勤", description="仍需确认。")],
+        decision_gap="实际通勤是否可接受尚未确认。",
+    )
+
+    assert repeats_resolved_verification(repeated, current_action) is True
+
+
+def test_completed_verification_allows_same_topic_new_tradeoff() -> None:
+    current_action = CurrentActionProgress(
+        action_id="action-1",
+        next_text="在工作日高峰实测一次门到门通勤。",
+        status=ActionProgressStatus.COMPLETED,
+        outcome_status=VerificationOutcomeStatus.DISCONFIRMED,
+        verification_evidence=(
+            VerificationEvidence(
+                field="commute_minutes",
+                value=55,
+                statement="工作日高峰实测通勤55分钟，无法接受。",
+            ),
+        ),
+    )
+    tradeoff = DecisionResult(
+        status="ready",
+        summary=(
+            "已确认55分钟通勤不可接受。"
+            "下一步：比较缩小居住空间与缩短通勤两种代价，选出更难接受的一项。"
+        ),
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="实测通勤", description="55分钟无法接受。")],
+        decision_gap="用户是否愿意接受更小空间来换取更短通勤。",
+    )
+
+    assert repeats_resolved_verification(tradeoff, current_action) is False
+
+
+def test_repeated_completed_verification_is_not_persisted_as_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("decision-resolved-verification-repeat")
+    create_profile(conversation_id)
+    property_ = create_property(conversation_id, "已完成通勤核实的候选")
+    assert property_.id is not None
+    first_record = decision_record_service.save(
+        conversation_id,
+        DecisionResult(
+            status="ready",
+            summary=(
+                "当前候选可以继续考虑。"
+                "下一步：在工作日高峰实测一次门到门通勤。"
+            ),
+            best_property_id=property_.id,
+            reasons=[DecisionReason(title="通勤预估", description="需要实测。")],
+            decision_gap="工作日高峰门到门通勤是否符合当前预估。",
+        ),
+    )
+    decision_action_progress_service.reconcile_ready_record(first_record)
+    decision_action_progress_service.apply_update(
+        conversation_id,
+        ActionProgressUpdate(relevant=True, status=ActionProgressStatus.COMPLETED),
+        VerificationOutcomeUpdate(
+            relevant=True,
+            status=VerificationOutcomeStatus.DISCONFIRMED,
+            evidence=(
+                VerificationEvidence(
+                    field="commute_minutes",
+                    value=55,
+                    statement="工作日高峰实测通勤55分钟，无法接受。",
+                ),
+            ),
+        ),
+    )
+    calls = 0
+
+    def generate(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return json.dumps(
+            {
+                "status": "ready",
+                "summary": (
+                    "当前方案仍需核实。"
+                    "下一步：再实测一次工作日高峰门到门通勤。"
+                ),
+                "best_property_id": property_.id,
+                "reasons": [
+                    {"title": "通勤", "description": "实际通勤仍需确认。"}
+                ],
+                "trade_offs": [],
+                "confidence": 0.6,
+                "decision_gap": "实际通勤是否可接受尚未确认。",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(ai_client, "generate_json", generate)
+
+    result = decision_service.generate(conversation_id)
+
+    assert calls == 1
+    assert result.status == "waiting"
+    assert result.best_property_id is None
+    assert len(decision_record_service.list(conversation_id)) == 1
 
 
 def test_preference_gap_ready_survives_contradicted_candidate(

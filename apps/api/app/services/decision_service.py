@@ -4,6 +4,7 @@ from pydantic import ValidationError
 
 from app.core.ai_client import ai_client
 from app.core.logger import logger
+from app.models.action_progress import ActionProgressStatus, CurrentActionProgress
 from app.models.decision_feedback import DecisionRelevantFeedback
 from app.runtime.decision import build_decision_prompt
 from app.schemas.decision import (
@@ -54,6 +55,81 @@ def _is_preference_gap(decision_gap: str) -> bool:
             decision_gap,
         )
     )
+
+
+def repeats_resolved_verification(
+    result: DecisionResult,
+    current_action: CurrentActionProgress | None,
+) -> bool:
+    if (
+        result.status != "ready"
+        or not result.summary
+        or not result.decision_gap
+        or current_action is None
+        or current_action.status != ActionProgressStatus.COMPLETED
+        or current_action.outcome_status is None
+        or not current_action.verification_evidence
+    ):
+        return False
+
+    primary_next = result.summary.split(PRIMARY_NEXT_DELIMITER, 1)[-1]
+    normalized_previous = re.sub(r"\s+", "", current_action.next_text)
+    normalized_current = re.sub(
+        r"\s+",
+        "",
+        f"{result.decision_gap}{primary_next}",
+    )
+    if normalized_previous and normalized_previous in normalized_current:
+        return True
+
+    topic_markers = {
+        "commute_minutes": ("通勤", "路程", "门到门"),
+        "city": ("城市", "位置", "所在"),
+        "rent": ("租金", "房租", "费用"),
+    }
+    evidence_topics = {
+        marker
+        for evidence in current_action.verification_evidence
+        for marker in topic_markers.get(evidence.field, ())
+    }
+    if not evidence_topics:
+        return False
+
+    new_target_markers = (
+        "新候选",
+        "新的候选",
+        "备选",
+        "另一候选",
+        "替代候选",
+        "调整后的",
+    )
+    if any(marker in result.decision_gap for marker in new_target_markers):
+        return False
+
+    verification_markers = (
+        "核实",
+        "验证",
+        "确认",
+        "实测",
+        "测试",
+        "查看",
+        "询问",
+        "尚未",
+        "仍需",
+        "再测",
+    )
+    next_repeats = any(marker in primary_next for marker in evidence_topics) and any(
+        marker in primary_next for marker in verification_markers
+    )
+    gap_repeats = (
+        not _is_preference_gap(result.decision_gap)
+        and any(marker in result.decision_gap for marker in evidence_topics)
+        and any(
+            marker in result.decision_gap
+            for marker in ("是否", "尚未", "未确认", "仍需", "需确认")
+        )
+    )
+    return next_repeats or gap_repeats
 
 
 def _fallback_primary_next(result: DecisionResult) -> str:
@@ -417,6 +493,15 @@ class DecisionService:
             profile.budget,
             decision_context.current_feedback,
         )
+
+        if repeats_resolved_verification(result, decision_context.current_action):
+            logger.warning(
+                "Ready Decision repeated a resolved verification for conversation %s.",
+                conversation_id,
+            )
+            return waiting_decision(
+                "当前验证已经完成，LiveOS 正在根据新的现实重新形成下一步。"
+            )
 
         if result.decision_gap is None or not result.decision_gap.strip():
             logger.warning(
