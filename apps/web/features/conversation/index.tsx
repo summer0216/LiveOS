@@ -639,17 +639,10 @@ function LivingState({
               value={decision.decision_gap}
             />
           )}
-          <div className="space-y-4 border-y border-white/[0.06] py-5">
-            {reason && <StateItem label="为什么这样判断" value={reason.description} />}
-            {tradeOff && <StateItem label="需要注意" value={tradeOff.description} />}
-          </div>
-          <RealityProgress
-            actionProgress={actionProgress}
-            latestVerifiedAction={latestVerifiedAction}
-          />
           {summaryParts[1] && (
             <div className="border border-blue-400/25 bg-blue-500/[0.07] px-5 py-4 sm:px-6">
-              <p className="font-mono text-[10px] tracking-[0.16em] text-blue-300">
+              <p className="text-xs text-slate-500">为解决这个未知</p>
+              <p className="mt-2 font-mono text-[10px] tracking-[0.16em] text-blue-300">
                 下一步
               </p>
               <p className="mt-2 text-base leading-7 text-slate-100 sm:text-lg">
@@ -662,6 +655,14 @@ function LivingState({
               )}
             </div>
           )}
+          <div className="space-y-4 border-y border-white/[0.06] py-5">
+            {reason && <StateItem label="为什么这样判断" value={reason.description} />}
+            {tradeOff && <StateItem label="需要注意" value={tradeOff.description} />}
+          </div>
+          <RealityProgress
+            actionProgress={actionProgress}
+            latestVerifiedAction={latestVerifiedAction}
+          />
         </div>
       ) : decision?.status === 'waiting' ? (
         <div className="mt-5 max-w-3xl space-y-3 text-sm leading-6 text-slate-400">
