@@ -1,3 +1,5 @@
+import re
+
 from app.models.profile import LivingProfile
 from app.runtime.decision import build_decision_prompt
 from app.runtime.living_model import LivingModel, LivingModelProfile
@@ -153,7 +155,10 @@ def test_multi_evidence_produces_one_tradeoff_decision() -> None:
     assert recommendation.summary is not None
     decision, primary_action = recommendation.summary.split("下一步：", 1)
     assert decision.strip() == grounded.summary
-    assert primary_action == "先验证一次工作日高峰通勤，确认约 65 分钟是否可以接受。"
+    assert primary_action == (
+        "完成一次有代表性的工作日高峰门到门通勤，记录总时长和主要阻碍，"
+        "并确认约 65 分钟是否在实际体验中可以接受。"
+    )
     assert "重新选择区域" not in primary_action
     assert "合租" not in primary_action
     assert "65 分钟" in grounded.decision_gap
@@ -190,8 +195,8 @@ def test_next_actions_do_not_ignore_conflicting_decision() -> None:
     assert recommendation.summary is not None
     decision, primary_action = recommendation.summary.split("下一步：", 1)
     assert decision.strip() == conflicting_decision.summary
-    assert "核实当前推荐房源" in primary_action
-    assert "验证一次工作日高峰通勤" not in primary_action
+    assert "实地核实当前推荐房源" in primary_action
+    assert "工作日高峰门到门通勤" not in primary_action
     assert recommendation.summary.count("下一步：") == 1
 
 
@@ -250,7 +255,9 @@ def test_fact_gap_drives_a_concrete_reality_check() -> None:
     assert recommendation.summary is not None
     assert recommendation.summary.count("下一步：") == 1
     assert "工作日高峰门到门通勤" in recommendation.summary
-    assert "针对性核实" in recommendation.summary
+    assert "门到门通勤实测" in recommendation.summary
+    assert "记录总时长和主要阻碍" in recommendation.summary
+    assert "当前可接受范围" in recommendation.summary
 
 
 def test_preference_gap_drives_preference_clarification() -> None:
@@ -268,7 +275,67 @@ def test_preference_gap_drives_preference_clarification() -> None:
     assert recommendation.summary is not None
     assert recommendation.summary.count("下一步：") == 1
     assert "独居空间与更短通勤之间的优先级" in recommendation.summary
-    assert "明确" in recommendation.summary
+    assert "二选一取舍" in recommendation.summary
+    assert "更难接受" in recommendation.summary
+
+
+def test_observed_preference_gap_with_commute_uses_tradeoff_action() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="两个候选都可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="候选可行", description="两个候选均满足基本条件。")],
+        confidence=0.7,
+        decision_gap="尚未确定你更无法接受的是更小空间还是更长通勤。",
+    )
+
+    recommendation = build_next_actions(result, None, None, None)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    primary_next = recommendation.summary.split("下一步：", 1)[1]
+    assert "二选一取舍" in primary_next
+    assert "更难接受" in primary_next
+    assert "门到门通勤实测" not in primary_next
+
+
+def test_commute_fact_gap_with_acceptable_range_keeps_fact_verification() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前房源可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="通勤预估", description="仍需实测确认。")],
+        confidence=0.7,
+        decision_gap="工作日晚高峰实际通勤是否能稳定控制在可接受范围内尚未确认。",
+    )
+
+    recommendation = build_next_actions(result, None, None, None)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    primary_next = recommendation.summary.split("下一步：", 1)[1]
+    assert "门到门通勤实测" in primary_next
+    assert "记录总时长和主要阻碍" in primary_next
+    assert "二选一取舍" not in primary_next
+
+
+def test_fact_gap_without_threshold_stays_actionable_without_inventing_one() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前房源可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前条件", description="候选基本符合需求。")],
+        confidence=0.7,
+        decision_gap="房源夜间噪音是否影响休息。",
+    )
+
+    recommendation = build_next_actions(result, None, None, None)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    assert "完成一次直接核实" in recommendation.summary
+    assert "实际结果" in recommendation.summary
+    assert not re.search(r"\d", recommendation.summary.split("下一步：", 1)[1])
 
 
 def test_waiting_decision_does_not_require_primary_next() -> None:

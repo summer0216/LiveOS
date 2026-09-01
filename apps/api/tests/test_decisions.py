@@ -423,7 +423,8 @@ def test_preference_gap_ready_survives_contradicted_candidate(
         assert "个人取舍" in result.decision_gap
         assert result.summary is not None
         assert result.summary.count("下一步：") == 1
-        assert "取舍优先级" in result.summary
+        assert "二选一取舍" in result.summary
+        assert "更难接受" in result.summary
         assert len(prompts) == 1
         assert preference_message in prompts[0]
         assert "current verification has weakened a" in prompts[0]

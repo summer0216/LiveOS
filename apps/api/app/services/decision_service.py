@@ -42,9 +42,17 @@ def _decision_without_primary_next(summary: str) -> str:
 
 
 def _is_preference_gap(decision_gap: str) -> bool:
-    return any(
-        marker in decision_gap
-        for marker in ("优先级", "取舍", "是否愿意", "是否接受", "接受范围")
+    if any(marker in decision_gap for marker in ("优先级", "取舍", "是否愿意")):
+        return True
+    return bool(
+        re.search(
+            r"(?:哪(?:个|项|种).{0,16}(?:重要|看重|愿意接受|难接受)|"
+            r"(?:更|最)(?:看重|重视|在意|愿意接受|难以接受|无法接受)"
+            r".{0,36}(?:还是|或|哪(?:个|项|种))|"
+            r"宁愿.{0,20}(?:牺牲|放弃)|"
+            r"是否接受.{0,24}(?:换取|牺牲|放弃))",
+            decision_gap,
+        )
     )
 
 
@@ -52,21 +60,27 @@ def _fallback_primary_next(result: DecisionResult) -> str:
     if result.decision_gap:
         if _is_preference_gap(result.decision_gap):
             return (
-                f"{PRIMARY_NEXT_DELIMITER}先明确“{result.decision_gap}”的取舍优先级，"
-                "再决定是否继续当前方案。"
+                f"{PRIMARY_NEXT_DELIMITER}围绕“{result.decision_gap}”做一次二选一取舍："
+                "分别设想长期承受两种代价，选出更难接受的一项，"
+                "再用这个结果确定当前优先方向。"
+            )
+        if "通勤" in result.decision_gap:
+            return (
+                f"{PRIMARY_NEXT_DELIMITER}围绕“{result.decision_gap}”完成一次有代表性的"
+                "门到门通勤实测，记录总时长和主要阻碍，再将结果与当前可接受范围对照。"
             )
         return (
-            f"{PRIMARY_NEXT_DELIMITER}优先围绕“{result.decision_gap}”完成一次针对性核实，"
-            "再决定是否继续当前方案。"
+            f"{PRIMARY_NEXT_DELIMITER}围绕“{result.decision_gap}”完成一次直接核实，"
+            "记录能够判断该条件是否成立的实际结果，再与当前要求对照。"
         )
     if result.trade_offs:
         return (
-            f"{PRIMARY_NEXT_DELIMITER}核实“{result.trade_offs[0].title}”对应的关键信息，"
-            "再决定是否继续当前方案。"
+            f"{PRIMARY_NEXT_DELIMITER}针对“{result.trade_offs[0].title}”完成一次直接核实，"
+            "记录能够判断该取舍是否可接受的实际结果，再决定是否继续当前方案。"
         )
     return (
-        f"{PRIMARY_NEXT_DELIMITER}核实当前推荐房源的实际条件，"
-        "再决定是否继续该方案。"
+        f"{PRIMARY_NEXT_DELIMITER}实地核实当前推荐房源最影响判断的居住条件，"
+        "记录是否符合当前需求，再决定是否继续该方案。"
     )
 
 
@@ -224,13 +238,14 @@ def build_next_actions(
         observed_minutes = current_feedback.observed_commute_minutes
         if current_feedback.judgment == "unacceptable":
             next_action = (
-                "下一步：优先比较通勤时间更短的备选区域，"
-                f"先排除实测通勤约 {observed_minutes} 分钟的方案。"
+                "下一步：选择一个通勤明确短于当前方案的备选区域，"
+                f"核对其门到门通勤是否比已拒绝的约 {observed_minutes} 分钟明显改善，"
+                "再决定是否替换当前区域。"
             )
         else:
             next_action = (
-                "下一步：继续比较当前区域的具体房源，"
-                "优先核实租金和房源条件。"
+                "下一步：选择一套当前区域内符合预算的具体房源，"
+                "核实其最影响居住的实际条件是否满足当前需求，再决定是否继续。"
             )
         decision_text = _decision_without_primary_next(result.summary)
         return result.model_copy(update={"summary": f"{decision_text} {next_action}"})
@@ -255,8 +270,9 @@ def build_next_actions(
         )
 
     next_actions = (
-        "下一步：先验证一次工作日高峰通勤，"
-        f"确认约 {commute_evidence.commute_minutes} 分钟是否可以接受。"
+        "下一步：完成一次有代表性的工作日高峰门到门通勤，"
+        f"记录总时长和主要阻碍，并确认约 {commute_evidence.commute_minutes} 分钟"
+        "是否在实际体验中可以接受。"
     )
     return result.model_copy(
         update={

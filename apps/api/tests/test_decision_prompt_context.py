@@ -177,6 +177,24 @@ def test_prompt_allows_ready_preference_gap_after_candidate_is_weakened() -> Non
     assert "make NEXT clarify or test the user's" in prompt
 
 
+def test_prompt_requires_one_grounded_executable_primary_next() -> None:
+    prompt = build_decision_prompt(
+        decision_input(),
+        DecisionContext(conversation_id="prompt-actionable-primary-next"),
+    )
+
+    assert "remain exactly one action direction" in prompt
+    assert "state the minimum way to perform it" in prompt
+    assert "what the user should" in prompt
+    assert "observe, compare, or confirm" in prompt
+    assert "what result would materially reduce the gap" in prompt
+    assert "Do not turn execution detail into a checklist" in prompt
+    assert "concrete comparison exercise" in prompt
+    assert "reveals which sacrifice is harder to accept" in prompt
+    assert "must not ask the user to repeat the resolved verification" in prompt
+    assert "never invent execution details" in prompt
+
+
 def test_history_fields_keep_latest_first_and_escape_instructions() -> None:
     conversation_id = uuid_for("prompt-history")
     summaries = (

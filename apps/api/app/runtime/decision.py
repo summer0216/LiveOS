@@ -67,11 +67,21 @@ than inventing a recommendation, and make NEXT clarify or test the user's
 preference.
 decision_gap must express exactly one most important unresolved condition, not a
 generic request for more information or a list. Primary NEXT must aim to reduce
-that specific gap. When the gap is a verifiable external fact, NEXT should be a
-concrete reality action. When the gap is a user trade-off preference, NEXT should
-help the user clarify that preference instead of inventing a missing fact. For
-ready, best_property_id must be one of the ids in the current Property List,
-never an id found only in Decision History.
+that specific gap and remain exactly one action direction. Make that action
+immediately executable: state the minimum way to perform it, what the user should
+observe, compare, or confirm, and what result would materially reduce the gap.
+Do not turn execution detail into a checklist or multiple NEXTs. When the gap is
+a verifiable external fact, NEXT should be one concrete real-world verification
+and compare its observed result with a current known requirement when available.
+When the gap is a user trade-off preference, NEXT should give the user one
+concrete comparison exercise that reveals which sacrifice is harder to accept,
+instead of merely saying to clarify priorities or inventing a missing fact. When
+current Reality has already resolved an earlier uncertainty, NEXT must act on the
+new gap and must not ask the user to repeat the resolved verification. Use only
+specific thresholds, times, places, and conditions present in current Decision
+Context; never invent execution details. For ready, best_property_id must be one
+of the ids in the current Property List, never an id found only in Decision
+History.
 """.strip()
 
 DECISION_CONTEXT_PRIORITY_RULES = """
