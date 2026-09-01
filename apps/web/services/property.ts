@@ -11,9 +11,14 @@ export interface Property {
   bathrooms: number | null;
   commute_minutes: number | null;
   pet_friendly: boolean | null;
+  decision_state: 'ACTIVE' | 'WEAKENED' | 'REJECTED';
+  state_reason: string | null;
 }
 
-export type PropertyInput = Omit<Property, 'id' | 'conversation_id'>;
+export type PropertyInput = Omit<
+  Property,
+  'id' | 'conversation_id' | 'decision_state' | 'state_reason'
+>;
 
 interface PropertyListResponse {
   items: Property[];

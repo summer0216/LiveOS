@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -21,6 +23,8 @@ class PropertyResponse(PropertyFields):
 
     id: str
     conversation_id: str
+    decision_state: Literal["ACTIVE", "WEAKENED", "REJECTED"] = "ACTIVE"
+    state_reason: str | None = None
 
 
 class PropertyListResponse(BaseModel):

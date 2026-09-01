@@ -504,6 +504,11 @@ function CandidateCard({
   }
 
   const propertyTitle = candidate.title?.trim() || '候选房源';
+  const decisionStateLabel = {
+    ACTIVE: '当前可行',
+    WEAKENED: '需要重新评估',
+    REJECTED: '已不再适合',
+  }[candidate.decision_state];
   const layout = [
     typeof candidate.bedrooms === 'number' ? `${candidate.bedrooms}室` : null,
     typeof candidate.bathrooms === 'number' ? `${candidate.bathrooms}卫` : null,
@@ -526,6 +531,12 @@ function CandidateCard({
       >
         {propertyTitle}
       </h2>
+      <p className="mt-2 text-xs text-blue-300">{decisionStateLabel}</p>
+      {candidate.state_reason && candidate.decision_state !== 'ACTIVE' && (
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          {candidate.state_reason}
+        </p>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
         {typeof candidate.rent === 'number' && (
