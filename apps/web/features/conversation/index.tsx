@@ -633,6 +633,12 @@ function LivingState({
           <p className="max-w-4xl text-lg leading-8 text-slate-200 sm:text-xl">
             {summaryParts[0]}
           </p>
+          {decision?.decision_gap && (
+            <StateItem
+              label="最关键的未知"
+              value={decision.decision_gap}
+            />
+          )}
           <div className="space-y-4 border-y border-white/[0.06] py-5">
             {reason && <StateItem label="为什么这样判断" value={reason.description} />}
             {tradeOff && <StateItem label="需要注意" value={tradeOff.description} />}

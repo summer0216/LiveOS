@@ -1,17 +1,33 @@
 import json
 from collections.abc import Callable, Iterator
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.ai_client import ai_client
 from app.main import app
+from app.models.action_progress import (
+    ActionProgressStatus,
+    ActionProgressUpdate,
+    VerificationEvidence,
+    VerificationOutcomeStatus,
+    VerificationOutcomeUpdate,
+)
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import Property
+from app.schemas.decision import DecisionReason, DecisionResult
+from app.services.chat_service import chat_service
+from app.services.conversation_manager import conversation_manager
+from app.services.decision_action_progress import decision_action_progress_service
+from app.services.decision_change import decision_change_context
+from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_service import decision_service
+from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
+from app.stores.decision_memory_store import decision_memory_store
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
@@ -20,6 +36,8 @@ client = TestClient(app)
 CONVERSATION_IDS = (
     uuid_for("decision-no-profile"),
     uuid_for("decision-no-property"),
+    uuid_for("decision-grounded-waiting"),
+    uuid_for("decision-verification-redecision-gap"),
     uuid_for("decision-single"),
     uuid_for("decision-multiple"),
     uuid_for("decision-isolation-a"),
@@ -102,6 +120,7 @@ def ready_json(
             ],
             "trade_offs": [],
             "confidence": confidence,
+            "decision_gap": "该房源的实际租金与通勤是否符合预期。",
         },
         ensure_ascii=False,
     )
@@ -148,6 +167,270 @@ def test_waiting_without_property_does_not_call_ai(
 
     assert result.status == "waiting"
     assert result.best_property_id is None
+
+
+def test_grounded_waiting_returns_valid_response_without_ready_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("decision-grounded-waiting")
+    profile_manager.merge(
+        conversation_id=conversation_id,
+        patch=LivingProfilePatch(
+            work_location="成都高新区合作路",
+            budget=2200,
+            commute_minutes=30,
+            preferred_city="成都",
+            family_size=1,
+            has_pet=False,
+        ),
+        latest_insights=[],
+    )
+    create_property(conversation_id, "合作路候选", rent=2100)
+    set_json_response(
+        monkeypatch,
+        json.dumps(
+            {
+                "status": "waiting",
+                "summary": "实测通勤已否定当前行动，需要先形成新的候选范围。",
+                "best_property_id": None,
+                "reasons": [],
+                "trade_offs": [],
+                "confidence": None,
+                "decision_gap": None,
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    response = client.get(
+        "/api/decisions",
+        params={"conversation_id": conversation_id},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "waiting",
+        "summary": "实测通勤已否定当前行动，需要先形成新的候选范围。",
+        "best_property_id": None,
+        "reasons": [],
+        "trade_offs": [],
+        "confidence": None,
+        "decision_gap": None,
+    }
+    assert decision_record_service.list(conversation_id) == []
+
+
+def test_verification_redecision_persists_new_gap_and_isolates_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("decision-verification-redecision-gap")
+    create_profile(conversation_id)
+    property_ = create_property(conversation_id, "通勤反馈候选")
+    assert property_.id is not None
+    first_record = decision_record_service.save(
+        conversation_id,
+        DecisionResult(
+            status="ready",
+            summary=(
+                "当前房源可以继续考虑。"
+                "下一步：在工作日高峰实测一次门到门通勤。"
+            ),
+            best_property_id=property_.id,
+            reasons=[DecisionReason(title="当前判断", description="通勤预估可接受。")],
+            confidence=0.8,
+            decision_gap="工作日高峰门到门通勤是否符合当前预估。",
+        ),
+    )
+    first_action = decision_action_progress_service.reconcile_ready_record(
+        first_record
+    )
+    assert first_action is not None
+    decision_action_progress_service.apply_update(
+        conversation_id,
+        ActionProgressUpdate(
+            relevant=True,
+            status=ActionProgressStatus.COMPLETED,
+        ),
+        VerificationOutcomeUpdate(
+            relevant=True,
+            status=VerificationOutcomeStatus.DISCONFIRMED,
+            evidence=(
+                VerificationEvidence(
+                    field="commute_minutes",
+                    value="80分钟",
+                    statement="工作日高峰实测门到门约80分钟，无法接受。",
+                ),
+            ),
+        ),
+    )
+    verified_before = decision_action_progress_service.latest_verified_state(
+        conversation_id
+    )
+    assert verified_before is not None
+    learning = decision_memory_service.upsert_verification_learning(
+        verified_before
+    )
+    assert learning is not None
+    calls = 0
+
+    def generate(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return json.dumps(
+            {
+                "status": "ready",
+                "summary": "实测通勤否定了当前行动，应调整候选区域。",
+                "best_property_id": property_.id,
+                "reasons": [
+                    {
+                        "title": "实测通勤",
+                        "description": "80分钟通勤超出当前接受范围。",
+                    }
+                ],
+                "trade_offs": [],
+                "confidence": 0.8,
+                "decision_gap": "新的候选区域能否满足工作日30分钟通勤要求。",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(ai_client, "generate_json", generate)
+
+    try:
+        result = decision_service.generate(conversation_id)
+        current = decision_action_progress_service.current_state(conversation_id)
+        verified_after = decision_action_progress_service.latest_verified_state(
+            conversation_id
+        )
+        records = [
+            record
+            for record in decision_record_service.list(conversation_id)
+            if record.conversation_id == conversation_id
+        ]
+
+        assert calls == 1
+        assert result.status == "ready"
+        assert result.decision_gap == (
+            "新的候选区域能否满足工作日30分钟通勤要求。"
+        )
+        assert result.summary is not None
+        assert result.summary.count("下一步：") == 1
+        assert "新的候选区域" in result.summary
+        assert len(records) == 2
+        assert current is not None
+        assert current.id != first_action.action_id
+        assert current.status is None
+        assert current.outcome_status is None
+        assert verified_after == verified_before
+        assert learning.source_action_id == UUID(verified_before.action_id)
+    finally:
+        decision_action_progress_service.delete_conversation(conversation_id)
+        decision_memory_store.replace_conversation(conversation_id, [])
+
+
+def test_preference_gap_ready_survives_contradicted_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("decision-verification-redecision-gap")
+    create_profile(conversation_id)
+    property_ = create_property(conversation_id, "已被实测削弱的候选")
+    assert property_.id is not None
+    first_record = decision_record_service.save(
+        conversation_id,
+        DecisionResult(
+            status="ready",
+            summary="当前候选可以继续考虑。下一步：实测一次工作日高峰通勤。",
+            best_property_id=property_.id,
+            reasons=[DecisionReason(title="当前判断", description="通勤预估可接受。")],
+            decision_gap="工作日高峰门到门通勤是否符合当前预估。",
+        ),
+    )
+    decision_action_progress_service.reconcile_ready_record(first_record)
+    decision_action_progress_service.apply_update(
+        conversation_id,
+        ActionProgressUpdate(relevant=True, status=ActionProgressStatus.COMPLETED),
+        VerificationOutcomeUpdate(
+            relevant=True,
+            status=VerificationOutcomeStatus.DISCONFIRMED,
+            evidence=(
+                VerificationEvidence(
+                    field="commute_minutes",
+                    value="80分钟",
+                    statement="工作日高峰实测门到门约80分钟，无法接受。",
+                ),
+            ),
+        ),
+    )
+    preference_message = (
+        "我现在不确定应该更看重更短通勤，还是更舒适的居住空间；"
+        "如果每天多30分钟通勤能换来更大空间，我也还没想清楚是否值得。"
+    )
+
+    analyses = []
+
+    def analyze(history: list[object]):
+        latest_message = history[-1]
+        assert latest_message.content == preference_message
+        analysis = profile_intelligence._build_analysis(
+            "{}",
+            latest_message.content,
+        )
+        analyses.append(analysis)
+        return analysis
+
+    monkeypatch.setattr(profile_intelligence, "analyze", analyze)
+    conversation_manager.append_user_message(conversation_id, preference_message)
+    chat_service._update_profile(
+        conversation_id,
+        conversation_manager.get_history(conversation_id),
+    )
+    assert analyses[0].decision_challenge.relevant
+    assert analyses[0].action_progress_update.relevant is False
+    prompts: list[str] = []
+
+    def generate(prompt: str) -> str:
+        prompts.append(prompt)
+        return json.dumps(
+            {
+                "status": "ready",
+                "summary": "当前候选的实测通勤不适合继续优先考虑。",
+                "best_property_id": property_.id,
+                "reasons": [
+                    {
+                        "title": "实测通勤",
+                        "description": "80分钟通勤超出当前接受范围。",
+                    }
+                ],
+                "trade_offs": [
+                    {
+                        "title": "通勤与居住空间",
+                        "description": "需要在更短通勤与更舒适居住空间之间确定长期优先级。",
+                    }
+                ],
+                "confidence": 0.7,
+                "decision_gap": "你尚未形成更短通勤与更舒适居住空间之间的个人取舍。",
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(ai_client, "generate_json", generate)
+
+    try:
+        result = decision_service.generate(conversation_id)
+
+        assert result.status == "ready"
+        assert result.decision_gap is not None
+        assert "个人取舍" in result.decision_gap
+        assert result.summary is not None
+        assert result.summary.count("下一步：") == 1
+        assert "取舍优先级" in result.summary
+        assert len(prompts) == 1
+        assert preference_message in prompts[0]
+        assert "current verification has weakened a" in prompts[0]
+        assert "make NEXT clarify or test the user's" in prompts[0]
+    finally:
+        decision_action_progress_service.delete_conversation(conversation_id)
+        decision_change_context.clear(conversation_id)
 
 
 def test_single_property_returns_real_id_and_single_candidate_prompt(

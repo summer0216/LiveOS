@@ -40,6 +40,7 @@ def save_ready(
     label: str,
     *,
     with_next: bool = True,
+    decision_gap: str | None = "当前候选的实际条件是否符合预期。",
 ) -> None:
     summary = f"{label} Decision"
     if with_next:
@@ -53,6 +54,7 @@ def save_ready(
             reasons=[DecisionReason(title=f"{label}依据", description=label)],
             trade_offs=[DecisionTradeOff(title=f"{label}取舍", description=label)],
             confidence=0.8,
+            decision_gap=decision_gap,
         ),
     )
 
@@ -125,6 +127,7 @@ def test_most_recent_eligible_conversation_restores_only_its_decision() -> None:
     assert payload["decision"]["summary"] == "B Decision 下一步：执行 B NEXT。"
     assert payload["decision"]["reasons"][0]["description"] == "B"
     assert payload["decision"]["trade_offs"][0]["description"] == "B"
+    assert payload["decision"]["decision_gap"] == "当前候选的实际条件是否符合预期。"
     assert "A" not in payload["decision"]["summary"]
     assert "OTHER" not in payload["decision"]["summary"]
     assert other_response.json()["conversation_id"] == other_conversation
@@ -208,7 +211,12 @@ def test_missing_next_does_not_block_decision_and_tradeoff_resume() -> None:
     client, owner_id = owned_client()
     conversation_id = str(uuid4())
     create_conversation(owner_id, conversation_id)
-    save_ready(conversation_id, "Legacy", with_next=False)
+    save_ready(
+        conversation_id,
+        "Legacy",
+        with_next=False,
+        decision_gap=None,
+    )
 
     response = client.get(
         "/api/resume",
@@ -218,6 +226,7 @@ def test_missing_next_does_not_block_decision_and_tradeoff_resume() -> None:
     decision = response.json()["decision"]
     assert decision["summary"] == "Legacy Decision"
     assert "下一步：" not in decision["summary"]
+    assert decision["decision_gap"] is None
     assert decision["trade_offs"][0]["description"] == "Legacy"
 
 

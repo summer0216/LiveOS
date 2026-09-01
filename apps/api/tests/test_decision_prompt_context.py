@@ -135,6 +135,7 @@ def ready_json(property_id: str, summary: str) -> str:
             ],
             "trade_offs": [],
             "confidence": 0.8,
+            "decision_gap": "当前候选的实际条件是否符合预期。",
         },
         ensure_ascii=False,
     )
@@ -162,6 +163,18 @@ def test_empty_history_has_deterministic_section_and_priority() -> None:
     assert prompt.index("Output Schema:") < prompt.index(
         "Validation Rules:",
     )
+
+
+def test_prompt_allows_ready_preference_gap_after_candidate_is_weakened() -> None:
+    prompt = build_decision_prompt(
+        decision_input(),
+        DecisionContext(conversation_id="prompt-preference-gap"),
+    )
+
+    assert "Do not use waiting merely because the final choice remains unresolved" in prompt
+    assert "user value trade-off are understood, return a ready" in prompt
+    assert "current verification has weakened a" in prompt
+    assert "make NEXT clarify or test the user's" in prompt
 
 
 def test_history_fields_keep_latest_first_and_escape_instructions() -> None:

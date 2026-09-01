@@ -16,6 +16,7 @@ class DecisionRecord(BaseModel):
     reasons: list[DecisionReason]
     trade_offs: list[DecisionTradeOff]
     confidence: float | None
+    decision_gap: str | None = None
 
 
 class DecisionHistoryResponse(BaseModel):

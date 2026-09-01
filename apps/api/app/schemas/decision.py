@@ -31,6 +31,7 @@ class DecisionResult(BaseModel):
         max_length=3,
     )
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    decision_gap: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def validate_status_fields(self) -> "DecisionResult":
@@ -53,6 +54,9 @@ class DecisionResult(BaseModel):
 
         if not self.reasons:
             raise ValueError("Ready decisions require at least one reason.")
+
+        if self.decision_gap is not None and not self.decision_gap.strip():
+            raise ValueError("Decision Gap must not be blank.")
 
         return self
 

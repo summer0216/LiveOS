@@ -104,6 +104,7 @@ def ready_json(property_id: str) -> str:
                 },
             ],
             "confidence": 0.8,
+            "decision_gap": "当前房源的实际条件是否符合预期。",
         },
         ensure_ascii=False,
     )

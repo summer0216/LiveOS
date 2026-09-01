@@ -29,6 +29,13 @@ Select exactly one real Property id when a valid recommendation is possible.
 Return a concise user-facing summary, 1 to 4 reasons, 0 to 3 genuine
 trade-offs, and confidence from 0.0 to 1.0.
 
+Do not use waiting merely because the final choice remains unresolved or a
+current candidate has been weakened by user-reported verification. When the
+current situation and a user value trade-off are understood, return a ready
+current judgment with one preference Decision Gap and one meaningful next step.
+That judgment may state that a weakened candidate is not currently preferred;
+do not present it as a recommendation simply to avoid waiting.
+
 Never invent location facts, schools, transit distance, neighbourhood details,
 condition, market trends, investment advice, scores, rankings, or facts absent
 from the input. Do not reveal chain of thought.
@@ -42,15 +49,29 @@ Return exactly one JSON object with this structure:
   "best_property_id": string | null,
   "reasons": [{"title": string, "description": string}],
   "trade_offs": [{"title": string, "description": string}],
-  "confidence": number | null
+  "confidence": number | null,
+  "decision_gap": string | null
 }
 """.strip()
 
 DECISION_VALIDATION_RULES = """
 For waiting, best_property_id must be null and reasons and trade_offs must be
-empty. For ready, summary and best_property_id must be non-empty and reasons
-must contain at least one item. For ready, best_property_id must be one of the
-ids in the current Property List, never an id found only in Decision History.
+empty. A waiting Decision Gap may be null. For ready, summary, best_property_id,
+and decision_gap must be non-empty and reasons must contain at least one item.
+Use waiting only when no responsible current judgment or actionable Decision Gap
+can be formed. Do not use waiting merely because the final choice is unresolved.
+A user trade-off preference is a valid ready Decision Gap when the competing
+values are understood, including when current verification has weakened a
+candidate. In that case, state the candidate is not currently preferred rather
+than inventing a recommendation, and make NEXT clarify or test the user's
+preference.
+decision_gap must express exactly one most important unresolved condition, not a
+generic request for more information or a list. Primary NEXT must aim to reduce
+that specific gap. When the gap is a verifiable external fact, NEXT should be a
+concrete reality action. When the gap is a user trade-off preference, NEXT should
+help the user clarify that preference instead of inventing a missing fact. For
+ready, best_property_id must be one of the ids in the current Property List,
+never an id found only in Decision History.
 """.strip()
 
 DECISION_CONTEXT_PRIORITY_RULES = """
@@ -211,12 +232,15 @@ def format_current_challenge(context: DecisionContext) -> str:
     payload = json.dumps(challenge.model_dump(mode="json"), ensure_ascii=False)
     return (
         "Current Decision Challenge:\n"
-        "This is a bounded objection or reconsideration request from the latest "
-        "user turn. Reconsider the current decision using the current Living "
-        "Profile, Property List, prior Decision context, and Grounded Evidence. "
-        "The challenge is not a new fact and must never override Grounded "
-        "Evidence. The decision may change, remain supported, or become waiting "
-        "when evidence is insufficient. Do not automatically agree with it.\n"
+        "This is a bounded objection, reconsideration request, or material "
+        "trade-off preference from the latest user turn. Reconsider the current "
+        "decision using the current Living Profile, Property List, prior Decision "
+        "context, and Grounded Evidence. A material trade-off preference may "
+        "replace a previous Primary Gap only when it materially changes what "
+        "information matters most now. The challenge is not a new fact and must "
+        "never override Grounded Evidence. The decision may change, remain "
+        "supported, or become waiting when evidence is insufficient. Do not "
+        "automatically agree with it.\n"
         f"{payload}"
     )
 

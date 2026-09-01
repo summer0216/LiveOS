@@ -167,6 +167,7 @@ def test_negative_feedback_updates_decision_and_one_next_action() -> None:
     decision, next_action = recommendation.summary.split("下一步：", 1)
     assert "80 分钟且无法接受" in decision
     assert "通勤时间更短" in next_action
+    assert "通勤更短" in reconsidered.decision_gap
     assert recommendation.summary.count("下一步：") == 1
 
 
@@ -199,6 +200,7 @@ def test_acceptable_feedback_keeps_decision_coherent_with_one_next_action() -> N
     decision, next_action = recommendation.summary.split("下一步：", 1)
     assert "65 分钟通勤且可以接受" in decision
     assert "继续比较当前区域" in next_action
+    assert "租金和居住条件" in reconsidered.decision_gap
     assert recommendation.summary.count("下一步：") == 1
 
 

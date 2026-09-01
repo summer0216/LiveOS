@@ -41,7 +41,24 @@ def _decision_without_primary_next(summary: str) -> str:
     return summary.split(PRIMARY_NEXT_DELIMITER, 1)[0].strip()
 
 
+def _is_preference_gap(decision_gap: str) -> bool:
+    return any(
+        marker in decision_gap
+        for marker in ("优先级", "取舍", "是否愿意", "是否接受", "接受范围")
+    )
+
+
 def _fallback_primary_next(result: DecisionResult) -> str:
+    if result.decision_gap:
+        if _is_preference_gap(result.decision_gap):
+            return (
+                f"{PRIMARY_NEXT_DELIMITER}先明确“{result.decision_gap}”的取舍优先级，"
+                "再决定是否继续当前方案。"
+            )
+        return (
+            f"{PRIMARY_NEXT_DELIMITER}优先围绕“{result.decision_gap}”完成一次针对性核实，"
+            "再决定是否继续当前方案。"
+        )
     if result.trade_offs:
         return (
             f"{PRIMARY_NEXT_DELIMITER}核实“{result.trade_offs[0].title}”对应的关键信息，"
@@ -96,6 +113,7 @@ def apply_nearby_rent_evidence(
                     "独居租金范围内，独立居住方案可行。下一步应直接比较具体房源。"
                 ),
                 "reasons": [evidence_reason, *reasons][:4],
+                "decision_gap": "当前候选房源的实际租金和居住条件是否符合预期。",
             }
         )
 
@@ -128,6 +146,7 @@ def apply_nearby_rent_evidence(
             "reasons": reasons,
             "trade_offs": trade_offs,
             "confidence": min(result.confidence or 0.0, 0.65),
+            "decision_gap": "是否愿意放宽通勤范围或调整预算以维持独立居住。",
         }
     )
 
@@ -176,6 +195,10 @@ def apply_grounded_tradeoff(
             ),
             "reasons": [tradeoff_reason, *reasons][:4],
             "trade_offs": [tradeoff, *result.trade_offs][:3],
+            "decision_gap": (
+                f"约 {commute_evidence.commute_minutes} 分钟的工作日高峰通勤"
+                "是否在实际体验中可以接受。"
+            ),
         }
     )
 
@@ -275,6 +298,7 @@ def apply_decision_feedback(
                 "当前应优先调整区域。"
             ),
         )
+        decision_gap = "通勤更短的备选区域是否能在实际体验中满足你的接受范围。"
     else:
         summary = (
             f"实测约 {observed_minutes} 分钟通勤且可以接受，"
@@ -287,12 +311,14 @@ def apply_decision_feedback(
                 "当前无需仅因通勤放弃独立居住方向。"
             ),
         )
+        decision_gap = "当前区域候选房源的租金和居住条件是否符合实际预期。"
 
     return result.model_copy(
         update={
             "summary": summary,
             "reasons": [feedback_reason, *remaining_reasons][:4],
             "trade_offs": [trade_off, *result.trade_offs][:3],
+            "decision_gap": decision_gap,
         }
     )
 
@@ -355,6 +381,9 @@ class DecisionService:
             )
             return waiting_decision("AI 暂时无法完成当前决策，请稍后重试。")
 
+        if result.status == "waiting":
+            return result
+
         result = apply_grounded_tradeoff(
             result,
             nearby_rent_evidence,
@@ -373,8 +402,12 @@ class DecisionService:
             decision_context.current_feedback,
         )
 
-        if result.status == "waiting":
-            return result
+        if result.decision_gap is None or not result.decision_gap.strip():
+            logger.warning(
+                "Ready Decision has no Decision Gap for conversation %s.",
+                conversation_id,
+            )
+            return waiting_decision("AI 暂时无法明确当前最关键的未知，请稍后重试。")
 
         if not has_recoverable_primary_next(result.summary):
             logger.warning(

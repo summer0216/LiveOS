@@ -30,6 +30,7 @@ class ResumeResolver:
                 reasons=[item.model_copy(deep=True) for item in record.reasons],
                 trade_offs=[item.model_copy(deep=True) for item in record.trade_offs],
                 confidence=record.confidence,
+                decision_gap=record.decision_gap,
             )
         except ValidationError:
             return None

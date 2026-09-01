@@ -31,6 +31,7 @@ class DecisionRecordService:
                 trade_off.model_copy(deep=True) for trade_off in decision.trade_offs
             ],
             confidence=decision.confidence,
+            decision_gap=decision.decision_gap,
         )
 
         conversation_manager.get_or_create(conversation_id)

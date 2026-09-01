@@ -120,6 +120,7 @@ def ready_json(property_id: str) -> str:
             ],
             "trade_offs": [],
             "confidence": 0.82,
+            "decision_gap": "当前候选是否仍符合最新预算与通勤要求。",
         },
         ensure_ascii=False,
     )

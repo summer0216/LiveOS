@@ -242,7 +242,22 @@ class ProfileIntelligence:
         message = latest_user_message.strip()
         kind: str | None = None
         subject: str | None = None
-        if re.search(r"(?:取舍|权衡).*(?:不值得|不合理|太久)|太久.*(?:取舍|值得)", message):
+        has_commute_space_tradeoff = (
+            re.search(r"通勤|路程|上班", message) is not None
+            and re.search(r"空间|房子.{0,4}(?:小|大)|住得|居住", message) is not None
+        )
+        material_preference = (
+            re.search(
+                r"不知道|不确定|没想好|更应该看重|更不能接受|值不值得|"
+                r"宁愿.{0,20}(?:小|挤)|(?:超过|多).{0,8}\d+\s*分钟.{0,16}接受不了",
+                message,
+            )
+            is not None
+        )
+        if has_commute_space_tradeoff and material_preference:
+            kind = "TRADE_OFF"
+            subject = "通勤与居住空间取舍"
+        elif re.search(r"(?:取舍|权衡).*(?:不值得|不合理|太久)|太久.*(?:取舍|值得)", message):
             kind = "TRADE_OFF"
             subject = "当前取舍"
         elif re.search(r"(?:太|过度)(?:看重|强调|依赖)", message):
@@ -398,7 +413,11 @@ class ProfileIntelligence:
     def _explicit_action_progress_status(
         message: str,
     ) -> ActionProgressStatus | None:
-        if re.search(r"还没|尚未|没来得及|其实没(?:去|试|看|开始|做)", message):
+        if re.search(
+            r"(?:还没|尚未|没来得及)(?:去|试|看|查|问|确认|核实|跑|走|做|开始)|"
+            r"其实没(?:去|试|看|开始|做)",
+            message,
+        ):
             return ActionProgressStatus.NOT_STARTED
         if re.search(r"不打算|先不做|不准备再|不想再|不再(?:去|试|看|做)", message):
             return ActionProgressStatus.ABANDONED

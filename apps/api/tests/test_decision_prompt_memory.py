@@ -147,6 +147,7 @@ def ready_json(property_id: str) -> str:
             ],
             "trade_offs": [],
             "confidence": 0.8,
+            "decision_gap": "当前候选是否符合已知的长期偏好。",
         },
         ensure_ascii=False,
     )

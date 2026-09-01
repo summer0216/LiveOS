@@ -86,7 +86,8 @@ SCHEMA_STATEMENTS = (
         best_property_id UUID NOT NULL,
         reasons_json JSONB NOT NULL,
         trade_offs_json JSONB NOT NULL,
-        confidence DOUBLE PRECISION
+        confidence DOUBLE PRECISION,
+        decision_gap TEXT
     )
     """,
     """
@@ -163,6 +164,7 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
+    "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS decision_gap TEXT",
     "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES anonymous_users(id)",
     "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_action_id UUID",
     "ALTER TABLE decision_memories ADD COLUMN IF NOT EXISTS source_action_key TEXT",

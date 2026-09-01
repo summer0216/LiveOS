@@ -141,6 +141,7 @@ def test_multi_evidence_produces_one_tradeoff_decision() -> None:
     assert "重新选择区域" in grounded.summary
     assert grounded.reasons[0].title == "独居与通勤权衡"
     assert grounded.trade_offs[0].title == "独居与通勤取舍"
+    assert grounded.decision_gap == "约 65 分钟的工作日高峰通勤是否在实际体验中可以接受。"
 
     recommendation = build_next_actions(
         grounded,
@@ -155,6 +156,7 @@ def test_multi_evidence_produces_one_tradeoff_decision() -> None:
     assert primary_action == "先验证一次工作日高峰通勤，确认约 65 分钟是否可以接受。"
     assert "重新选择区域" not in primary_action
     assert "合租" not in primary_action
+    assert "65 分钟" in grounded.decision_gap
 
 
 def test_next_actions_do_not_ignore_conflicting_decision() -> None:
@@ -206,13 +208,14 @@ def test_ordinary_ready_gets_one_decision_aligned_primary_next() -> None:
             )
         ],
         confidence=0.7,
+        decision_gap="房源所在城市是否满足当前生活范围。",
     )
 
     recommendation = build_next_actions(result, None, None, 3500)
 
     assert recommendation.summary is not None
     assert recommendation.summary.count("下一步：") == 1
-    assert "核实“城市信息缺失”对应的关键信息" in recommendation.summary
+    assert "房源所在城市是否满足当前生活范围" in recommendation.summary
     assert has_recoverable_primary_next(recommendation.summary)
 
 
@@ -230,6 +233,42 @@ def test_existing_primary_next_is_not_duplicated() -> None:
     assert recommendation == result
     assert recommendation.summary is not None
     assert recommendation.summary.count("下一步：") == 1
+
+
+def test_fact_gap_drives_a_concrete_reality_check() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前房源可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="通勤预估", description="平台预估可接受。")],
+        confidence=0.7,
+        decision_gap="工作日高峰门到门通勤是否接近当前预估。",
+    )
+
+    recommendation = build_next_actions(result, None, None, None)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    assert "工作日高峰门到门通勤" in recommendation.summary
+    assert "针对性核实" in recommendation.summary
+
+
+def test_preference_gap_drives_preference_clarification() -> None:
+    result = DecisionResult(
+        status="ready",
+        summary="当前方案暂时可行。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前条件", description="预算可支持候选房源。")],
+        confidence=0.7,
+        decision_gap="独居空间与更短通勤之间的优先级是否需要调整。",
+    )
+
+    recommendation = build_next_actions(result, None, None, None)
+
+    assert recommendation.summary is not None
+    assert recommendation.summary.count("下一步：") == 1
+    assert "独居空间与更短通勤之间的优先级" in recommendation.summary
+    assert "明确" in recommendation.summary
 
 
 def test_waiting_decision_does_not_require_primary_next() -> None:

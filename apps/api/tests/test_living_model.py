@@ -110,6 +110,7 @@ def ready_json(property_id: str) -> str:
             ],
             "trade_offs": [],
             "confidence": 0.8,
+            "decision_gap": "当前候选的实际租金是否符合 Living Model。",
         },
         ensure_ascii=False,
     )

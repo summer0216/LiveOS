@@ -108,6 +108,41 @@ def test_fallback_recognizes_explicit_challenge_without_an_extra_call() -> None:
     assert analysis.decision_challenge.kind == "DIRECT"
 
 
+def test_material_preference_tradeoff_reaches_decision_context_once() -> None:
+    conversation_id = uuid_for("material-preference-context")
+    message = (
+        "我现在其实不知道自己更不能接受的是通勤累，"
+        "还是每天住得太挤。"
+    )
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(challenge=no_challenge_payload()),
+        message,
+    )
+
+    assert analysis.decision_challenge.relevant is True
+    assert analysis.decision_challenge.kind == "TRADE_OFF"
+    assert analysis.decision_challenge.statement == message
+    assert analysis.patch == LivingProfilePatch()
+
+    decision_challenge_context.set(conversation_id, analysis.decision_challenge)
+    first = decision_context_builder.build(conversation_id)
+    second = decision_context_builder.build(conversation_id)
+
+    assert first.current_challenge == analysis.decision_challenge
+    assert message in format_current_challenge(first)
+    assert "material trade-off preference" in format_current_challenge(first)
+    assert second.current_challenge is None
+
+
+def test_weak_preference_does_not_create_decision_context_signal() -> None:
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(challenge=no_challenge_payload()),
+        "空间也挺重要。",
+    )
+
+    assert analysis.decision_challenge.relevant is False
+
+
 def test_explanation_and_ordinary_turns_are_not_challenges() -> None:
     for message in ("为什么你推荐这个房源？", "好的，我知道了。"):
         analysis = profile_intelligence._build_analysis(
@@ -356,6 +391,7 @@ def ready_response(property_id: str, summary: str) -> str:
             "reasons": [{"title": "重新评估", "description": "已重新核对当前证据。"}],
             "trade_offs": [],
             "confidence": 0.8,
+            "decision_gap": "重新评估后仍需核实候选房源的实际条件。",
         },
         ensure_ascii=False,
     )

@@ -462,9 +462,9 @@ class DecisionRecordStore:
                 """
                 INSERT INTO decision_records(
                     id, owner_id, conversation_id, created_at, summary, best_property_id,
-                    reasons_json, trade_offs_json, confidence
+                    reasons_json, trade_offs_json, confidence, decision_gap
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(record.id),
@@ -476,6 +476,7 @@ class DecisionRecordStore:
                     Jsonb([item.model_dump() for item in record.reasons]),
                     Jsonb([item.model_dump() for item in record.trade_offs]),
                     record.confidence,
+                    record.decision_gap,
                 ),
             )
         return record.model_copy(deep=True)
@@ -499,6 +500,7 @@ class DecisionRecordStore:
                 DecisionTradeOff.model_validate(item) for item in row["trade_offs_json"]
             ],
             confidence=row["confidence"],
+            decision_gap=row.get("decision_gap"),
         )
 
     def list_by_conversation(self, conversation_id: str) -> list[DecisionRecord]:

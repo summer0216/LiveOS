@@ -17,6 +17,7 @@ export interface DecisionResult {
   reasons: DecisionReason[];
   trade_offs: DecisionTradeOff[];
   confidence: number | null;
+  decision_gap: string | null;
 }
 
 export interface DecisionRecord {
@@ -28,6 +29,7 @@ export interface DecisionRecord {
   reasons: DecisionReason[];
   trade_offs: DecisionTradeOff[];
   confidence: number | null;
+  decision_gap: string | null;
 }
 
 export interface DecisionHistoryResponse {
@@ -66,7 +68,8 @@ function isDecisionRecord(value: unknown): value is DecisionRecord {
     record.reasons.every(isDecisionItem) &&
     Array.isArray(record.trade_offs) &&
     record.trade_offs.every(isDecisionItem) &&
-    (typeof record.confidence === 'number' || record.confidence === null)
+    (typeof record.confidence === 'number' || record.confidence === null) &&
+    (typeof record.decision_gap === 'string' || record.decision_gap === null)
   );
 }
 

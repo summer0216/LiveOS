@@ -17,6 +17,7 @@ from tests.ids import uuid_for
 CONVERSATION_IDS = (
     uuid_for("record-waiting"),
     uuid_for("record-ready"),
+    uuid_for("record-ready-without-gap"),
     uuid_for("record-repeated"),
     uuid_for("record-save-failure"),
     uuid_for("record-isolation-a"),
@@ -98,6 +99,7 @@ def ready_json(property_id: str) -> str:
                 },
             ],
             "confidence": 0.82,
+            "decision_gap": "该房源的实际居住条件是否符合预期。",
         },
         ensure_ascii=False,
     )
@@ -140,7 +142,29 @@ def test_ready_decision_saves_one_record(
     assert records[0].id
     assert records[0].conversation_id == conversation_id
     assert records[0].best_property_id == property_.id
+    assert records[0].decision_gap == "该房源的实际居住条件是否符合预期。"
     assert records[0].created_at.tzinfo is not None
+
+
+def test_generated_ready_without_gap_is_not_persisted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("record-ready-without-gap")
+    property_ = create_property(conversation_id, "缺少 Gap 房源")
+    create_profile(conversation_id)
+    assert property_.id is not None
+    payload = json.loads(ready_json(property_.id))
+    payload.pop("decision_gap")
+    monkeypatch.setattr(
+        ai_client,
+        "generate_json",
+        lambda _prompt: json.dumps(payload, ensure_ascii=False),
+    )
+
+    result = decision_service.generate(conversation_id)
+
+    assert result.status == "waiting"
+    assert decision_record_service.list(conversation_id) == []
 
 
 def test_each_ready_decision_appends_a_new_record(
