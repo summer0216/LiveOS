@@ -4,7 +4,12 @@ from pydantic import ValidationError
 
 from app.core.ai_client import ai_client
 from app.core.logger import logger
-from app.models.action_progress import ActionProgressStatus, CurrentActionProgress
+from app.models.action_progress import (
+    ActionProgressStatus,
+    CurrentActionProgress,
+    LatestVerifiedAction,
+    VerificationOutcomeStatus,
+)
 from app.models.decision_feedback import DecisionRelevantFeedback
 from app.runtime.decision import build_decision_prompt
 from app.schemas.decision import (
@@ -171,10 +176,28 @@ def waiting_decision(summary: str) -> DecisionResult:
     )
 
 
+def _rejects_longer_commute(
+    verified_reality: CurrentActionProgress | LatestVerifiedAction | None,
+) -> bool:
+    if (
+        verified_reality is None
+        or verified_reality.status != ActionProgressStatus.COMPLETED
+        or verified_reality.outcome_status != VerificationOutcomeStatus.DISCONFIRMED
+    ):
+        return False
+    rejection_markers = ("无法接受", "不能接受", "接受不了", "不可接受")
+    return any(
+        evidence.field == "commute_minutes"
+        and any(marker in evidence.statement for marker in rejection_markers)
+        for evidence in verified_reality.verification_evidence
+    )
+
+
 def apply_nearby_rent_evidence(
     result: DecisionResult,
     evidence: NearbyRentEvidence | None,
     budget: int | None,
+    verified_reality: CurrentActionProgress | LatestVerifiedAction | None = None,
 ) -> DecisionResult:
     if evidence is None or budget is None:
         return result
@@ -215,9 +238,15 @@ def apply_nearby_rent_evidence(
             f"当前预算 {budget} 元不足以覆盖该范围。"
         ),
     )
+    longer_commute_rejected = _rejects_longer_commute(verified_reality)
     evidence_trade_off = DecisionTradeOff(
         title="独居预算取舍",
-        description="若保持独居，应优先放宽通勤范围或提高预算；否则需要重新考虑合租或更小户型。",
+        description=(
+            "已确认更长通勤不可接受；若保持当前通勤边界和独居，应提高预算，"
+            "否则需要调整住房形式。"
+            if longer_commute_rejected
+            else "若保持独居，应优先放宽通勤范围或提高预算；否则需要重新考虑合租或更小户型。"
+        ),
     )
     reasons = [
         reason
@@ -228,7 +257,11 @@ def apply_nearby_rent_evidence(
     trade_offs = [evidence_trade_off, *result.trade_offs][:3]
     summary = (
         "附近租金证据显示，当前预算暂不足以支持该区域的独居方案。"
-        "建议先放宽通勤或调整预算，再比较具体房源。"
+        + (
+            "已确认更长通勤不可接受，应优先评估提高预算或调整住房形式。"
+            if longer_commute_rejected
+            else "建议先放宽通勤或调整预算，再比较具体房源。"
+        )
     )
     return result.model_copy(
         update={
@@ -236,7 +269,11 @@ def apply_nearby_rent_evidence(
             "reasons": reasons,
             "trade_offs": trade_offs,
             "confidence": min(result.confidence or 0.0, 0.65),
-            "decision_gap": "是否愿意放宽通勤范围或调整预算以维持独立居住。",
+            "decision_gap": (
+                "是否愿意提高预算或调整住房形式以维持当前通勤边界。"
+                if longer_commute_rejected
+                else "是否愿意放宽通勤范围或调整预算以维持独立居住。"
+            ),
         }
     )
 
@@ -246,8 +283,14 @@ def apply_grounded_tradeoff(
     rent_evidence: NearbyRentEvidence | None,
     commute_evidence: CommuteEvidence | None,
     budget: int | None,
+    verified_reality: CurrentActionProgress | LatestVerifiedAction | None = None,
 ) -> DecisionResult:
-    result = apply_nearby_rent_evidence(result, rent_evidence, budget)
+    result = apply_nearby_rent_evidence(
+        result,
+        rent_evidence,
+        budget,
+        verified_reality,
+    )
     if (
         rent_evidence is None
         or commute_evidence is None
@@ -481,6 +524,9 @@ class DecisionService:
             nearby_rent_evidence,
             commute_evidence,
             profile.budget,
+            decision_action_progress_service.latest_verified_state(
+                conversation_id
+            ),
         )
         result = apply_decision_feedback(
             result,

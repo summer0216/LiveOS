@@ -1,5 +1,11 @@
 import re
 
+from app.models.action_progress import (
+    ActionProgressStatus,
+    CurrentActionProgress,
+    VerificationEvidence,
+    VerificationOutcomeStatus,
+)
 from app.models.profile import LivingProfile
 from app.runtime.decision import build_decision_prompt
 from app.runtime.living_model import LivingModel, LivingModelProfile
@@ -108,6 +114,81 @@ def test_grounded_evidence_changes_conflicting_decision() -> None:
     assert "独立居住方案可行" in grounded.summary
     assert grounded.reasons[0].title == "附近独居租金证据"
     assert all("合租" not in reason.title for reason in grounded.reasons)
+
+
+def test_rejected_longer_commute_removes_that_grounded_tradeoff_branch() -> None:
+    evidence = get_nearby_rent_evidence(
+        LivingProfile(
+            work_location="成都高新区合作路89号",
+            preferred_city="成都",
+            budget=1500,
+            family_size=1,
+        )
+    )
+    assert evidence is not None
+    model_decision = DecisionResult(
+        status="ready",
+        summary="当前候选可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前候选", description="需要重新权衡。")],
+        confidence=0.7,
+    )
+    verified_reality = CurrentActionProgress(
+        action_id="action-1",
+        next_text="实测一次工作日高峰通勤。",
+        status=ActionProgressStatus.COMPLETED,
+        outcome_status=VerificationOutcomeStatus.DISCONFIRMED,
+        verification_evidence=(
+            VerificationEvidence(
+                field="commute_minutes",
+                value=80,
+                statement="门到门大约80分钟，我接受不了。",
+            ),
+        ),
+    )
+
+    grounded = apply_nearby_rent_evidence(
+        model_decision,
+        evidence,
+        1500,
+        verified_reality,
+    )
+
+    assert "放宽通勤" not in grounded.summary
+    assert "放宽通勤" not in grounded.decision_gap
+    assert all("放宽通勤" not in item.description for item in grounded.trade_offs)
+    assert "提高预算" in grounded.summary
+    assert "调整住房形式" in grounded.summary
+    assert grounded.decision_gap == (
+        "是否愿意提高预算或调整住房形式以维持当前通勤边界。"
+    )
+
+
+def test_budget_insufficient_without_rejected_reality_keeps_existing_tradeoff() -> None:
+    evidence = get_nearby_rent_evidence(
+        LivingProfile(
+            work_location="成都高新区合作路89号",
+            preferred_city="成都",
+            budget=1500,
+            family_size=1,
+        )
+    )
+    assert evidence is not None
+    model_decision = DecisionResult(
+        status="ready",
+        summary="当前候选可以继续考虑。",
+        best_property_id="property-1",
+        reasons=[DecisionReason(title="当前候选", description="需要重新权衡。")],
+        confidence=0.7,
+    )
+
+    grounded = apply_nearby_rent_evidence(model_decision, evidence, 1500)
+
+    assert "放宽通勤或调整预算" in grounded.summary
+    assert grounded.decision_gap == (
+        "是否愿意放宽通勤范围或调整预算以维持独立居住。"
+    )
+    assert "放宽通勤范围或提高预算" in grounded.trade_offs[0].description
 
 
 def test_multi_evidence_produces_one_tradeoff_decision() -> None:
