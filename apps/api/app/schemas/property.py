@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.decision_unknown import DecisionUnknownResponse
+
 
 class PropertyFields(BaseModel):
     title: str | None = None
@@ -25,6 +27,7 @@ class PropertyResponse(PropertyFields):
     conversation_id: str
     decision_state: Literal["ACTIVE", "WEAKENED", "REJECTED"] = "ACTIVE"
     state_reason: str | None = None
+    unknowns: list[DecisionUnknownResponse] = Field(default_factory=list)
 
 
 class PropertyListResponse(BaseModel):

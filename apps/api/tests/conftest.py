@@ -21,6 +21,7 @@ def isolate_persistent_runtime_data() -> None:
     with database.connect() as connection:
         for table in (
             "decision_memories",
+            "decision_unknowns",
             "decision_action_states",
             "decision_records",
             "properties",

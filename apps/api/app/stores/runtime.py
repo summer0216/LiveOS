@@ -4,6 +4,7 @@ from app.stores.persistent import (
     ConversationStore,
     DecisionActionStateStore,
     DecisionRecordStore,
+    DecisionUnknownStore,
     LatestVerifiedActionStore,
     ProfileStore,
     PropertyStore,
@@ -14,6 +15,7 @@ database.initialize()
 conversation_store = ConversationStore(database)
 profile_store = ProfileStore(database)
 property_store = PropertyStore(database)
+decision_unknown_store = DecisionUnknownStore(database)
 decision_record_store = DecisionRecordStore(database)
 decision_action_state_store = DecisionActionStateStore(database)
 latest_verified_action_store = LatestVerifiedActionStore(database)

@@ -15,6 +15,7 @@ REQUIRED_TABLES = {
     "decision_records",
     "decision_action_states",
     "latest_verified_actions",
+    "decision_unknowns",
     "decision_memories",
 }
 
@@ -133,6 +134,19 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS decision_unknowns (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        topic TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('OPEN', 'RESOLVED')),
+        meaning TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS decision_memories (
         id UUID PRIMARY KEY,
         owner_id UUID NOT NULL REFERENCES anonymous_users(id),
@@ -218,6 +232,8 @@ OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_records_owner_created ON decision_records(owner_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_action_states_owner ON decision_action_states(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_latest_verified_actions_owner ON latest_verified_actions(owner_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_open_unknown_owner_choice_topic ON decision_unknowns(owner_id, conversation_id, property_id, topic) WHERE status = 'OPEN'",
+    "CREATE INDEX IF NOT EXISTS idx_unknowns_owner_choice_status ON decision_unknowns(owner_id, property_id, status)",
     "DROP INDEX IF EXISTS uq_memories_owner_category_content",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_category_content ON decision_memories(owner_id, category, normalized_content) WHERE source_action_id IS NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_owner_source_action ON decision_memories(owner_id, source_action_id) WHERE source_action_id IS NOT NULL",

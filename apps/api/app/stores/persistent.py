@@ -14,6 +14,7 @@ from app.models.action_progress import (
     VerificationOutcomeStatus,
 )
 from app.models.conversation import Conversation, ConversationMessage
+from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.profile import LivingProfile
 from app.models.property import Property
 from app.schemas.decision import DecisionReason, DecisionTradeOff
@@ -441,6 +442,120 @@ class PropertyStore:
                 "DELETE FROM properties WHERE conversation_id = %s",
                 (conversation_uuid,),
             )
+
+
+class DecisionUnknownStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> DecisionUnknown:
+        return DecisionUnknown(
+            id=str(row["id"]),
+            conversation_id=str(row["conversation_id"]),
+            property_id=str(row["property_id"]),
+            topic=row["topic"],
+            status=DecisionUnknownStatus(row["status"]),
+            meaning=row["meaning"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def upsert_open(self, unknown: DecisionUnknown) -> DecisionUnknown:
+        owner_id = resolve_owner_id(self._database, unknown.conversation_id)
+        conversation_id = optional_uuid(unknown.conversation_id)
+        property_id = optional_uuid(unknown.property_id)
+        if owner_id is None or conversation_id is None or property_id is None:
+            raise ValueError("Decision Unknown requires valid Conversation and Property IDs.")
+        if unknown.status != DecisionUnknownStatus.OPEN:
+            raise ValueError("Only OPEN Decision Unknowns can be created.")
+
+        with self._database.connect() as connection:
+            property_row = connection.execute(
+                "SELECT id FROM properties WHERE id = %s AND owner_id = %s",
+                (property_id, owner_id),
+            ).fetchone()
+            if property_row is None:
+                raise ValueError("Decision Unknown Property does not belong to Owner.")
+
+            row = connection.execute(
+                """
+                INSERT INTO decision_unknowns(
+                    id, owner_id, conversation_id, property_id, topic, status,
+                    meaning, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, 'OPEN', %s, %s, %s)
+                ON CONFLICT (owner_id, conversation_id, property_id, topic)
+                    WHERE status = 'OPEN'
+                DO UPDATE SET
+                    meaning = EXCLUDED.meaning,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(unknown.id),
+                    owner_id,
+                    conversation_id,
+                    property_id,
+                    unknown.topic,
+                    unknown.meaning,
+                    unknown.created_at,
+                    unknown.updated_at,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Decision Unknown could not be stored.")
+        return self._from(row)
+
+    def list_open(
+        self,
+        conversation_id: str,
+        property_id: str | None = None,
+    ) -> list[DecisionUnknown]:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        property_uuid = optional_uuid(property_id) if property_id is not None else None
+        if owner_id is None or conversation_uuid is None:
+            return []
+        if property_id is not None and property_uuid is None:
+            return []
+
+        query = """
+            SELECT * FROM decision_unknowns
+            WHERE owner_id = %s AND conversation_id = %s AND status = 'OPEN'
+        """
+        values: tuple[object, ...] = (owner_id, conversation_uuid)
+        if property_uuid is not None:
+            query += " AND property_id = %s"
+            values = (*values, property_uuid)
+        query += " ORDER BY created_at, id"
+
+        with self._database.connect() as connection:
+            rows = connection.execute(query, values).fetchall()
+        return [self._from(row) for row in rows]
+
+    def update_status(
+        self,
+        conversation_id: str,
+        unknown_id: str,
+        status: DecisionUnknownStatus,
+    ) -> DecisionUnknown | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        unknown_uuid = optional_uuid(unknown_id)
+        if owner_id is None or conversation_uuid is None or unknown_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE decision_unknowns
+                SET status = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (status.value, now(), unknown_uuid, owner_id, conversation_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
 
 
 class DecisionRecordStore:

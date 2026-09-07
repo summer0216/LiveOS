@@ -11,6 +11,7 @@ from app.schemas.property import (
 from app.services.candidate_decision_state import project_candidate_decision_states
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.decision_unknown_service import decision_unknown_service
 from app.services.property_manager import property_manager
 
 router = APIRouter(
@@ -54,12 +55,21 @@ def list_properties(
     require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     properties = property_manager.list(conversation_id)
     projections = project_candidate_decision_states(conversation_id, properties)
+    open_unknowns = decision_unknown_service.list_open(conversation_id)
+    unknowns_by_property = {
+        property_.id: [
+            unknown for unknown in open_unknowns if unknown.property_id == property_.id
+        ]
+        for property_ in properties
+        if property_.id is not None
+    }
     return PropertyListResponse(
         items=[
             PropertyResponse.model_validate(property_).model_copy(
                 update={
                     "decision_state": projections[property_.id].state,
                     "state_reason": projections[property_.id].reason,
+                    "unknowns": unknowns_by_property[property_.id],
                 }
             )
             for property_ in properties
