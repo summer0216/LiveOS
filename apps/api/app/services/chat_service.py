@@ -20,6 +20,7 @@ from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
 from app.services.decision_memory_service import decision_memory_service
+from app.services.decision_unknown_service import decision_unknown_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -108,6 +109,11 @@ class ChatService:
                             )
                         )
                         if verified_action is not None:
+                            if verified_action.unknown_id is not None:
+                                decision_unknown_service.resolve_unknown(
+                                    conversation_id,
+                                    verified_action.unknown_id,
+                                )
                             decision_memory_service.upsert_verification_learning(
                                 verified_action,
                             )

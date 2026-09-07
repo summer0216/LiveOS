@@ -2,9 +2,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models.action_progress import (
+    ActionProgressStatus,
+    ActionProgressUpdate,
+    VerificationEvidence,
+    VerificationOutcomeStatus,
+    VerificationOutcomeUpdate,
+)
 from app.models.decision_unknown import DecisionUnknownStatus
+from app.models.profile_analysis import ProfileAnalysis
+from app.models.profile_patch import LivingProfilePatch
 from app.models.property import Property
 from app.schemas.decision import DecisionReason, DecisionResult, DecisionTradeOff
+from app.services.chat_service import chat_service
 from app.services.decision_action_progress import decision_action_progress_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_unknown_service import decision_unknown_service
@@ -152,3 +162,59 @@ def test_action_rejects_unknown_from_other_choice_or_conversation() -> None:
             record,
             unknown_id=other_conversation_unknown.id,
         )
+
+
+def test_reality_completion_resolves_only_linked_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("reality-resolves-linked-unknown")
+    create_owned_conversation(client, conversation_id)
+    property_ = property_manager.create(
+        conversation_id,
+        Property(title="候选 C", commute_minutes=31),
+    )
+    assert property_.id is not None
+    linked = decision_unknown_service.open_unknown(
+        conversation_id,
+        property_.id,
+        "night_noise",
+        "夜间噪音仍需确认",
+    )
+    unrelated = decision_unknown_service.open_unknown(
+        conversation_id,
+        property_.id,
+        "parking",
+        "停车仍需确认",
+    )
+    record = _ready_record(conversation_id, property_.id)
+    decision_action_progress_service.reconcile_ready_record(
+        record,
+        unknown_id=linked.id,
+    )
+
+    analysis = ProfileAnalysis(
+        patch=LivingProfilePatch(),
+        action_progress_update=ActionProgressUpdate(
+            relevant=True,
+            status=ActionProgressStatus.COMPLETED,
+        ),
+        verification_outcome_update=VerificationOutcomeUpdate(
+            relevant=True,
+            status=VerificationOutcomeStatus.DISCONFIRMED,
+            evidence=(
+                VerificationEvidence(
+                    field="statement",
+                    value="夜间噪音较大",
+                    statement="夜间噪音较大。",
+                ),
+            ),
+        ),
+    )
+
+    from app.services.profile_intelligence import profile_intelligence
+
+    monkeypatch.setattr(profile_intelligence, "analyze", lambda _history: analysis)
+    chat_service._update_profile(conversation_id, [])
+
+    remaining = decision_unknown_service.list_open(conversation_id, property_.id)
+    assert [item.id for item in remaining] == [unrelated.id]
