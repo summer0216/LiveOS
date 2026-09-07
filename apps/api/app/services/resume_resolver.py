@@ -22,6 +22,8 @@ class ResumableLivingState:
 class ResumeResolver:
     @staticmethod
     def _as_ready_decision(record: DecisionRecord) -> DecisionResult | None:
+        if record.recommendation_invalidated:
+            return None
         try:
             return DecisionResult(
                 status="ready",

@@ -88,7 +88,8 @@ SCHEMA_STATEMENTS = (
         reasons_json JSONB NOT NULL,
         trade_offs_json JSONB NOT NULL,
         confidence DOUBLE PRECISION,
-        decision_gap TEXT
+        decision_gap TEXT,
+        recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE
     )
     """,
     """
@@ -173,6 +174,7 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",
     "ALTER TABLE latest_verified_actions ADD COLUMN IF NOT EXISTS unknown_id UUID",
     "ALTER TABLE decision_action_states DROP CONSTRAINT IF EXISTS decision_action_states_unknown_id_fkey",

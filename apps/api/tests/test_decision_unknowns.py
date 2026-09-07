@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.ownership import COOKIE_NAME
 from app.main import app
 from app.models.action_progress import (
     ActionProgressStatus,
@@ -19,6 +20,7 @@ from app.services.decision_action_progress import decision_action_progress_servi
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_unknown_service import decision_unknown_service
 from app.services.property_manager import property_manager
+from app.services.resume_resolver import resume_resolver
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
@@ -218,3 +220,12 @@ def test_reality_completion_resolves_only_linked_unknown(
 
     remaining = decision_unknown_service.list_open(conversation_id, property_.id)
     assert [item.id for item in remaining] == [unrelated.id]
+    updated_record = decision_record_service.get_by_id(conversation_id, record.id)
+    assert updated_record is not None
+    assert updated_record.recommendation_invalidated is True
+    resumed = resume_resolver.resolve_conversation(
+        client.cookies.get(COOKIE_NAME),
+        conversation_id,
+    )
+    assert resumed is not None
+    assert resumed.decision is None

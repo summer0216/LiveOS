@@ -597,9 +597,10 @@ class DecisionRecordStore:
                 """
                 INSERT INTO decision_records(
                     id, owner_id, conversation_id, created_at, summary, best_property_id,
-                    reasons_json, trade_offs_json, confidence, decision_gap
+                    reasons_json, trade_offs_json, confidence, decision_gap,
+                    recommendation_invalidated
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(record.id),
@@ -612,6 +613,7 @@ class DecisionRecordStore:
                     Jsonb([item.model_dump() for item in record.trade_offs]),
                     record.confidence,
                     record.decision_gap,
+                    record.recommendation_invalidated,
                 ),
             )
         return record.model_copy(deep=True)
@@ -636,7 +638,30 @@ class DecisionRecordStore:
             ],
             confidence=row["confidence"],
             decision_gap=row.get("decision_gap"),
+            recommendation_invalidated=row.get("recommendation_invalidated", False),
         )
+
+    def invalidate_recommendation(
+        self,
+        conversation_id: str,
+        record_id: str,
+    ) -> DecisionRecord | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        record_uuid = optional_uuid(record_id)
+        if owner_id is None or conversation_uuid is None or record_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE decision_records
+                SET recommendation_invalidated = TRUE
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (record_uuid, owner_id, conversation_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
 
     def list_by_conversation(self, conversation_id: str) -> list[DecisionRecord]:
         owner_id = resolve_owner_id(self._database, conversation_id)

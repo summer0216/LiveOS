@@ -56,6 +56,16 @@ class DecisionRecordService:
     ) -> DecisionRecord | None:
         return decision_record_store.get_by_id(conversation_id, record_id)
 
+    def invalidate_recommendation(
+        self,
+        conversation_id: str,
+        record_id: str,
+    ) -> DecisionRecord | None:
+        return decision_record_store.invalidate_recommendation(
+            conversation_id,
+            record_id,
+        )
+
     def delete_conversation(
         self,
         conversation_id: str,

@@ -17,6 +17,7 @@ class DecisionRecord(BaseModel):
     trade_offs: list[DecisionTradeOff]
     confidence: float | None
     decision_gap: str | None = None
+    recommendation_invalidated: bool = False
 
 
 class DecisionHistoryResponse(BaseModel):
