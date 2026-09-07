@@ -52,6 +52,17 @@ body {
   flex-direction: column;
   color: #334155;
   text-align: left;
+  transition:
+    color var(--motion-normal) var(--motion-ease),
+    opacity var(--motion-normal) var(--motion-ease);
+}
+
+.world-object-receded {
+  opacity: 0.36;
+}
+
+.world-object-context {
+  opacity: 0.52;
 }
 
 .work-anchor {
@@ -66,6 +77,38 @@ body {
 
 .choice-object-quiet {
   color: #64748b;
+}
+
+.choice-object-compare {
+  color: #0f172a;
+}
+
+.choice-object-compare .object-mark,
+.choice-object-compare .object-kicker {
+  color: #1e3a5f;
+}
+
+.choice-object-compare .object-name {
+  color: #020617;
+  font-size: 18px;
+}
+
+.choice-object-compare .compare-object-meaning {
+  color: #1e3a5f;
+}
+
+.compare-relationship {
+  stroke: rgb(30 58 95 / 0.46);
+  stroke-dasharray: 1 10;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.compare-meaning {
+  width: min(25rem, calc(100vw - 3rem));
+  text-shadow:
+    0 0 2px rgb(255 255 255),
+    0 1px 5px rgb(255 255 255 / 0.92);
 }
 
 .object-mark {

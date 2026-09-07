@@ -106,9 +106,16 @@ export default function AMapGround({
   onZoomChange,
 }: AMapGroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fitLocationsRef = useRef(fitLocations);
+  const refitForLocationsChangeRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing-config' | 'error'>(
     'loading',
   );
+
+  useEffect(() => {
+    fitLocationsRef.current = fitLocations;
+    refitForLocationsChangeRef.current?.();
+  }, [fitLocations]);
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_AMAP_KEY;
@@ -168,10 +175,11 @@ export default function AMapGround({
         };
 
         const fitGroundedLocations = (smooth = false) => {
-          if (fitLocations.length < 2 || !window.AMap) return;
+          const currentFitLocations = fitLocationsRef.current;
+          if (currentFitLocations.length < 2 || !window.AMap) return;
 
-          const longitudes = fitLocations.map(({ lng }) => lng);
-          const latitudes = fitLocations.map(({ lat }) => lat);
+          const longitudes = currentFitLocations.map(({ lng }) => lng);
+          const latitudes = currentFitLocations.map(({ lat }) => lat);
           const bounds = new window.AMap.Bounds(
             new window.AMap.LngLat(Math.min(...longitudes), Math.min(...latitudes)),
             new window.AMap.LngLat(Math.max(...longitudes), Math.max(...latitudes)),
@@ -193,6 +201,10 @@ export default function AMapGround({
           fitGroundedLocations(true);
         };
         onReturnToLivingWorldReady?.(returnToLivingWorld);
+        refitForLocationsChangeRef.current = () => {
+          refreshProjection();
+          if (!userExploredCamera) fitGroundedLocations();
+        };
 
         let hasFittedInitialView = false;
         const markUserExploredCamera = () => {
@@ -240,11 +252,11 @@ export default function AMapGround({
       active = false;
       if (refitOnResize) window.removeEventListener('resize', refitOnResize);
       resizeObserver?.disconnect();
+      refitForLocationsChangeRef.current = null;
       onReturnToLivingWorldReady?.(null);
       map?.destroy();
     };
   }, [
-    fitLocations,
     onProjectionReady,
     onReturnToLivingWorldReady,
     onUserExploredCameraChange,
