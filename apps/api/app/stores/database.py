@@ -97,6 +97,7 @@ SCHEMA_STATEMENTS = (
         owner_id UUID NOT NULL REFERENCES anonymous_users(id),
         conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
         decision_record_id UUID NOT NULL,
+        unknown_id UUID,
         action_key TEXT NOT NULL,
         next_text TEXT NOT NULL,
         status TEXT CHECK (
@@ -121,6 +122,7 @@ SCHEMA_STATEMENTS = (
         conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
         action_id UUID NOT NULL,
         decision_record_id UUID NOT NULL,
+        unknown_id UUID,
         action_key TEXT NOT NULL,
         next_text TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status = 'COMPLETED'),
@@ -171,6 +173,12 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",
+    "ALTER TABLE latest_verified_actions ADD COLUMN IF NOT EXISTS unknown_id UUID",
+    "ALTER TABLE decision_action_states DROP CONSTRAINT IF EXISTS decision_action_states_unknown_id_fkey",
+    "ALTER TABLE decision_action_states ADD CONSTRAINT decision_action_states_unknown_id_fkey FOREIGN KEY (unknown_id) REFERENCES decision_unknowns(id) ON DELETE SET NULL",
+    "ALTER TABLE latest_verified_actions DROP CONSTRAINT IF EXISTS latest_verified_actions_unknown_id_fkey",
+    "ALTER TABLE latest_verified_actions ADD CONSTRAINT latest_verified_actions_unknown_id_fkey FOREIGN KEY (unknown_id) REFERENCES decision_unknowns(id) ON DELETE SET NULL",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS outcome_status TEXT",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS verification_evidence_json JSONB NOT NULL DEFAULT '[]'::jsonb",
     "ALTER TABLE decision_action_states DROP CONSTRAINT IF EXISTS decision_action_states_outcome_status_check",

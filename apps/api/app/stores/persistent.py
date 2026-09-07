@@ -534,6 +534,26 @@ class DecisionUnknownStore:
             rows = connection.execute(query, values).fetchall()
         return [self._from(row) for row in rows]
 
+    def get_for_conversation(
+        self,
+        conversation_id: str,
+        unknown_id: str,
+    ) -> DecisionUnknown | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        unknown_uuid = optional_uuid(unknown_id)
+        if owner_id is None or conversation_uuid is None or unknown_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM decision_unknowns
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                """,
+                (unknown_uuid, owner_id, conversation_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
     def update_status(
         self,
         conversation_id: str,
@@ -688,13 +708,14 @@ class DecisionActionStateStore:
                 """
                 INSERT INTO decision_action_states(
                     id, owner_id, conversation_id, decision_record_id,
-                    action_key, next_text, status, outcome_status,
+                    unknown_id, action_key, next_text, status, outcome_status,
                     verification_evidence_json, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
                     id = EXCLUDED.id,
                     decision_record_id = EXCLUDED.decision_record_id,
+                    unknown_id = EXCLUDED.unknown_id,
                     action_key = EXCLUDED.action_key,
                     next_text = EXCLUDED.next_text,
                     status = EXCLUDED.status,
@@ -708,6 +729,7 @@ class DecisionActionStateStore:
                     owner_id,
                     uuid_value(state.conversation_id),
                     uuid_value(state.decision_record_id),
+                    uuid_value(state.unknown_id) if state.unknown_id is not None else None,
                     state.action_key,
                     state.next_text,
                     state.status.value if state.status is not None else None,
@@ -747,6 +769,7 @@ class DecisionActionStateStore:
             id=str(row["id"]),
             conversation_id=str(row["conversation_id"]),
             decision_record_id=str(row["decision_record_id"]),
+            unknown_id=(str(row["unknown_id"]) if row["unknown_id"] is not None else None),
             action_key=row["action_key"],
             next_text=row["next_text"],
             status=(
@@ -792,13 +815,14 @@ class LatestVerifiedActionStore:
                 """
                 INSERT INTO latest_verified_actions(
                     owner_id, conversation_id, action_id, decision_record_id,
-                    action_key, next_text, status, outcome_status,
+                    unknown_id, action_key, next_text, status, outcome_status,
                     verification_evidence_json, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
                     action_id = EXCLUDED.action_id,
                     decision_record_id = EXCLUDED.decision_record_id,
+                    unknown_id = EXCLUDED.unknown_id,
                     action_key = EXCLUDED.action_key,
                     next_text = EXCLUDED.next_text,
                     status = EXCLUDED.status,
@@ -812,6 +836,7 @@ class LatestVerifiedActionStore:
                     uuid_value(action.conversation_id),
                     uuid_value(action.action_id),
                     uuid_value(action.decision_record_id),
+                    uuid_value(action.unknown_id) if action.unknown_id is not None else None,
                     action.action_key,
                     action.next_text,
                     action.status.value,
@@ -847,6 +872,7 @@ class LatestVerifiedActionStore:
             action_id=str(row["action_id"]),
             conversation_id=str(row["conversation_id"]),
             decision_record_id=str(row["decision_record_id"]),
+            unknown_id=(str(row["unknown_id"]) if row["unknown_id"] is not None else None),
             action_key=row["action_key"],
             next_text=row["next_text"],
             status=ActionProgressStatus(row["status"]),

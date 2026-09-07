@@ -75,6 +75,7 @@ class DecisionActionState(BaseModel):
     id: str
     conversation_id: str
     decision_record_id: str
+    unknown_id: str | None = None
     action_key: str = Field(min_length=1)
     next_text: str = Field(min_length=1)
     status: ActionProgressStatus | None = None
@@ -95,6 +96,7 @@ class LatestVerifiedAction(BaseModel):
     action_id: str
     conversation_id: str
     decision_record_id: str
+    unknown_id: str | None = None
     action_key: str = Field(min_length=1)
     next_text: str = Field(min_length=1)
     status: ActionProgressStatus
@@ -117,6 +119,7 @@ class CurrentActionProgress(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     action_id: str | None = None
+    unknown_id: str | None = None
     next_text: str = Field(min_length=1)
     status: ActionProgressStatus | None = None
     outcome_status: VerificationOutcomeStatus | None = None

@@ -19,6 +19,7 @@ from app.schemas.decision_record import DecisionRecord
 from app.stores.runtime import (
     decision_action_state_store,
     decision_record_store,
+    decision_unknown_store,
     latest_verified_action_store,
 )
 
@@ -29,6 +30,7 @@ NEXT_DELIMITER = "下一步："
 class LogicalActionDescriptor:
     action_key: str
     next_text: str
+    unknown_id: str | None = None
 
 
 def _normalized(value: str) -> str:
@@ -48,7 +50,10 @@ def _split_primary_next(summary: str) -> tuple[str, str] | None:
     return decision_text, next_text
 
 
-def describe_logical_action(record: DecisionRecord) -> LogicalActionDescriptor | None:
+def describe_logical_action(
+    record: DecisionRecord,
+    unknown_id: str | None = None,
+) -> LogicalActionDescriptor | None:
     parts = _split_primary_next(record.summary)
     if parts is None:
         return None
@@ -56,11 +61,16 @@ def describe_logical_action(record: DecisionRecord) -> LogicalActionDescriptor |
     payload = {
         "best_property_id": record.best_property_id,
         "next_text": _normalized(next_text),
+        "unknown_id": unknown_id,
     }
     action_key = hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
-    return LogicalActionDescriptor(action_key=action_key, next_text=next_text)
+    return LogicalActionDescriptor(
+        action_key=action_key,
+        next_text=next_text,
+        unknown_id=unknown_id,
+    )
 
 
 class DecisionActionProgressService:
@@ -74,6 +84,9 @@ class DecisionActionProgressService:
     ) -> CurrentActionProgress:
         return CurrentActionProgress(
             action_id=state.id if state is not None else None,
+            unknown_id=(
+                state.unknown_id if state is not None else descriptor.unknown_id
+            ),
             next_text=descriptor.next_text,
             status=state.status if state is not None else None,
             outcome_status=(state.outcome_status if state is not None else None),
@@ -91,18 +104,45 @@ class DecisionActionProgressService:
         ]
         return max(records, key=lambda record: record.created_at, default=None)
 
-    def _reconcile(self, record: DecisionRecord) -> DecisionActionState | None:
-        descriptor = describe_logical_action(record)
+    @staticmethod
+    def _validate_unknown_binding(
+        record: DecisionRecord,
+        unknown_id: str | None,
+    ) -> None:
+        if unknown_id is None:
+            return
+        unknown = decision_unknown_store.get_for_conversation(
+            record.conversation_id,
+            unknown_id,
+        )
+        if unknown is None:
+            raise ValueError("Action Unknown must belong to the same conversation.")
+        if unknown.property_id != record.best_property_id:
+            raise ValueError("Action Unknown must belong to the Action property.")
+
+    def _reconcile(
+        self,
+        record: DecisionRecord,
+        unknown_id: str | None = None,
+    ) -> DecisionActionState | None:
+        existing = decision_action_state_store.get(record.conversation_id)
+        resolved_unknown_id = (
+            unknown_id
+            if unknown_id is not None
+            else (existing.unknown_id if existing is not None else None)
+        )
+        self._validate_unknown_binding(record, resolved_unknown_id)
+        descriptor = describe_logical_action(record, resolved_unknown_id)
         if descriptor is None:
             decision_action_state_store.delete_conversation(record.conversation_id)
             return None
 
-        existing = decision_action_state_store.get(record.conversation_id)
         timestamp = datetime.now(UTC)
         if existing is not None and existing.action_key == descriptor.action_key:
             state = existing.model_copy(
                 update={
                     "decision_record_id": record.id,
+                    "unknown_id": descriptor.unknown_id,
                     "next_text": descriptor.next_text,
                     "updated_at": timestamp,
                 }
@@ -112,6 +152,7 @@ class DecisionActionProgressService:
                 id=str(uuid4()),
                 conversation_id=record.conversation_id,
                 decision_record_id=record.id,
+                unknown_id=descriptor.unknown_id,
                 action_key=descriptor.action_key,
                 next_text=descriptor.next_text,
                 status=None,
@@ -134,6 +175,7 @@ class DecisionActionProgressService:
             action_id=state.id,
             conversation_id=state.conversation_id,
             decision_record_id=state.decision_record_id,
+            unknown_id=state.unknown_id,
             action_key=state.action_key,
             next_text=state.next_text,
             status=state.status,
@@ -146,14 +188,16 @@ class DecisionActionProgressService:
     def reconcile_ready_record(
         self,
         record: DecisionRecord,
+        unknown_id: str | None = None,
     ) -> CurrentActionProgress | None:
         with self._lock:
-            state = self._reconcile(record)
+            state = self._reconcile(record, unknown_id)
             if state is None:
                 return None
             descriptor = LogicalActionDescriptor(
                 action_key=state.action_key,
                 next_text=state.next_text,
+                unknown_id=state.unknown_id,
             )
             return self._to_current(state, descriptor)
 
@@ -162,6 +206,7 @@ class DecisionActionProgressService:
         conversation_id: str,
         update: ActionProgressUpdate,
         outcome_update: VerificationOutcomeUpdate = NO_VERIFICATION_OUTCOME_UPDATE,
+        unknown_id: str | None = None,
     ) -> CurrentActionProgress | None:
         if (
             not update.relevant or update.status is None
@@ -172,7 +217,7 @@ class DecisionActionProgressService:
             record = self._latest_record(conversation_id)
             if record is None:
                 return None
-            state = self._reconcile(record)
+            state = self._reconcile(record, unknown_id)
             if state is None:
                 return None
             state = decision_action_state_store.save(
@@ -199,6 +244,7 @@ class DecisionActionProgressService:
                     latest_verified_action_store.save(verified_action)
             return CurrentActionProgress(
                 action_id=state.id,
+                unknown_id=state.unknown_id,
                 next_text=state.next_text,
                 status=state.status,
                 outcome_status=state.outcome_status,
@@ -209,7 +255,11 @@ class DecisionActionProgressService:
         self,
         record: DecisionRecord,
     ) -> CurrentActionProgress | None:
-        descriptor = describe_logical_action(record)
+        state = decision_action_state_store.get(record.conversation_id)
+        descriptor = describe_logical_action(
+            record,
+            state.unknown_id if state is not None else None,
+        )
         if descriptor is None:
             return None
         state = decision_action_state_store.get(record.conversation_id)
