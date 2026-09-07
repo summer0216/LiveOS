@@ -93,3 +93,88 @@ def test_property_crud_and_owner_workspace_sharing() -> None:
 
     property_manager.delete_conversation(conversation_a)
     property_manager.delete_conversation(conversation_b)
+
+
+def test_property_geographic_grounding_lifecycle_and_projection() -> None:
+    conversation_id = uuid_for("property-geographic-grounding")
+    create_owned_conversation(client, conversation_id)
+
+    created = client.post(
+        "/api/properties",
+        json={"conversation_id": conversation_id, "title": "后海公寓"},
+    )
+    assert created.status_code == 201
+    property_id = created.json()["id"]
+    assert created.json()["geographic_status"] == "UNRESOLVED"
+    assert created.json()["lng"] is None
+    assert created.json()["lat"] is None
+
+    unresolved = client.patch(
+        f"/api/properties/{property_id}/geography",
+        json={
+            "conversation_id": conversation_id,
+            "geographic_identity": "后海公寓",
+            "geographic_status": "UNRESOLVED",
+        },
+    )
+    assert unresolved.status_code == 200
+    assert unresolved.json()["geographic_status"] == "UNRESOLVED"
+    assert unresolved.json()["geographic_precision"] is None
+
+    grounded = client.patch(
+        f"/api/properties/{property_id}/geography",
+        json={
+            "conversation_id": conversation_id,
+            "geographic_identity": "深圳市南山区后海公寓",
+            "geographic_precision": "PLACE",
+            "geographic_status": "GROUNDED",
+            "lng": 113.929757,
+            "lat": 22.510291,
+        },
+    )
+    assert grounded.status_code == 200
+    assert grounded.json()["geographic_status"] == "GROUNDED"
+    assert grounded.json()["geographic_precision"] == "PLACE"
+    assert grounded.json()["lng"] == 113.929757
+    assert grounded.json()["lat"] == 22.510291
+
+    projected = client.get(
+        "/api/properties",
+        params={"conversation_id": conversation_id},
+    )
+    assert projected.status_code == 200
+    item = projected.json()["items"][0]
+    assert item["geographic_status"] == "GROUNDED"
+    assert item["geographic_identity"] == "深圳市南山区后海公寓"
+
+
+def test_invalid_property_geographic_grounding_is_rejected() -> None:
+    conversation_id = uuid_for("property-geographic-invalid")
+    create_owned_conversation(client, conversation_id)
+    created = client.post(
+        "/api/properties",
+        json={"conversation_id": conversation_id, "title": "未定位候选"},
+    )
+    property_id = created.json()["id"]
+
+    missing_coordinates = client.patch(
+        f"/api/properties/{property_id}/geography",
+        json={
+            "conversation_id": conversation_id,
+            "geographic_identity": "未定位候选",
+            "geographic_precision": "AREA",
+            "geographic_status": "GROUNDED",
+        },
+    )
+    assert missing_coordinates.status_code == 422
+
+    unresolved_with_coordinates = client.patch(
+        f"/api/properties/{property_id}/geography",
+        json={
+            "conversation_id": conversation_id,
+            "geographic_status": "UNRESOLVED",
+            "lng": 113.9,
+            "lat": 22.5,
+        },
+    )
+    assert unresolved_with_coordinates.status_code == 422

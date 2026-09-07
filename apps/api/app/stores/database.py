@@ -73,6 +73,17 @@ SCHEMA_STATEMENTS = (
         bathrooms INTEGER,
         commute_minutes INTEGER,
         pet_friendly BOOLEAN,
+        geographic_identity TEXT,
+        geographic_precision TEXT CHECK (
+            geographic_precision IS NULL OR geographic_precision IN (
+                'PLACE', 'COMMUNITY', 'STREET', 'AREA'
+            )
+        ),
+        geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED' CHECK (
+            geographic_status IN ('UNRESOLVED', 'GROUNDED')
+        ),
+        lng DOUBLE PRECISION,
+        lat DOUBLE PRECISION,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
     )
@@ -174,6 +185,11 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_identity TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_precision TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED'",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",
     "ALTER TABLE latest_verified_actions ADD COLUMN IF NOT EXISTS unknown_id UUID",

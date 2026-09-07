@@ -1,7 +1,7 @@
 from dataclasses import replace
 from uuid import uuid4
 
-from app.models.property import Property
+from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.services.conversation_manager import conversation_manager
 from app.stores.runtime import property_store
 
@@ -25,6 +25,27 @@ class PropertyManager:
         conversation_id: str,
     ) -> list[Property]:
         return property_store.list(conversation_id)
+
+    def update_geographic_grounding(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        geographic_identity: str | None,
+        geographic_precision: GeographicPrecision | None,
+        geographic_status: GeographicStatus,
+        lng: float | None,
+        lat: float | None,
+    ) -> Property | None:
+        return property_store.update_geographic_grounding(
+            property_id,
+            conversation_id,
+            geographic_identity=geographic_identity,
+            geographic_precision=geographic_precision,
+            geographic_status=geographic_status,
+            lng=lng,
+            lat=lat,
+        )
 
     def get(
         self,

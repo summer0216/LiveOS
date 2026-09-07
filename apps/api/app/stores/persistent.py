@@ -16,7 +16,7 @@ from app.models.action_progress import (
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.profile import LivingProfile
-from app.models.property import Property
+from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
@@ -328,6 +328,17 @@ class PropertyStore:
             bathrooms=row["bathrooms"],
             commute_minutes=row["commute_minutes"],
             pet_friendly=row["pet_friendly"],
+            geographic_identity=row.get("geographic_identity"),
+            geographic_precision=(
+                GeographicPrecision(row["geographic_precision"])
+                if row.get("geographic_precision") is not None
+                else None
+            ),
+            geographic_status=GeographicStatus(
+                row.get("geographic_status", GeographicStatus.UNRESOLVED.value)
+            ),
+            lng=row.get("lng"),
+            lat=row.get("lat"),
         )
 
     def create(self, property_: Property) -> Property:
@@ -348,9 +359,10 @@ class PropertyStore:
                 """
                 INSERT INTO properties(
                     id, owner_id, conversation_id, title, district, rent, area, bedrooms,
-                    bathrooms, commute_minutes, pet_friendly, created_at, updated_at
+                    bathrooms, commute_minutes, pet_friendly, geographic_identity,
+                    geographic_precision, geographic_status, lng, lat, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -364,11 +376,61 @@ class PropertyStore:
                     property_.bathrooms,
                     property_.commute_minutes,
                     property_.pet_friendly,
+                    property_.geographic_identity,
+                    property_.geographic_precision.value
+                    if property_.geographic_precision is not None
+                    else None,
+                    property_.geographic_status.value,
+                    property_.lng,
+                    property_.lat,
                     timestamp,
                     timestamp,
                 ),
             )
         return property_
+
+    def update_geographic_grounding(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        geographic_identity: str | None,
+        geographic_precision: GeographicPrecision | None,
+        geographic_status: GeographicStatus,
+        lng: float | None,
+        lat: float | None,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET geographic_identity = %s,
+                    geographic_precision = %s,
+                    geographic_status = %s,
+                    lng = %s,
+                    lat = %s,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    geographic_identity,
+                    geographic_precision.value if geographic_precision else None,
+                    geographic_status.value,
+                    lng,
+                    lat,
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
 
     def list(self, conversation_id: str) -> list[Property]:
         owner_id = resolve_owner_id(self._database, conversation_id)

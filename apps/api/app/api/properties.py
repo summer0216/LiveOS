@@ -5,6 +5,7 @@ from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.models.property import Property
 from app.schemas.property import (
     PropertyCreateRequest,
+    PropertyGeographicGroundingUpdate,
     PropertyListResponse,
     PropertyResponse,
 )
@@ -122,6 +123,33 @@ def delete_property(
             status_code=404,
             detail="Property not found.",
         )
+
+
+@router.patch(
+    "/{property_id}/geography",
+    response_model=PropertyResponse,
+)
+def update_property_geography(
+    property_id: str,
+    request: PropertyGeographicGroundingUpdate,
+    raw_request: Request,
+    response: Response,
+) -> Property:
+    require_conversation_owner(
+        request.conversation_id, anonymous_user_id(raw_request, response)
+    )
+    property_ = property_manager.update_geographic_grounding(
+        property_id,
+        request.conversation_id,
+        geographic_identity=request.geographic_identity,
+        geographic_precision=request.geographic_precision,
+        geographic_status=request.geographic_status,
+        lng=request.lng,
+        lat=request.lat,
+    )
+    if property_ is None:
+        raise HTTPException(status_code=404, detail="Property not found.")
+    return property_
 
 
 @router.get(
