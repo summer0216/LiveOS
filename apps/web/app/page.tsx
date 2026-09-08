@@ -13,6 +13,7 @@ import { getProperties, type Property } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
+type LocationResolution = 'pending' | 'resolved' | 'fallback';
 
 const FIRST_OPEN_CENTER = { lng: 113.93, lat: 22.54 };
 const NO_FIT_LOCATIONS: readonly { lng: number; lat: number }[] = [];
@@ -39,6 +40,51 @@ export default function HomePage() {
   const [projection, setProjection] = useState<GeographicProjection | null>(null);
   const [phase, setPhase] = useState<ScenePhase>('empty');
   const [workVisible, setWorkVisible] = useState(false);
+  const [locationResolution, setLocationResolution] = useState<LocationResolution>('pending');
+  const [currentLocation, setCurrentLocation] = useState<{ lng: number; lat: number } | null>(null);
+
+  useEffect(() => {
+    let settled = false;
+    const fallbackToDefaultContext = () => {
+      if (settled) return;
+      settled = true;
+      console.info('[First Open] Current Geographic Reality unavailable; using default context');
+      setLocationResolution('fallback');
+    };
+
+    if (!navigator.geolocation) {
+      fallbackToDefaultContext();
+      return;
+    }
+
+    const fallbackTimer = window.setTimeout(fallbackToDefaultContext, 10500);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallbackTimer);
+        console.info('[First Open] Current Geographic Reality resolved', {
+          lng: position.coords.longitude,
+          lat: position.coords.latitude,
+        });
+        setCurrentLocation({
+          lng: position.coords.longitude,
+          lat: position.coords.latitude,
+        });
+        setLocationResolution('resolved');
+      },
+      () => {
+        window.clearTimeout(fallbackTimer);
+        fallbackToDefaultContext();
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+
+    return () => {
+      settled = true;
+      window.clearTimeout(fallbackTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -150,16 +196,19 @@ export default function HomePage() {
     [groundedChoices, projection],
   );
   const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
+  const initialCenter = currentLocation ?? FIRST_OPEN_CENTER;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#eef2ed] text-slate-950">
-      <AMapGround
-        fitLocations={NO_FIT_LOCATIONS}
-        initialCenter={FIRST_OPEN_CENTER}
-        initialZoom={12.5}
-        presentation="quiet"
-        onProjectionReady={handleProjectionReady}
-      />
+      {locationResolution !== 'pending' && (
+        <AMapGround
+          fitLocations={NO_FIT_LOCATIONS}
+          initialCenter={initialCenter}
+          initialZoom={12.5}
+          presentation="quiet"
+          onProjectionReady={handleProjectionReady}
+        />
+      )}
       <div
         aria-hidden="true"
         className={

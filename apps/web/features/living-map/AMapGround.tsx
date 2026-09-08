@@ -71,6 +71,7 @@ interface AMapGroundProps {
   mapStyle?: string;
   presentation?: 'default' | 'quiet';
   onProjectionReady?: (projection: GeographicProjection) => void;
+  onCameraReady?: (reorient: (center: { lng: number; lat: number }, zoom: number) => void) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
   onZoomChange?: (zoom: number) => void;
@@ -109,6 +110,7 @@ export default function AMapGround({
   mapStyle = 'amap://styles/fresh',
   presentation = 'default',
   onProjectionReady,
+  onCameraReady,
   onReturnToLivingWorldReady,
   onUserExploredCameraChange,
   onZoomChange,
@@ -163,6 +165,25 @@ export default function AMapGround({
           animateEnable: false,
         });
         map = mapInstance;
+
+        // Keep prototype/world entry views anchored to their explicit current reality.
+        // AMap may otherwise retain its default camera while the instance is settling.
+        if (initialCenter && initialZoom !== undefined) {
+          mapInstance.setZoomAndCenter(
+            initialZoom,
+            new window.AMap!.LngLat(initialCenter.lng, initialCenter.lat),
+            true,
+          );
+        }
+
+        onCameraReady?.((center, zoom) => {
+          programmaticCameraUpdateUntil = performance.now() + 1500;
+          mapInstance.setZoomAndCenter(
+            zoom,
+            new window.AMap!.LngLat(center.lng, center.lat),
+            false,
+          );
+        });
 
         const createProjection = (): GeographicProjection => ({ lng, lat }) => {
           const pixel = mapInstance.lngLatToContainer(
@@ -270,6 +291,7 @@ export default function AMapGround({
     };
   }, [
     onProjectionReady,
+    onCameraReady,
     onReturnToLivingWorldReady,
     onUserExploredCameraChange,
     onZoomChange,
