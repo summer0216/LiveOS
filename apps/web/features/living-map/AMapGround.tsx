@@ -66,6 +66,9 @@ export interface GeographicProjection {
 
 interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
+  initialCenter?: { lng: number; lat: number };
+  initialZoom?: number;
+  presentation?: 'default' | 'quiet';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
@@ -100,6 +103,9 @@ function loadAMap(key: string, securityJsCode: string) {
 
 export default function AMapGround({
   fitLocations = [],
+  initialCenter,
+  initialZoom,
+  presentation = 'default',
   onProjectionReady,
   onReturnToLivingWorldReady,
   onUserExploredCameraChange,
@@ -140,6 +146,10 @@ export default function AMapGround({
 
         const mapInstance = new window.AMap.Map(containerRef.current, {
           viewMode: '2D',
+          ...(initialCenter
+            ? { center: [initialCenter.lng, initialCenter.lat] }
+            : {}),
+          ...(initialZoom !== undefined ? { zoom: initialZoom } : {}),
           mapStyle: 'amap://styles/fresh',
           features: ['bg', 'road'],
           showLabel: true,
@@ -259,13 +269,20 @@ export default function AMapGround({
     onReturnToLivingWorldReady,
     onUserExploredCameraChange,
     onZoomChange,
+    initialCenter,
+    initialZoom,
   ]);
 
   return (
     <div
       aria-hidden="true"
       data-map-status={status}
-      className="absolute inset-0 z-0 overflow-hidden bg-[#eef2ed]"
+      className={
+        'absolute inset-0 z-0 overflow-hidden bg-[#eef2ed]' +
+        (presentation === 'quiet'
+          ? ' opacity-[0.7] saturate-[0.68] contrast-[0.86] brightness-[1.03]'
+          : '')
+      }
     >
       <div className={`map-reveal-layer absolute inset-0${status === 'ready' ? ' is-ready' : ''}`}>
         <div ref={containerRef} className="h-full w-full" />

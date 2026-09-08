@@ -7,6 +7,7 @@ import { Send } from 'lucide-react';
 interface ConversationComposerProps {
     disabled?: boolean;
     variant?: 'default' | 'ambient';
+    placeholder?: string;
     onSubmit: (message: string) => void;
     onListeningChange: (isListening: boolean) => void;
 }
@@ -14,6 +15,7 @@ interface ConversationComposerProps {
 export default function ConversationComposer({
     disabled = false,
     variant = 'default',
+    placeholder = '告诉 LiveOS 新情况……',
     onSubmit,
     onListeningChange,
 }: ConversationComposerProps) {
@@ -66,7 +68,7 @@ export default function ConversationComposer({
                         onListeningChange(Boolean(nextMessage.trim()));
                     }}
                     onKeyDown={handleKeyDown}
-                    placeholder="告诉 LiveOS 新情况……"
+                    placeholder={placeholder}
                     className={
                         isAmbient
                             ? 'max-h-32 min-h-11 flex-1 resize-none bg-transparent px-3 py-3 text-sm text-slate-700 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50'

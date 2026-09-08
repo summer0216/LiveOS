@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import { streamMessage, type DecisionChange } from '@/services/chat';
 
@@ -78,6 +78,7 @@ const WELCOME_MESSAGE: ConversationMessage = {
 };
 
 export default function ConversationFeature() {
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const conversationId = searchParams.get('conversation_id') ?? '';
@@ -127,9 +128,9 @@ export default function ConversationFeature() {
     }
   }, [conversationId]);
 
-  const refreshDecision = useCallback(async () => {
+  const refreshDecision = useCallback(async (): Promise<DecisionResult | null> => {
     if (!conversationId) {
-      return false;
+      return null;
     }
 
     try {
@@ -146,11 +147,11 @@ export default function ConversationFeature() {
           ? currentDecision
           : refreshedDecision;
       });
-      return true;
+      return refreshedDecision;
     } catch (error: unknown) {
       // Decision availability must not block the existing conversation flow.
       console.error('Failed to load current decision:', error);
-      return false;
+      return null;
     }
   }, [conversationId]);
 
@@ -166,12 +167,17 @@ export default function ConversationFeature() {
       setDecision(resumeState.decision);
       setActionProgress(resumeState.action_progress);
       setLatestVerifiedAction(resumeState.latest_verified_action);
+      if (resumeState.decision?.status === 'ready') {
+        router.replace(
+          `/living-map?conversation_id=${encodeURIComponent(conversationId)}`,
+        );
+      }
     } catch (error: unknown) {
       console.error('Failed to resume living decision:', error);
     } finally {
       setIsProfileLoading(false);
     }
-  }, [conversationId]);
+  }, [conversationId, router]);
 
   const loadActionProgress = useCallback(async () => {
     if (!conversationId) return;
@@ -320,6 +326,12 @@ export default function ConversationFeature() {
           if (refreshed && decisionChanges.length > 0) {
             setChangeExplanation(decisionChanges[0].explanation);
           }
+          if (refreshed?.status === 'ready') {
+            router.replace(
+              `/living-map?conversation_id=${encodeURIComponent(conversationId)}`,
+            );
+            return;
+          }
         }
         await loadCandidate();
         const refreshedActionState = await loadActionProgress();
@@ -374,6 +386,7 @@ export default function ConversationFeature() {
       profile,
       refreshDecision,
       actionProgress,
+      router,
     ],
   );
 
