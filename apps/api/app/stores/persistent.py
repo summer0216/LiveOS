@@ -235,6 +235,17 @@ class ProfileStore:
             row["has_pet"],
             list(row["latest_insights_json"]),
             dict(row["preference_tags_json"]),
+            geographic_identity=row.get("geographic_identity"),
+            geographic_precision=(
+                GeographicPrecision(row["geographic_precision"])
+                if row.get("geographic_precision") is not None
+                else None
+            ),
+            geographic_status=GeographicStatus(
+                row.get("geographic_status", GeographicStatus.UNRESOLVED.value)
+            ),
+            lng=row.get("lng"),
+            lat=row.get("lat"),
         )
 
     def save(self, conversation_id: str, profile: LivingProfile) -> LivingProfile:
@@ -261,6 +272,13 @@ class ProfileStore:
             profile.has_pet,
             Jsonb(profile.latest_insights),
             Jsonb(profile.preference_tags),
+            profile.geographic_identity,
+            profile.geographic_precision.value
+            if profile.geographic_precision is not None
+            else None,
+            profile.geographic_status.value,
+            profile.lng,
+            profile.lat,
             now(),
         )
         with self._database.connect() as connection:
@@ -269,9 +287,10 @@ class ProfileStore:
                 INSERT INTO living_profiles(
                     owner_id, conversation_id, work_location, budget, commute_minutes,
                     preferred_city, family_size, has_pet, latest_insights_json,
-                    preference_tags_json, updated_at
+                    preference_tags_json, geographic_identity, geographic_precision,
+                    geographic_status, lng, lat, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id) DO UPDATE SET
                     conversation_id = EXCLUDED.conversation_id,
                     work_location = EXCLUDED.work_location,
@@ -282,6 +301,11 @@ class ProfileStore:
                     has_pet = EXCLUDED.has_pet,
                     latest_insights_json = EXCLUDED.latest_insights_json,
                     preference_tags_json = EXCLUDED.preference_tags_json,
+                    geographic_identity = EXCLUDED.geographic_identity,
+                    geographic_precision = EXCLUDED.geographic_precision,
+                    geographic_status = EXCLUDED.geographic_status,
+                    lng = EXCLUDED.lng,
+                    lat = EXCLUDED.lat,
                     updated_at = EXCLUDED.updated_at
                 """,
                 (owner_uuid, *values),

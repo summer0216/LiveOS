@@ -57,6 +57,17 @@ SCHEMA_STATEMENTS = (
         has_pet BOOLEAN,
         latest_insights_json JSONB NOT NULL,
         preference_tags_json JSONB NOT NULL,
+        geographic_identity TEXT,
+        geographic_precision TEXT CHECK (
+            geographic_precision IS NULL OR geographic_precision IN (
+                'PLACE', 'COMMUNITY', 'STREET', 'AREA'
+            )
+        ),
+        geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED' CHECK (
+            geographic_status IN ('UNRESOLVED', 'GROUNDED')
+        ),
+        lng DOUBLE PRECISION,
+        lat DOUBLE PRECISION,
         updated_at TIMESTAMPTZ NOT NULL
     )
     """,
@@ -249,6 +260,12 @@ OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "ALTER TABLE decision_records DROP CONSTRAINT IF EXISTS decision_records_conversation_id_fkey",
     "ALTER TABLE decision_memories DROP CONSTRAINT IF EXISTS decision_memories_conversation_id_fkey",
     "ALTER TABLE living_profiles ALTER COLUMN conversation_id DROP NOT NULL",
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS geographic_identity TEXT",
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS geographic_precision TEXT",
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED'",
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION",
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION",
+    "UPDATE living_profiles SET geographic_identity = '深圳市南山区南山科技园', geographic_precision = 'AREA', geographic_status = 'GROUNDED', lng = 113.947, lat = 22.541 WHERE work_location = '南山科技园' AND geographic_status = 'UNRESOLVED'",
     "ALTER TABLE properties ALTER COLUMN conversation_id DROP NOT NULL",
     "ALTER TABLE decision_records ALTER COLUMN conversation_id DROP NOT NULL",
     "ALTER TABLE decision_memories ALTER COLUMN conversation_id DROP NOT NULL",

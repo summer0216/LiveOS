@@ -13,11 +13,24 @@ export interface Property {
   pet_friendly: boolean | null;
   decision_state: 'ACTIVE' | 'WEAKENED' | 'REJECTED';
   state_reason: string | null;
+  geographic_identity: string | null;
+  geographic_precision: 'PLACE' | 'COMMUNITY' | 'STREET' | 'AREA' | null;
+  geographic_status: 'UNRESOLVED' | 'GROUNDED';
+  lng: number | null;
+  lat: number | null;
 }
 
 export type PropertyInput = Omit<
   Property,
-  'id' | 'conversation_id' | 'decision_state' | 'state_reason'
+  | 'id'
+  | 'conversation_id'
+  | 'decision_state'
+  | 'state_reason'
+  | 'geographic_identity'
+  | 'geographic_precision'
+  | 'geographic_status'
+  | 'lng'
+  | 'lat'
 >;
 
 interface PropertyListResponse {

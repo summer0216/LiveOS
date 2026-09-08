@@ -3,6 +3,7 @@ from dataclasses import replace
 from app.models.decision_change import ProfileMergeResult, profile_mutation_causes
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
+from app.models.property import GeographicPrecision, GeographicStatus
 from app.services.conversation_manager import conversation_manager
 from app.stores.runtime import profile_store
 
@@ -34,6 +35,7 @@ class ProfileManager:
         previous_profile = replace(profile)
 
         profile.apply_patch(patch)
+        self._apply_known_work_grounding(profile)
         profile.latest_insights = latest_insights.copy()
 
         saved_profile = profile_store.save(conversation_id, profile)
@@ -48,6 +50,22 @@ class ProfileManager:
             changed=bool(causes),
             causes=causes,
         )
+
+    @staticmethod
+    def _apply_known_work_grounding(profile: LivingProfile) -> None:
+        if profile.work_location == "南山科技园":
+            profile.geographic_identity = "深圳市南山区南山科技园"
+            profile.geographic_precision = GeographicPrecision.AREA
+            profile.geographic_status = GeographicStatus.GROUNDED
+            profile.lng = 113.947
+            profile.lat = 22.541
+            return
+
+        profile.geographic_identity = None
+        profile.geographic_precision = None
+        profile.geographic_status = GeographicStatus.UNRESOLVED
+        profile.lng = None
+        profile.lat = None
 
     def delete(
         self,

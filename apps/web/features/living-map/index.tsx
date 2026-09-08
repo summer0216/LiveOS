@@ -1,8 +1,11 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import ConversationComposer from '@/features/conversation/components/ConversationComposer';
+import { getProperties, type Property } from '@/services/property';
+import { getLivingProfile, type LivingProfile } from '@/services/profile';
 import AMapGround, { type GeographicProjection } from './AMapGround';
 
 type ExperienceState =
@@ -16,7 +19,7 @@ type ExperienceState =
   | 'REALITY_RESOLVE'
   | 'SEE_AGAIN';
 
-export type GeographicPrecision = 'AREA' | 'PLACE' | 'UNKNOWN';
+export type GeographicPrecision = 'AREA' | 'PLACE' | 'COMMUNITY' | 'STREET' | 'UNKNOWN';
 
 export interface GeographicLocation {
   lng: number;
@@ -50,11 +53,7 @@ const CITY_SCALE_ZOOM_THRESHOLD = 13;
 const workAnchor: LivingWorldObject = {
   id: 'WORK',
   name: '南山科技园',
-  geographicPrecision: 'AREA',
-  location: {
-    lng: 113.947,
-    lat: 22.541,
-  },
+  geographicPrecision: 'UNKNOWN',
 };
 
 const choices = [
@@ -71,12 +70,8 @@ const choices = [
     id: 'B',
     name: '后海公寓',
     tone: 'active',
-    geographicPrecision: 'PLACE',
+    geographicPrecision: 'UNKNOWN',
     livingTime: '31 min',
-    location: {
-      lng: 113.929757,
-      lat: 22.510291,
-    },
     possibleHomeRent: '¥5,200/月',
     possibleHomeUnknown: '夜间噪音 ?',
     possibleHomeAction: '晚上实地待20分钟 →',
@@ -92,23 +87,14 @@ const choices = [
     id: 'D',
     name: '宝安中心',
     tone: 'active',
-    geographicPrecision: 'AREA',
+    geographicPrecision: 'UNKNOWN',
     livingTime: '~25 min ?',
-    location: {
-      lng: 113.88604,
-      lat: 22.55653,
-    },
   },
 ] as const satisfies readonly LivingChoice[];
 
-const A_GROUNDING_CLARIFICATION =
-  '深圳市南山区科丰路1号科技园五十八区科苑花园58区（西门）';
-const A_CONFIRMED_LOCATION: GeographicLocation = {
-  lng: 113.950953,
-  lat: 22.548949,
-};
-
 export default function LivingMap() {
+  const searchParams = useSearchParams();
+  const conversationId = searchParams.get('conversation_id') ?? '';
   const [projection, setProjection] = useState<GeographicProjection | null>(null);
   const [returnToLivingWorld, setReturnToLivingWorld] = useState<(() => void) | null>(null);
   const [userExploredCamera, setUserExploredCamera] = useState(false);
@@ -116,8 +102,31 @@ export default function LivingMap() {
   const [focusedChoice, setFocusedChoice] = useState<LivingChoice['id'] | null>(null);
   const [bRealityChanged, setBRealityChanged] = useState(false);
   const [dRealityChanged, setDRealityChanged] = useState(false);
-  const [aResolved, setAResolved] = useState(false);
   const [comparisonActive, setComparisonActive] = useState(false);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [profile, setProfile] = useState<LivingProfile | null>(null);
+
+  useEffect(() => {
+    if (!conversationId) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void Promise.all([
+      getProperties(conversationId, controller.signal),
+      getLivingProfile(conversationId),
+    ]).then(([nextProperties, nextProfile]) => {
+      setProperties(nextProperties);
+      setProfile(nextProfile);
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setProperties([]);
+        setProfile(null);
+      }
+    });
+
+    return () => controller.abort();
+  }, [conversationId]);
 
   const handleProjectionReady = useCallback((nextProjection: GeographicProjection) => {
     setProjection(() => nextProjection);
@@ -141,26 +150,42 @@ export default function LivingMap() {
     : focusedChoice
       ? (`FOCUS_${focusedChoice}` as ExperienceState)
       : 'FIRST_OPEN';
-  const livingChoices = useMemo<readonly LivingChoice[]>(
-    () => choices.map((choice) => (
-      choice.id === 'A' && aResolved
-        ? {
-            ...choice,
-            geographicPrecision: 'PLACE',
-            location: A_CONFIRMED_LOCATION,
-          }
-        : choice
-    )),
-    [aResolved],
-  );
+  const livingChoices = useMemo<readonly LivingChoice[]>(() => choices.map((choice) => {
+    const property = properties.find((candidate) => candidate.title === choice.name);
+    const lng = property?.lng;
+    const lat = property?.lat;
+    const isGrounded = property?.geographic_status === 'GROUNDED'
+      && typeof lng === 'number'
+      && typeof lat === 'number';
+    return {
+      ...choice,
+      geographicPrecision: isGrounded
+        ? property.geographic_precision ?? 'UNKNOWN'
+        : 'UNKNOWN',
+      location: isGrounded
+        ? { lng, lat }
+        : undefined,
+    };
+  }), [properties]);
+  const groundedWork: LivingWorldObject = useMemo(() => ({
+    ...workAnchor,
+    geographicPrecision: profile?.geographic_status === 'GROUNDED'
+      ? profile.geographic_precision ?? 'UNKNOWN'
+      : 'UNKNOWN',
+    location: profile?.geographic_status === 'GROUNDED'
+      && profile.lng !== null
+      && profile.lat !== null
+      ? { lng: profile.lng, lat: profile.lat }
+      : undefined,
+  }), [profile]);
   const groundedLocations = useMemo(
     () => [
-      workAnchor.location,
+      groundedWork.location,
       ...livingChoices.flatMap((choice) => (
         choice.location ? [choice.location] : []
       )),
     ].filter((location): location is GeographicLocation => Boolean(location)),
-    [livingChoices],
+    [groundedWork.location, livingChoices],
   );
   const unresolvedChoices = livingChoices.filter((choice) => !choice.location);
 
@@ -168,8 +193,8 @@ export default function LivingMap() {
     if (!projection) return {};
 
     const nextPositions: Record<string, ScreenPosition> = {};
-    if (workAnchor.location) {
-      nextPositions.WORK = projection(workAnchor.location);
+    if (groundedWork.location) {
+      nextPositions.WORK = projection(groundedWork.location);
     }
     for (const choice of livingChoices) {
       if (choice.location) {
@@ -177,7 +202,7 @@ export default function LivingMap() {
       }
     }
     return nextPositions;
-  }, [livingChoices, projection]);
+  }, [groundedWork.location, livingChoices, projection]);
 
   return (
     <main
@@ -206,23 +231,21 @@ export default function LivingMap() {
         )}
 
         <section aria-label="生活世界对象" className="relative z-10 h-full">
-          <div
-            className={`absolute -translate-x-1/2 text-center${
-              projectedPositions.WORK ? '' : ' left-1/2 top-[17%]'
-            }`}
-            style={projectedPositions.WORK ? positionStyle(projectedPositions.WORK) : undefined}
+          {projectedPositions.WORK && <div
+            className="absolute -translate-x-1/2 text-center"
+            style={positionStyle(projectedPositions.WORK)}
           >
             <div
               className={`world-object work-anchor${
                 comparisonActive ? ' world-object-context' : ''
               }`}
-              aria-label={`我的工作，${workAnchor.name}`}
+              aria-label={`我的工作，${groundedWork.name}`}
             >
               <span className="object-mark">◎</span>
               <span className="object-kicker">我的工作</span>
-              <span className="object-name">{workAnchor.name}</span>
+              <span className="object-name">{groundedWork.name}</span>
             </div>
-          </div>
+          </div>}
 
           {projectedPositions.A && (
             <div className="absolute" style={positionStyle(projectedPositions.A)}>
@@ -239,10 +262,7 @@ export default function LivingMap() {
             </div>
           )}
 
-          <div
-            className={`absolute${projectedPositions.B ? '' : ' right-[8%] top-[46%] sm:right-[21%]'}`}
-            style={projectedPositions.B ? positionStyle(projectedPositions.B) : undefined}
-          >
+          {projectedPositions.B && <div className="absolute" style={positionStyle(projectedPositions.B)}>
             <ChoiceObject
               {...livingChoices[1]}
               focused={focusedChoice === 'B' && !bRealityChanged}
@@ -261,13 +281,20 @@ export default function LivingMap() {
               compareMeaning={comparisonActive ? '通勤已知' : undefined}
               showLivingTime={showLivingTime}
             />
-          </div>
-          <div
-            className={`absolute -translate-x-1/2${
-              projectedPositions.D ? '' : ' left-1/2 top-[73%]'
-            }`}
-            style={projectedPositions.D ? positionStyle(projectedPositions.D) : undefined}
-          >
+          </div>}
+          {projectedPositions.C && <div className="absolute" style={positionStyle(projectedPositions.C)}>
+            <ChoiceObject
+              {...livingChoices[2]}
+              focused={focusedChoice === 'C'}
+              onFocus={() => {
+                setComparisonActive(false);
+                setFocusedChoice((current) => (current === 'C' ? null : 'C'));
+              }}
+              receded={comparisonActive}
+              showLivingTime={showLivingTime}
+            />
+          </div>}
+          {projectedPositions.D && <div className="absolute" style={positionStyle(projectedPositions.D)}>
             <ChoiceObject
               {...livingChoices[3]}
               focused={focusedChoice === 'D' && !dRealityChanged}
@@ -286,7 +313,7 @@ export default function LivingMap() {
               compareMeaning={comparisonActive ? '仍需确认' : undefined}
               showLivingTime={showLivingTime}
             />
-          </div>
+          </div>}
         </section>
 
         <div aria-label="Relationship layer" className="pointer-events-none absolute inset-0 z-[1]">
@@ -347,10 +374,6 @@ export default function LivingMap() {
             <ConversationComposer
               variant="ambient"
               onSubmit={(message) => {
-                if (!aResolved && message.trim() === A_GROUNDING_CLARIFICATION) {
-                  setAResolved(true);
-                  return;
-                }
                 const normalizedMessage = message
                   .normalize('NFKC')
                   .replace(/\s+/g, '')

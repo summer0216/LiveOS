@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch
+from app.models.property import GeographicPrecision, GeographicStatus
 
 PREFERENCE_TAG_CATEGORIES = (
     "preference",
@@ -26,6 +27,11 @@ class LivingProfile:
     preference_tags: dict[str, list[str]] = field(
         default_factory=create_empty_preference_tags,
     )
+    geographic_identity: str | None = None
+    geographic_precision: GeographicPrecision | None = None
+    geographic_status: GeographicStatus = GeographicStatus.UNRESOLVED
+    lng: float | None = None
+    lat: float | None = None
 
     def apply_patch(
         self,

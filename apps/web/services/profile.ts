@@ -1,5 +1,8 @@
 import { apiRequest } from '@/services/api';
 
+export type GeographicPrecision = 'PLACE' | 'COMMUNITY' | 'STREET' | 'AREA';
+export type GeographicStatus = 'UNRESOLVED' | 'GROUNDED';
+
 export const PROFILE_TAG_CATEGORIES = [
     'preference',
     'commute',
@@ -25,6 +28,11 @@ export interface LivingProfile {
     has_pet: boolean | null;
     latest_insights: string[];
     preference_tags: PreferenceTags;
+    geographic_identity: string | null;
+    geographic_precision: GeographicPrecision | null;
+    geographic_status: GeographicStatus;
+    lng: number | null;
+    lat: number | null;
 }
 
 export async function updatePreferenceTags(

@@ -14,6 +14,10 @@ from app.models.decision_feedback import (
     NO_DECISION_FEEDBACK,
     DecisionRelevantFeedback,
 )
+from app.models.geographic_clarification import (
+    NO_GEOGRAPHIC_CLARIFICATION,
+    GeographicClarification,
+)
 from app.models.profile_patch import LivingProfilePatch
 
 
@@ -31,4 +35,7 @@ class ProfileAnalysis(BaseModel):
     )
     verification_outcome_update: VerificationOutcomeUpdate = Field(
         default_factory=lambda: NO_VERIFICATION_OUTCOME_UPDATE,
+    )
+    geographic_clarification: GeographicClarification = Field(
+        default_factory=lambda: NO_GEOGRAPHIC_CLARIFICATION,
     )

@@ -13,7 +13,7 @@ from app.models.decision_change import (
     feedback_cause,
     verification_outcome_cause,
 )
-from app.models.property import Property
+from app.models.property import GeographicStatus, Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_action_progress import decision_action_progress_service
@@ -73,7 +73,11 @@ class ChatService:
             len(history),
         )
         try:
-            analysis = profile_intelligence.analyze(history)
+            properties = property_manager.list(conversation_id)
+            if properties:
+                analysis = profile_intelligence.analyze(history, properties)
+            else:
+                analysis = profile_intelligence.analyze(history)
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -86,6 +90,17 @@ class ChatService:
                 patch=analysis.patch,
                 latest_insights=analysis.insights,
             )
+            if analysis.geographic_clarification.relevant:
+                clarification = analysis.geographic_clarification
+                property_manager.update_geographic_grounding(
+                    clarification.target_property_id,
+                    conversation_id,
+                    geographic_identity=clarification.geographic_identity,
+                    geographic_precision=clarification.geographic_precision,
+                    geographic_status=GeographicStatus.GROUNDED,
+                    lng=clarification.lng,
+                    lat=clarification.lat,
+                )
             decision_feedback_context.set(
                 conversation_id,
                 analysis.decision_feedback,

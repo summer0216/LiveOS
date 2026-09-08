@@ -139,8 +139,6 @@ export default function AMapGround({
         if (!active || !containerRef.current || !window.AMap) return;
 
         const mapInstance = new window.AMap.Map(containerRef.current, {
-          center: [113.9345, 22.5329],
-          zoom: 13,
           viewMode: '2D',
           mapStyle: 'amap://styles/fresh',
           features: ['bg', 'road'],

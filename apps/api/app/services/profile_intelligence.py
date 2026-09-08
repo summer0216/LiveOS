@@ -21,8 +21,10 @@ from app.models.decision_feedback import (
     NO_DECISION_FEEDBACK,
     DecisionRelevantFeedback,
 )
+from app.models.geographic_clarification import GeographicClarification
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch, ProfileField
+from app.models.property import Property
 from app.runtime.prompt import build_profile_extraction_prompt
 
 
@@ -30,26 +32,28 @@ class ProfileIntelligence:
     def extract_json(
         self,
         history: list[ConversationMessage],
+        properties: list[Property] | None = None,
     ) -> str:
         """
         根据 Conversation History 调用 LLM,
         返回原始 Profile JSON 字符串。
         """
 
-        prompt = build_profile_extraction_prompt(history)
+        prompt = build_profile_extraction_prompt(history, properties)
 
         return ai_client.generate_json(prompt)
 
     def analyze(
         self,
         history: list[ConversationMessage],
+        properties: list[Property] | None = None,
     ) -> ProfileAnalysis:
         """
         根据 Conversation History,
         生成 ProfileAnalysis。
         """
 
-        json_text = self.extract_json(history)
+        json_text = self.extract_json(history, properties)
 
         latest_user_message = next(
             (
@@ -89,6 +93,7 @@ class ProfileIntelligence:
             data,
             latest_user_message,
         )
+        geographic_clarification = self._build_geographic_clarification(data)
         if verification_outcome_update.relevant:
             action_progress_update = ActionProgressUpdate(
                 relevant=True,
@@ -137,7 +142,21 @@ class ProfileIntelligence:
             decision_challenge=decision_challenge,
             action_progress_update=action_progress_update,
             verification_outcome_update=verification_outcome_update,
+            geographic_clarification=geographic_clarification,
         )
+
+    @staticmethod
+    def _build_geographic_clarification(data: dict) -> GeographicClarification:
+        raw_clarification = data.get("geographic_clarification")
+        if not isinstance(raw_clarification, dict):
+            return GeographicClarification()
+        try:
+            clarification = GeographicClarification.model_validate(raw_clarification)
+        except (TypeError, ValueError):
+            return GeographicClarification()
+        if not clarification.relevant:
+            return GeographicClarification()
+        return clarification
 
     def _parse_json(
         self,

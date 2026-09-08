@@ -28,6 +28,11 @@ def build_profile_response(
         has_pet=profile.has_pet,
         latest_insights=profile.latest_insights,
         preference_tags=profile.preference_tags,
+        geographic_identity=profile.geographic_identity,
+        geographic_precision=profile.geographic_precision,
+        geographic_status=profile.geographic_status,
+        lng=profile.lng,
+        lat=profile.lat,
     )
 
 

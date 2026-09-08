@@ -1,4 +1,5 @@
 from app.models.conversation import ConversationMessage
+from app.models.property import Property
 
 PROFILE_EXTRACTION_SYSTEM_PROMPT = """
 You are the Profile Intelligence module inside LiveOS.
@@ -54,6 +55,13 @@ Extraction rules:
     and never convert it into canonical Property or Living Profile truth.
 20. An explicit Verification Outcome also means the current action was
     COMPLETED. COMPLETED alone does not imply a Verification Outcome.
+21. Analyze only the latest user turn for geographic_clarification. Set relevant
+    to true only when the user supplies reliable geographic clarification for
+    one listed property.
+22. Use the exact target_property_id from the supplied property list. Do not
+    identify a property by title alone when no listed property matches.
+23. Never invent or infer lng/lat. If the latest user turn does not provide
+    reliable coordinates, set geographic_clarification.relevant to false.
 
 Return exactly this JSON structure:
 
@@ -96,6 +104,14 @@ Return exactly this JSON structure:
         "provenance": "USER_REPORTED"
       }
     ]
+  },
+  "geographic_clarification": {
+    "relevant": boolean,
+    "target_property_id": string | null,
+    "geographic_identity": string | null,
+    "geographic_precision": "PLACE" | "COMMUNITY" | "STREET" | "AREA" | null,
+    "lng": number | null,
+    "lat": number | null
   }
 }
 """.strip()
@@ -103,13 +119,26 @@ Return exactly this JSON structure:
 
 def build_profile_extraction_prompt(
     history: list[ConversationMessage],
+    properties: list[Property] | None = None,
 ) -> str:
     conversation_text = "\n".join(
         f"{message.role}: {message.content}" for message in history
     )
+    property_context = ""
+    if properties:
+        property_context = (
+            "Properties available for geographic clarification. Use only these "
+            "exact property IDs. Listed order is the current choice order "
+            "(A, B, C, D ...):\n"
+            + "\n".join(
+                f"{chr(ord('A') + index)}: id={property_.id}, title={property_.title or ''}"
+                for index, property_ in enumerate(properties)
+            )
+        )
 
     return (
         f"{PROFILE_EXTRACTION_SYSTEM_PROMPT}\n\n"
+        f"{property_context}\n\n"
         "Conversation history:\n"
         f"{conversation_text}\n\n"
         "Extract the LivingProfilePatch JSON now."
