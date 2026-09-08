@@ -69,7 +69,7 @@ interface AMapGroundProps {
   initialCenter?: { lng: number; lat: number };
   initialZoom?: number;
   mapStyle?: string;
-  presentation?: 'default' | 'quiet';
+  presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onCameraReady?: (reorient: (center: { lng: number; lat: number }, zoom: number) => void) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
@@ -308,7 +308,9 @@ export default function AMapGround({
         'absolute inset-0 z-0 overflow-hidden bg-[#eef2ed]' +
         (presentation === 'quiet'
           ? ' opacity-[0.7] saturate-[0.68] contrast-[0.86] brightness-[1.03]'
-          : '')
+          : presentation === 'active'
+            ? ' opacity-[0.86] saturate-[0.84] contrast-[0.93] brightness-[1.01]'
+            : '')
       }
     >
       <div className={`map-reveal-layer absolute inset-0${status === 'ready' ? ' is-ready' : ''}`}>
