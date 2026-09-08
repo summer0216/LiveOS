@@ -68,6 +68,7 @@ interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
   initialCenter?: { lng: number; lat: number };
   initialZoom?: number;
+  mapStyle?: string;
   presentation?: 'default' | 'quiet';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
@@ -105,6 +106,7 @@ export default function AMapGround({
   fitLocations = [],
   initialCenter,
   initialZoom,
+  mapStyle = 'amap://styles/fresh',
   presentation = 'default',
   onProjectionReady,
   onReturnToLivingWorldReady,
@@ -150,7 +152,7 @@ export default function AMapGround({
             ? { center: [initialCenter.lng, initialCenter.lat] }
             : {}),
           ...(initialZoom !== undefined ? { zoom: initialZoom } : {}),
-          mapStyle: 'amap://styles/fresh',
+          mapStyle,
           features: ['bg', 'road'],
           showLabel: true,
           dragEnable: true,
@@ -236,6 +238,8 @@ export default function AMapGround({
           if (!hasFittedInitialView) {
             hasFittedInitialView = true;
             fitGroundedLocations();
+            refreshProjection();
+            refreshZoom();
             setStatus('ready');
             return;
           }
@@ -271,6 +275,7 @@ export default function AMapGround({
     onZoomChange,
     initialCenter,
     initialZoom,
+    mapStyle,
   ]);
 
   return (

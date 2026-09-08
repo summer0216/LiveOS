@@ -2,6 +2,7 @@ import logging
 from collections.abc import Iterator
 from time import perf_counter
 
+from app.core.config import settings
 from app.models.action_progress import VerificationOutcomeStatus
 from app.models.conversation import (
     Conversation,
@@ -27,6 +28,7 @@ from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
+from app.services.transit_duration import transit_duration_service
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,10 @@ class ChatService:
                 analysis = profile_intelligence.analyze(history, properties)
             else:
                 analysis = profile_intelligence.analyze(history)
-            property_manager.materialize_choices(conversation_id, analysis.choices)
+            materialized_choices = property_manager.materialize_choices(
+                conversation_id,
+                analysis.choices,
+            )
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -91,6 +96,30 @@ class ChatService:
                 patch=analysis.patch,
                 latest_insights=analysis.insights,
             )
+            merged_profile = getattr(merge_result, "profile", None)
+            if (
+                merged_profile is not None
+                and merged_profile.work_location
+                and merged_profile.geographic_status == GeographicStatus.UNRESOLVED
+            ):
+                profile_manager.resolve_work_geographic_grounding(
+                    conversation_id,
+                    context_location=merged_profile.preferred_city or "深圳市",
+                    api_key=settings.AMAP_WEB_SERVICE_KEY,
+                )
+            geographic_context = (
+                merged_profile.preferred_city
+                if merged_profile is not None
+                else None
+            ) or analysis.patch.preferred_city or "深圳市"
+            for property_ in materialized_choices:
+                if property_.geographic_status == GeographicStatus.UNRESOLVED:
+                    property_manager.resolve_geographic_grounding(
+                        property_.id or "",
+                        conversation_id,
+                        context_location=geographic_context,
+                        api_key=settings.AMAP_WEB_SERVICE_KEY,
+                    )
             if analysis.geographic_clarification.relevant:
                 clarification = analysis.geographic_clarification
                 property_manager.update_geographic_grounding(
@@ -102,6 +131,37 @@ class ChatService:
                     lng=clarification.lng,
                     lat=clarification.lat,
                 )
+            grounded_profile = profile_manager.get(conversation_id)
+            if (
+                grounded_profile is not None
+                and grounded_profile.geographic_status == GeographicStatus.GROUNDED
+                and grounded_profile.lng is not None
+                and grounded_profile.lat is not None
+            ):
+                for property_ in materialized_choices:
+                    current_property = property_manager.get_scoped(
+                        property_.id or "",
+                        conversation_id,
+                    )
+                    if (
+                        current_property is None
+                        or current_property.geographic_status != GeographicStatus.GROUNDED
+                        or current_property.lng is None
+                        or current_property.lat is None
+                    ):
+                        continue
+                    commute_minutes = transit_duration_service.calculate_minutes(
+                        origin_lng=grounded_profile.lng,
+                        origin_lat=grounded_profile.lat,
+                        destination_lng=current_property.lng,
+                        destination_lat=current_property.lat,
+                        api_key=settings.AMAP_WEB_SERVICE_KEY,
+                    )
+                    property_manager.update_commute_minutes(
+                        current_property.id or "",
+                        conversation_id,
+                        commute_minutes,
+                    )
             decision_feedback_context.set(
                 conversation_id,
                 analysis.decision_feedback,
