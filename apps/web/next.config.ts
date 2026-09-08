@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
-const renderApiUrl = process.env.RENDER_API_URL?.replace(/\/$/, "");
+const configuredApiUrl = (
+    process.env.RENDER_API_URL ??
+    process.env.INTERNAL_API_URL ??
+    (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : undefined)
+)?.replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
     output: "standalone",
@@ -8,14 +12,14 @@ const nextConfig: NextConfig = {
         proxyTimeout: 120_000,
     },
     async rewrites() {
-        if (!renderApiUrl) {
+        if (!configuredApiUrl) {
             return [];
         }
 
         return [
             {
                 source: "/api/:path*",
-                destination: `${renderApiUrl}/api/:path*`,
+                destination: `${configuredApiUrl}/api/:path*`,
             },
         ];
     },

@@ -17,6 +17,7 @@ from app.services.decision_change import (
     decision_change_payload,
 )
 from app.services.decision_feedback_context import decision_feedback_context
+from app.services.profile_manager import profile_manager
 
 router = APIRouter(
     prefix="/chat",
@@ -90,6 +91,7 @@ async def chat(
     conversation_manager.get_or_create(
         request.conversation_id, anonymous_user_id(raw_request, response)
     )
+    profile_manager.get_or_create(request.conversation_id)
     reply = chat_service.chat(
         conversation_id=request.conversation_id,
         message=request.message,
@@ -102,6 +104,7 @@ async def chat(
 async def chat_stream(request: ChatRequest, raw_request: Request, response: Response):
     user_id = anonymous_user_id(raw_request, response)
     conversation_manager.get_or_create(request.conversation_id, user_id)
+    profile_manager.get_or_create(request.conversation_id)
 
     generator = await run_in_threadpool(
         chat_service.chat_stream,
