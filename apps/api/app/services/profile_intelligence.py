@@ -94,6 +94,7 @@ class ProfileIntelligence:
             latest_user_message,
         )
         geographic_clarification = self._build_geographic_clarification(data)
+        choices = self._build_choices(data)
         if verification_outcome_update.relevant:
             action_progress_update = ActionProgressUpdate(
                 relevant=True,
@@ -137,6 +138,7 @@ class ProfileIntelligence:
 
         return ProfileAnalysis(
             patch=patch,
+            choices=choices,
             insights=insights,
             decision_feedback=decision_feedback,
             decision_challenge=decision_challenge,
@@ -157,6 +159,32 @@ class ProfileIntelligence:
         if not clarification.relevant:
             return GeographicClarification()
         return clarification
+
+    @staticmethod
+    def _build_choices(data: dict) -> list[Property]:
+        raw_choices = data.get("choices")
+        if not isinstance(raw_choices, list):
+            return []
+        choices: list[Property] = []
+        for raw_choice in raw_choices:
+            if not isinstance(raw_choice, dict):
+                continue
+            title = raw_choice.get("title")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            choices.append(
+                Property(
+                    title=title.strip(),
+                    district=raw_choice.get("district"),
+                    rent=raw_choice.get("rent"),
+                    area=raw_choice.get("area"),
+                    bedrooms=raw_choice.get("bedrooms"),
+                    bathrooms=raw_choice.get("bathrooms"),
+                    commute_minutes=raw_choice.get("commute_minutes"),
+                    pet_friendly=raw_choice.get("pet_friendly"),
+                )
+            )
+        return choices
 
     def _parse_json(
         self,

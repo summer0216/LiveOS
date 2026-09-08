@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.api.ownership import anonymous_user_id, require_conversation_owner
+from app.core.config import settings
 from app.models.property import Property
 from app.schemas.property import (
     PropertyCreateRequest,
     PropertyGeographicGroundingUpdate,
+    PropertyGeographicResolutionResponse,
     PropertyListResponse,
     PropertyResponse,
 )
@@ -24,6 +26,11 @@ router = APIRouter(
 class PropertyAnalyzeRequest(BaseModel):
     conversation_id: str
     description: str
+
+
+class PropertyGeographicResolutionRequest(BaseModel):
+    conversation_id: str
+    context_location: str | None = None
 
 
 @router.post(
@@ -150,6 +157,35 @@ def update_property_geography(
     if property_ is None:
         raise HTTPException(status_code=404, detail="Property not found.")
     return property_
+
+
+@router.post(
+    "/{property_id}/resolve-geography",
+    response_model=PropertyGeographicResolutionResponse,
+)
+def resolve_property_geography(
+    property_id: str,
+    request: PropertyGeographicResolutionRequest,
+    raw_request: Request,
+    response: Response,
+) -> PropertyGeographicResolutionResponse:
+    require_conversation_owner(
+        request.conversation_id, anonymous_user_id(raw_request, response)
+    )
+    result = property_manager.resolve_geographic_grounding(
+        property_id,
+        request.conversation_id,
+        context_location=request.context_location,
+        api_key=settings.AMAP_WEB_SERVICE_KEY,
+    )
+    property_ = property_manager.get_scoped(property_id, request.conversation_id)
+    if property_ is None:
+        raise HTTPException(status_code=404, detail="Property not found.")
+    return PropertyGeographicResolutionResponse(
+        property=PropertyResponse.model_validate(property_),
+        status=result.status,
+        ambiguous=result.ambiguous,
+    )
 
 
 @router.get(

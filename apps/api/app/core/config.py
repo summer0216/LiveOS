@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     COOKIE_SECURE: bool | None = None
+    AMAP_WEB_SERVICE_KEY: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

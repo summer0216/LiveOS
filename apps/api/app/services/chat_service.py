@@ -78,6 +78,7 @@ class ChatService:
                 analysis = profile_intelligence.analyze(history, properties)
             else:
                 analysis = profile_intelligence.analyze(history)
+            property_manager.materialize_choices(conversation_id, analysis.choices)
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,

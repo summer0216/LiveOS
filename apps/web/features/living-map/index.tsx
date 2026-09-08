@@ -34,7 +34,8 @@ interface LivingWorldObject {
 }
 
 interface LivingChoice extends LivingWorldObject {
-  id: 'A' | 'B' | 'C' | 'D';
+  propertyId: string;
+  id: string;
   tone: 'active' | 'quiet';
   livingTime: string;
   meaning?: string;
@@ -50,48 +51,6 @@ interface ScreenPosition {
 
 const CITY_SCALE_ZOOM_THRESHOLD = 13;
 
-const workAnchor: LivingWorldObject = {
-  id: 'WORK',
-  name: '南山科技园',
-  geographicPrecision: 'UNKNOWN',
-};
-
-const choices = [
-  {
-    id: 'A',
-    name: '科苑花园',
-    tone: 'active',
-    geographicPrecision: 'UNKNOWN',
-    livingTime: '24 min',
-    meaning: '当前领先',
-    possibleHomeRent: '¥5,800/月',
-  },
-  {
-    id: 'B',
-    name: '后海公寓',
-    tone: 'active',
-    geographicPrecision: 'UNKNOWN',
-    livingTime: '31 min',
-    possibleHomeRent: '¥5,200/月',
-    possibleHomeUnknown: '夜间噪音 ?',
-    possibleHomeAction: '晚上实地待20分钟 →',
-  },
-  {
-    id: 'C',
-    name: '西丽居',
-    tone: 'quiet',
-    geographicPrecision: 'UNKNOWN',
-    livingTime: '42 min',
-  },
-  {
-    id: 'D',
-    name: '宝安中心',
-    tone: 'active',
-    geographicPrecision: 'UNKNOWN',
-    livingTime: '~25 min ?',
-  },
-] as const satisfies readonly LivingChoice[];
-
 export default function LivingMap() {
   const searchParams = useSearchParams();
   const conversationId = searchParams.get('conversation_id') ?? '';
@@ -99,7 +58,7 @@ export default function LivingMap() {
   const [returnToLivingWorld, setReturnToLivingWorld] = useState<(() => void) | null>(null);
   const [userExploredCamera, setUserExploredCamera] = useState(false);
   const [mapZoom, setMapZoom] = useState<number | null>(null);
-  const [focusedChoice, setFocusedChoice] = useState<LivingChoice['id'] | null>(null);
+  const [focusedChoice, setFocusedChoice] = useState<string | null>(null);
   const [bRealityChanged, setBRealityChanged] = useState(false);
   const [dRealityChanged, setDRealityChanged] = useState(false);
   const [comparisonActive, setComparisonActive] = useState(false);
@@ -150,15 +109,20 @@ export default function LivingMap() {
     : focusedChoice
       ? (`FOCUS_${focusedChoice}` as ExperienceState)
       : 'FIRST_OPEN';
-  const livingChoices = useMemo<readonly LivingChoice[]>(() => choices.map((choice) => {
-    const property = properties.find((candidate) => candidate.title === choice.name);
+  const livingChoices = useMemo<readonly LivingChoice[]>(() => properties.map((property, index) => {
     const lng = property?.lng;
     const lat = property?.lat;
     const isGrounded = property?.geographic_status === 'GROUNDED'
       && typeof lng === 'number'
       && typeof lat === 'number';
     return {
-      ...choice,
+      propertyId: property.id,
+      id: String.fromCharCode(65 + index),
+      name: property.title ?? '未命名选择',
+      tone: property.decision_state === 'REJECTED' ? 'quiet' : 'active',
+      livingTime: typeof property.commute_minutes === 'number'
+        ? `${property.commute_minutes} min`
+        : '',
       geographicPrecision: isGrounded
         ? property.geographic_precision ?? 'UNKNOWN'
         : 'UNKNOWN',
@@ -168,7 +132,8 @@ export default function LivingMap() {
     };
   }), [properties]);
   const groundedWork: LivingWorldObject = useMemo(() => ({
-    ...workAnchor,
+    id: 'WORK',
+    name: profile?.work_location ?? '工作地点',
     geographicPrecision: profile?.geographic_status === 'GROUNDED'
       ? profile.geographic_precision ?? 'UNKNOWN'
       : 'UNKNOWN',
@@ -247,73 +212,32 @@ export default function LivingMap() {
             </div>
           </div>}
 
-          {projectedPositions.A && (
-            <div className="absolute" style={positionStyle(projectedPositions.A)}>
-              <ChoiceObject
-                {...livingChoices[0]}
-                focused={focusedChoice === 'A'}
-                onFocus={() => {
-                  setComparisonActive(false);
-                  setFocusedChoice((current) => (current === 'A' ? null : 'A'));
-                }}
-                receded={comparisonActive}
-                showLivingTime={showLivingTime}
-              />
-            </div>
-          )}
-
-          {projectedPositions.B && <div className="absolute" style={positionStyle(projectedPositions.B)}>
-            <ChoiceObject
-              {...livingChoices[1]}
-              focused={focusedChoice === 'B' && !bRealityChanged}
-              onFocus={
-                bRealityChanged
-                  ? undefined
-                  : () => {
-                      setComparisonActive(false);
-                      setFocusedChoice((current) => (current === 'B' ? null : 'B'));
-                    }
-              }
-              realityChanged={bRealityChanged}
-              realityPrimary="夜间噪音较大"
-              realitySecondary="已不再适合"
-              compareAttention={comparisonActive}
-              compareMeaning={comparisonActive ? '通勤已知' : undefined}
-              showLivingTime={showLivingTime}
-            />
-          </div>}
-          {projectedPositions.C && <div className="absolute" style={positionStyle(projectedPositions.C)}>
-            <ChoiceObject
-              {...livingChoices[2]}
-              focused={focusedChoice === 'C'}
-              onFocus={() => {
-                setComparisonActive(false);
-                setFocusedChoice((current) => (current === 'C' ? null : 'C'));
-              }}
-              receded={comparisonActive}
-              showLivingTime={showLivingTime}
-            />
-          </div>}
-          {projectedPositions.D && <div className="absolute" style={positionStyle(projectedPositions.D)}>
-            <ChoiceObject
-              {...livingChoices[3]}
-              focused={focusedChoice === 'D' && !dRealityChanged}
-              onFocus={
-                dRealityChanged
-                  ? undefined
-                  : () => {
-                      setComparisonActive(false);
-                      setFocusedChoice((current) => (current === 'D' ? null : 'D'));
-                    }
-              }
-              realityChanged={dRealityChanged}
-              realityPrimary="80 min"
-              realitySecondary="已不再适合"
-              compareAttention={comparisonActive}
-              compareMeaning={comparisonActive ? '仍需确认' : undefined}
-              showLivingTime={showLivingTime}
-            />
-          </div>}
+          {livingChoices.map((choice) => {
+            const position = projectedPositions[choice.id];
+            if (!position) return null;
+            const isB = choice.id === 'B';
+            const isD = choice.id === 'D';
+            const realityChanged = (isB && bRealityChanged) || (isD && dRealityChanged);
+            return (
+              <div key={choice.propertyId} className="absolute" style={positionStyle(position)}>
+                <ChoiceObject
+                  {...choice}
+                  focused={focusedChoice === choice.id && !realityChanged}
+                  onFocus={realityChanged ? undefined : () => {
+                    setComparisonActive(false);
+                    setFocusedChoice((current) => (current === choice.id ? null : choice.id));
+                  }}
+                  realityChanged={realityChanged}
+                  realityPrimary={isB ? '夜间噪音较大' : isD ? '80 min' : undefined}
+                  realitySecondary={isB || isD ? '已不再适合' : undefined}
+                  compareAttention={comparisonActive && (isB || isD)}
+                  compareMeaning={comparisonActive && isB ? '通勤已知' : comparisonActive && isD ? '仍需确认' : undefined}
+                  receded={comparisonActive && !isB && !isD}
+                  showLivingTime={showLivingTime}
+                />
+              </div>
+            );
+          })}
         </section>
 
         <div aria-label="Relationship layer" className="pointer-events-none absolute inset-0 z-[1]">

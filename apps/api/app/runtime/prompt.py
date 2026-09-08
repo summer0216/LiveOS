@@ -62,6 +62,9 @@ Extraction rules:
     identify a property by title alone when no listed property matches.
 23. Never invent or infer lng/lat. If the latest user turn does not provide
     reliable coordinates, set geographic_clarification.relevant to false.
+24. Extract every candidate property explicitly introduced by the user into
+    choices. Preserve only explicit facts. Do not include assistant-suggested
+    or generic properties, and return an empty list when no candidate is named.
 
 Return exactly this JSON structure:
 
@@ -72,6 +75,18 @@ Return exactly this JSON structure:
   "preferred_city": string | null,
   "family_size": integer | null,
   "has_pet": boolean | null,
+  "choices": [
+    {
+      "title": string,
+      "district": string | null,
+      "rent": integer | null,
+      "area": integer | null,
+      "bedrooms": integer | null,
+      "bathrooms": integer | null,
+      "commute_minutes": integer | null,
+      "pet_friendly": boolean | null
+    }
+  ],
   "clear_fields": [
     "work_location" | "budget" | "commute_minutes" |
     "preferred_city" | "family_size" | "has_pet"

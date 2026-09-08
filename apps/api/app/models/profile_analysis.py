@@ -19,10 +19,12 @@ from app.models.geographic_clarification import (
     GeographicClarification,
 )
 from app.models.profile_patch import LivingProfilePatch
+from app.models.property import Property
 
 
 class ProfileAnalysis(BaseModel):
     patch: LivingProfilePatch
+    choices: list[Property] = Field(default_factory=list)
     insights: list[str] = Field(default_factory=list)
     decision_feedback: DecisionRelevantFeedback = Field(
         default_factory=lambda: NO_DECISION_FEEDBACK,

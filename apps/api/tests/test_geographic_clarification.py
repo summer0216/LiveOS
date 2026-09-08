@@ -8,6 +8,7 @@ from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.services.chat_service import chat_service
+from app.services.geographic_resolution import geographic_resolver
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -123,3 +124,49 @@ def test_chat_flow_persists_geographic_clarification(monkeypatch) -> None:
             "lat": 22.52,
         }
     ]
+
+
+def test_geographic_resolver_requires_server_key() -> None:
+    result = geographic_resolver.resolve("后海公寓", "深圳市南山区", None)
+
+    assert result.status == "UNRESOLVED"
+
+
+def test_geographic_resolver_rejects_ambiguous_result(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"status": "1", "geocodes": [{}, {}]}
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("后海公寓", "深圳市南山区", "server-key")
+
+    assert result.status == "UNRESOLVED"
+    assert result.ambiguous is True
+
+
+def test_geographic_resolver_rejects_shortened_identity(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "广东省深圳市南山区西丽",
+                        "level": "兴趣点",
+                        "location": "113.943867,22.568801",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("西丽居", "深圳市南山区", "server-key")
+
+    assert result.status == "UNRESOLVED"

@@ -65,3 +65,9 @@ class PropertyResponse(PropertyFields):
 
 class PropertyListResponse(BaseModel):
     items: list[PropertyResponse] = Field(default_factory=list)
+
+
+class PropertyGeographicResolutionResponse(BaseModel):
+    property: PropertyResponse
+    status: Literal["GROUNDED", "UNRESOLVED"]
+    ambiguous: bool = False
