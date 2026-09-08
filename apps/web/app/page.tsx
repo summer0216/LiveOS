@@ -9,6 +9,7 @@ import AMapGround, {
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
 import { sendMessage } from '@/services/chat';
+import { getDecisionGeography } from '@/services/decisionGeography';
 import { getProperties, type Property } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
@@ -42,6 +43,10 @@ export default function HomePage() {
   const [workVisible, setWorkVisible] = useState(false);
   const [locationResolution, setLocationResolution] = useState<LocationResolution>('pending');
   const [currentLocation, setCurrentLocation] = useState<{ lng: number; lat: number } | null>(null);
+  const [reorient, setReorient] = useState<
+    ((center: { lng: number; lat: number }, zoom: number) => void) | null
+  >(null);
+  const [decisionWorldActive, setDecisionWorldActive] = useState(false);
 
   useEffect(() => {
     let settled = false;
@@ -118,6 +123,13 @@ export default function HomePage() {
     [],
   );
 
+  const handleCameraReady = useCallback(
+    (nextReorient: (center: { lng: number; lat: number }, zoom: number) => void) => {
+      setReorient(() => nextReorient);
+    },
+    [],
+  );
+
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
 
@@ -125,9 +137,10 @@ export default function HomePage() {
     setWorkVisible(false);
     try {
       await sendMessage(currentConversationId, message);
-      const [nextProfile, nextProperties] = await Promise.all([
+      const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
+        getDecisionGeography(currentConversationId),
       ]);
       if (!nextProfile) {
         throw new Error('First Reality profile was not persisted.');
@@ -146,11 +159,23 @@ export default function HomePage() {
       if (nextProfile?.geographic_status === 'GROUNDED') {
         requestAnimationFrame(() => setWorkVisible(true));
       }
+      if (
+        decisionGeography?.intent_established
+        && decisionGeography.status === 'GROUNDED'
+        && typeof decisionGeography.lng === 'number'
+        && typeof decisionGeography.lat === 'number'
+      ) {
+        setDecisionWorldActive(true);
+        reorient?.(
+          { lng: decisionGeography.lng, lat: decisionGeography.lat },
+          11.5,
+        );
+      }
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
       setPhase('empty');
     }
-  }, [conversationId]);
+  }, [conversationId, reorient]);
 
   const groundedWork = useMemo(
     () => profile?.geographic_status === 'GROUNDED'
@@ -207,6 +232,7 @@ export default function HomePage() {
           initialZoom={12.5}
           presentation="quiet"
           onProjectionReady={handleProjectionReady}
+          onCameraReady={handleCameraReady}
         />
       )}
       <div
@@ -220,12 +246,14 @@ export default function HomePage() {
       />
       <section
         aria-label={worldHasFormed ? 'First Reality' : 'Empty Living World'}
-        className="relative z-10 min-h-screen"
+        className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}
       >
         <h1
           className={
             'absolute left-1/2 top-1/2 max-w-xl -translate-x-1/2 -translate-y-[62%] text-center text-[clamp(1.85rem,4vw,3.4rem)] font-normal leading-[1.15] tracking-[-0.025em] text-slate-900/90 transition-opacity duration-500 ease-out motion-reduce:transition-none ' +
-            (phase === 'empty' ? 'opacity-100' : 'pointer-events-none opacity-0')
+            (phase === 'empty' && !decisionWorldActive
+              ? 'opacity-100'
+              : 'pointer-events-none opacity-0')
           }
         >
           你的生活，
