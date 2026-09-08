@@ -81,6 +81,18 @@ class PropertyManager:
             lat=lat,
         )
 
+    def update_commute_minutes(
+        self,
+        property_id: str,
+        conversation_id: str,
+        commute_minutes: int | None,
+    ) -> Property | None:
+        return property_store.update_commute_minutes(
+            property_id,
+            conversation_id,
+            commute_minutes,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,
