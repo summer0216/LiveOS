@@ -14,6 +14,7 @@ from app.models.decision_feedback import (
     NO_DECISION_FEEDBACK,
     DecisionRelevantFeedback,
 )
+from app.models.decision_geography import DecisionGeography
 from app.models.geographic_clarification import (
     NO_GEOGRAPHIC_CLARIFICATION,
     GeographicClarification,
@@ -41,3 +42,4 @@ class ProfileAnalysis(BaseModel):
     geographic_clarification: GeographicClarification = Field(
         default_factory=lambda: NO_GEOGRAPHIC_CLARIFICATION,
     )
+    decision_geography: DecisionGeography = Field(default_factory=DecisionGeography)

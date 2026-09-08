@@ -21,6 +21,7 @@ from app.services.decision_action_progress import decision_action_progress_servi
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
+from app.services.decision_geography_service import decision_geography_service
 from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_unknown_service import decision_unknown_service
@@ -83,6 +84,13 @@ class ChatService:
             materialized_choices = property_manager.materialize_choices(
                 conversation_id,
                 analysis.choices,
+            )
+            decision_geography_service.apply(
+                conversation_id,
+                intent_established=analysis.decision_geography.intent_established,
+                intent_type=analysis.decision_geography.intent_type,
+                identity=analysis.decision_geography.identity,
+                api_key=settings.AMAP_WEB_SERVICE_KEY,
             )
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",

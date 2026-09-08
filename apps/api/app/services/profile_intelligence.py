@@ -21,6 +21,7 @@ from app.models.decision_feedback import (
     NO_DECISION_FEEDBACK,
     DecisionRelevantFeedback,
 )
+from app.models.decision_geography import DecisionGeography
 from app.models.geographic_clarification import GeographicClarification
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch, ProfileField
@@ -94,6 +95,7 @@ class ProfileIntelligence:
             latest_user_message,
         )
         geographic_clarification = self._build_geographic_clarification(data)
+        decision_geography = self._build_decision_geography(data)
         choices = self._build_choices(data)
         if verification_outcome_update.relevant:
             action_progress_update = ActionProgressUpdate(
@@ -145,6 +147,24 @@ class ProfileIntelligence:
             action_progress_update=action_progress_update,
             verification_outcome_update=verification_outcome_update,
             geographic_clarification=geographic_clarification,
+            decision_geography=decision_geography,
+        )
+
+    @staticmethod
+    def _build_decision_geography(data: dict) -> DecisionGeography:
+        raw_intent = data.get("decision_intent")
+        raw_geography = data.get("decision_geography")
+        if not isinstance(raw_intent, dict) or not isinstance(raw_geography, dict):
+            return DecisionGeography()
+        established = raw_intent.get("established") is True
+        identity = raw_geography.get("identity")
+        if not established or not isinstance(identity, str) or not identity.strip():
+            return DecisionGeography()
+        intent_type = raw_intent.get("type")
+        return DecisionGeography(
+            intent_established=True,
+            intent_type=intent_type if isinstance(intent_type, str) else None,
+            identity=identity.strip(),
         )
 
     @staticmethod

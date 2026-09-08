@@ -17,6 +17,7 @@ REQUIRED_TABLES = {
     "latest_verified_actions",
     "decision_unknowns",
     "decision_memories",
+    "decision_geographies",
 }
 
 SCHEMA_STATEMENTS = (
@@ -43,6 +44,20 @@ SCHEMA_STATEMENTS = (
         content TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL,
         UNIQUE (conversation_id, sequence)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS decision_geographies (
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        intent_established BOOLEAN NOT NULL,
+        intent_type TEXT,
+        identity TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('UNRESOLVED', 'GROUNDED')),
+        lng DOUBLE PRECISION,
+        lat DOUBLE PRECISION,
+        updated_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (owner_id, conversation_id)
     )
     """,
     """

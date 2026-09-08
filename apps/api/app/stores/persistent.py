@@ -14,6 +14,7 @@ from app.models.action_progress import (
     VerificationOutcomeStatus,
 )
 from app.models.conversation import Conversation, ConversationMessage
+from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.profile import LivingProfile
 from app.models.property import GeographicPrecision, GeographicStatus, Property
@@ -329,6 +330,75 @@ class ProfileStore:
                 ).rowcount
                 > 0
             )
+
+
+class DecisionGeographyStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> DecisionGeography:
+        return DecisionGeography(
+            intent_established=row["intent_established"],
+            intent_type=row["intent_type"],
+            identity=row["identity"],
+            status=row["status"],
+            lng=row["lng"],
+            lat=row["lat"],
+        )
+
+    def get(self, conversation_id: str) -> DecisionGeography | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM decision_geographies
+                WHERE owner_id = %s AND conversation_id = %s
+                """,
+                (owner_id, conversation_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def save(self, conversation_id: str, state: DecisionGeography) -> DecisionGeography:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO decision_geographies(
+                    owner_id, conversation_id, intent_established, intent_type,
+                    identity, status, lng, lat, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
+                    intent_established = EXCLUDED.intent_established,
+                    intent_type = EXCLUDED.intent_type,
+                    identity = EXCLUDED.identity,
+                    status = EXCLUDED.status,
+                    lng = EXCLUDED.lng,
+                    lat = EXCLUDED.lat,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    owner_id,
+                    conversation_uuid,
+                    state.intent_established,
+                    state.intent_type,
+                    state.identity,
+                    state.status,
+                    state.lng,
+                    state.lat,
+                    now(),
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Decision Geography could not be persisted.")
+        return self._from(row)
 
 
 class PropertyStore:

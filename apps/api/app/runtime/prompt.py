@@ -65,6 +65,12 @@ Extraction rules:
 24. Extract every candidate property explicitly introduced by the user into
     choices. Preserve only explicit facts. Do not include assistant-suggested
     or generic properties, and return an empty list when no candidate is named.
+25. Establish decision_intent only when the user expresses a concrete life
+    decision oriented toward a place (for example, preparing to relocate for
+    work). A factual mention or weather question is not a decision intent.
+26. decision_geography.identity must be the explicitly stated target place.
+    Never put it into work_location, and never invent coordinates. Return null
+    coordinates; the application resolves them with Geographic Resolver.
 
 Return exactly this JSON structure:
 
@@ -127,6 +133,16 @@ Return exactly this JSON structure:
     "geographic_precision": "PLACE" | "COMMUNITY" | "STREET" | "AREA" | null,
     "lng": number | null,
     "lat": number | null
+  },
+  "decision_intent": {
+    "established": boolean,
+    "type": string | null
+  },
+  "decision_geography": {
+    "identity": string | null,
+    "status": "UNRESOLVED" | "GROUNDED",
+    "lng": null,
+    "lat": null
   }
 }
 """.strip()

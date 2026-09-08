@@ -72,7 +72,7 @@ def _precision_for_level(level: str | None) -> GeographicPrecision | None:
         return GeographicPrecision.PLACE
     if level == "道路":
         return GeographicPrecision.STREET
-    if level in {"区县", "乡镇", "街道"}:
+    if level in {"市", "区县", "乡镇", "街道"}:
         return GeographicPrecision.AREA
     return None
 

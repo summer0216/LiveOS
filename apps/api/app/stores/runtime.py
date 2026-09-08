@@ -3,6 +3,7 @@ from app.stores.database import Database
 from app.stores.persistent import (
     ConversationStore,
     DecisionActionStateStore,
+    DecisionGeographyStore,
     DecisionRecordStore,
     DecisionUnknownStore,
     LatestVerifiedActionStore,
@@ -13,6 +14,7 @@ from app.stores.persistent import (
 database = Database(settings.DATABASE_URL)
 database.initialize()
 conversation_store = ConversationStore(database)
+decision_geography_store = DecisionGeographyStore(database)
 profile_store = ProfileStore(database)
 property_store = PropertyStore(database)
 decision_unknown_store = DecisionUnknownStore(database)
