@@ -170,3 +170,71 @@ def test_geographic_resolver_rejects_shortened_identity(monkeypatch) -> None:
     result = geographic_resolver.resolve("西丽居", "深圳市南山区", "server-key")
 
     assert result.status == "UNRESOLVED"
+
+
+def test_local_area_fallback_resolves_one_canonical_city_scoped_candidate(
+    monkeypatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "pois": [
+                    {
+                        "name": "成都高新技术产业开发区(南区)",
+                        "type": "商务住宅;产业园区;产业园区",
+                        "cityname": "成都市",
+                        "location": "104.065546,30.592078",
+                    },
+                    {
+                        "name": "成都高新技术产业开发区南区A座",
+                        "type": "商务住宅;产业园区;产业园区",
+                        "cityname": "成都市",
+                        "location": "104.047425,30.581175",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve_local_area("高新南", "成都市", "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "成都市成都高新技术产业开发区(南区)"
+    assert result.geographic_precision == GeographicPrecision.AREA
+    assert (result.lng, result.lat) == (104.065546, 30.592078)
+
+
+def test_local_area_fallback_rejects_ambiguous_local_identity(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "pois": [
+                    {
+                        "name": "甲科技园",
+                        "type": "商务住宅;产业园区;产业园区",
+                        "cityname": "深圳市",
+                        "location": "113.8,22.7",
+                    },
+                    {
+                        "name": "乙科技园",
+                        "type": "商务住宅;产业园区;产业园区",
+                        "cityname": "深圳市",
+                        "location": "113.9,22.6",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve_local_area("科技园", "深圳市", "server-key")
+
+    assert result.status == "UNRESOLVED"
+    assert result.ambiguous is True

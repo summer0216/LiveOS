@@ -46,6 +46,7 @@ class ChatService:
         )
 
         conversation_manager.append_user_message(conversation_id, message)
+        logger.info("Chat user message persisted conversation_id=%s", conversation_id)
         conversation = conversation_manager.get(conversation_id) or conversation
         history = conversation.get_messages()
         logger.warning(
@@ -61,6 +62,7 @@ class ChatService:
         self,
         conversation_id: str,
         history: list[ConversationMessage],
+        current_geographic_reality: tuple[float, float] | None = None,
     ) -> tuple[DecisionChangeCause, ...]:
         """
         从当前会话历史中生成 Profile Analysis，
@@ -81,6 +83,24 @@ class ChatService:
                 analysis = profile_intelligence.analyze(history, properties)
             else:
                 analysis = profile_intelligence.analyze(history)
+            current_user_text = next(
+                (
+                    item.content
+                    for item in reversed(history)
+                    if item.role == "user"
+                ),
+                "",
+            )
+            logger.info(
+                "Decision geography extracted conversation_id=%s "
+                "current_user_text=%r decision_intent_established=%s "
+                "extracted_identity=%r identity_source=%s",
+                conversation_id,
+                current_user_text,
+                analysis.decision_geography.intent_established,
+                analysis.decision_geography.identity,
+                analysis.decision_geography.identity_source,
+            )
             materialized_choices = property_manager.materialize_choices(
                 conversation_id,
                 analysis.choices,
@@ -90,7 +110,9 @@ class ChatService:
                 intent_established=analysis.decision_geography.intent_established,
                 intent_type=analysis.decision_geography.intent_type,
                 identity=analysis.decision_geography.identity,
+                identity_source=analysis.decision_geography.identity_source,
                 api_key=settings.AMAP_WEB_SERVICE_KEY,
+                current_geographic_reality=current_geographic_reality,
             )
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
@@ -250,28 +272,35 @@ class ChatService:
         self,
         conversation_id: str,
         message: str,
+        current_geographic_reality: tuple[float, float] | None = None,
     ) -> str:
-        _conversation, history = self._prepare_conversation(
-            conversation_id=conversation_id,
-            message=message,
-        )
+        try:
+            _conversation, history = self._prepare_conversation(
+                conversation_id=conversation_id,
+                message=message,
+            )
 
-        self._update_profile(
-            conversation_id=conversation_id,
-            history=history,
-        )
+            self._update_profile(
+                conversation_id=conversation_id,
+                history=history,
+                current_geographic_reality=current_geographic_reality,
+            )
 
-        reply = ai_runtime.chat(history, profile_manager.get(conversation_id))
+            reply = ai_runtime.chat(history, profile_manager.get(conversation_id))
 
-        if reply:
-            conversation_manager.append_assistant_message(conversation_id, reply)
-
-        return reply
+            if reply:
+                conversation_manager.append_assistant_message(conversation_id, reply)
+            logger.info("Chat request completed conversation_id=%s", conversation_id)
+            return reply
+        except Exception:
+            logger.exception("Chat runtime failed conversation_id=%s", conversation_id)
+            raise
 
     def chat_stream(
         self,
         conversation_id: str,
         message: str,
+        current_geographic_reality: tuple[float, float] | None = None,
     ) -> Iterator[str]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
@@ -281,6 +310,7 @@ class ChatService:
         change_causes = self._update_profile(
             conversation_id=conversation_id,
             history=history,
+            current_geographic_reality=current_geographic_reality,
         )
         decision_change_context.set(conversation_id, change_causes)
 

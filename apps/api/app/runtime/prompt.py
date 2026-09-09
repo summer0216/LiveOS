@@ -71,6 +71,16 @@ Extraction rules:
 26. decision_geography.identity must be the explicitly stated target place.
     Never put it into work_location, and never invent coordinates. Return null
     coordinates; the application resolves them with Geographic Resolver.
+27. For decision_intent and decision_geography, the latest user turn is the
+    only source of established truth. Assistant statements and earlier runtime
+    inferences may provide context, but must never establish or replace the
+    user's decision geography.
+28. Set decision_geography.source to USER only when identity is explicitly
+    present in the latest user turn. Otherwise set it to INFERRED, and set
+    decision_intent.established to false.
+29. A new explicit geographic decision in the latest user turn replaces an
+    earlier decision geography. Return the new identity even when it conflicts
+    with an assistant message or earlier inference.
 
 Return exactly this JSON structure:
 
@@ -140,6 +150,7 @@ Return exactly this JSON structure:
   },
   "decision_geography": {
     "identity": string | null,
+    "source": "USER" | "INFERRED" | null,
     "status": "UNRESOLVED" | "GROUNDED",
     "lng": null,
     "lat": null

@@ -4,10 +4,12 @@ import type { ChatRequest, ChatResponse } from '@/types/chat';
 export async function sendMessage(
   conversationId: string,
   message: string,
+  currentGeographicReality?: { lng: number; lat: number } | null,
 ): Promise<ChatResponse> {
   const request: ChatRequest = {
     conversation_id: conversationId,
     message,
+    ...(currentGeographicReality ? { current_geographic_reality: currentGeographicReality } : {}),
   };
 
   return apiFetch<ChatResponse>('/chat', {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import ConversationComposer from '@/features/conversation/components/ConversationComposer';
 import AMapGround from '@/features/living-map/AMapGround';
@@ -13,6 +13,9 @@ export default function TransitionPrototype() {
     ((center: { lng: number; lat: number }, zoom: number) => void) | null
   >(null);
   const [submitted, setSubmitted] = useState(false);
+  const [formationVisible, setFormationVisible] = useState(false);
+  const [formationDissolving, setFormationDissolving] = useState(false);
+  const formationTimersRef = useRef<number[]>([]);
 
   const handleCameraReady = useCallback(
     (nextReorient: (center: { lng: number; lat: number }, zoom: number) => void) => {
@@ -23,25 +26,44 @@ export default function TransitionPrototype() {
 
   const handleSubmit = useCallback((message: string) => {
     if (!message.trim() || !reorient) return;
+
+    formationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    formationTimersRef.current = [];
     setSubmitted(true);
+    setFormationVisible(true);
+    setFormationDissolving(false);
     reorient(SHENZHEN, 11.5);
+
+    formationTimersRef.current = [
+      window.setTimeout(() => setFormationDissolving(true), 900),
+      window.setTimeout(() => setFormationVisible(false), 1500),
+    ];
   }, [reorient]);
+
+  useEffect(() => {
+    return () => formationTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+  }, []);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#eef2ed] text-slate-950">
       <AMapGround
         initialCenter={CHENGDU}
         initialZoom={10.5}
-        presentation="quiet"
+        presentation={submitted ? 'active' : 'quiet'}
         onCameraReady={handleCameraReady}
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(ellipse_at_center,rgba(238,242,237,0.66)_0%,rgba(238,242,237,0.42)_36%,rgba(238,242,237,0.12)_72%,transparent_100%)]"
+        className={
+          'pointer-events-none absolute inset-0 z-[1] transition-[background] duration-[1400ms] ease-out motion-reduce:transition-none ' +
+          (submitted
+            ? 'bg-[linear-gradient(180deg,rgba(250,247,239,0.025)_0%,transparent_46%,rgba(213,225,211,0.09)_100%)]'
+            : 'bg-[radial-gradient(ellipse_at_center,rgba(238,242,237,0.66)_0%,rgba(238,242,237,0.42)_36%,rgba(238,242,237,0.12)_72%,transparent_100%)]')
+        }
       />
       <section
         aria-label="Decision Geography transition prototype"
-        className="relative z-10 min-h-screen"
+        className={`relative z-10 min-h-screen ${submitted ? 'pointer-events-none' : ''}`}
         data-transition-state={submitted ? 'shenzhen' : 'chengdu'}
       >
         <h1
@@ -51,6 +73,13 @@ export default function TransitionPrototype() {
           <br />
           从哪里开始？
         </h1>
+        {formationVisible && (
+          <p
+            className={`pointer-events-none absolute inset-x-0 top-[38%] text-center text-sm tracking-[0.08em] text-slate-700/70 transition-opacity duration-700 motion-reduce:transition-none ${formationDissolving ? 'opacity-0' : 'opacity-100'}`}
+          >
+            一种可能的生活，正在这里形成
+          </p>
+        )}
       </section>
       <div className="absolute inset-x-0 bottom-0 z-20 px-5 pb-5 sm:px-10 sm:pb-8">
         <div className="mx-auto max-w-3xl">

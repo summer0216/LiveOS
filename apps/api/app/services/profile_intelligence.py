@@ -27,6 +27,7 @@ from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch, ProfileField
 from app.models.property import Property
 from app.runtime.prompt import build_profile_extraction_prompt
+from app.services.geographic_resolution import normalize_local_geographic_identity
 
 
 class ProfileIntelligence:
@@ -95,7 +96,10 @@ class ProfileIntelligence:
             latest_user_message,
         )
         geographic_clarification = self._build_geographic_clarification(data)
-        decision_geography = self._build_decision_geography(data)
+        decision_geography = self._build_decision_geography(
+            data,
+            latest_user_message,
+        )
         choices = self._build_choices(data)
         if verification_outcome_update.relevant:
             action_progress_update = ActionProgressUpdate(
@@ -151,20 +155,40 @@ class ProfileIntelligence:
         )
 
     @staticmethod
-    def _build_decision_geography(data: dict) -> DecisionGeography:
+    def _build_decision_geography(
+        data: dict,
+        latest_user_message: str,
+    ) -> DecisionGeography:
         raw_intent = data.get("decision_intent")
         raw_geography = data.get("decision_geography")
         if not isinstance(raw_intent, dict) or not isinstance(raw_geography, dict):
             return DecisionGeography()
         established = raw_intent.get("established") is True
         identity = raw_geography.get("identity")
-        if not established or not isinstance(identity, str) or not identity.strip():
+        source = raw_geography.get("source")
+        if not isinstance(identity, str) or not identity.strip():
             return DecisionGeography()
+        normalized_identity = normalize_local_geographic_identity(identity)
+        compact_user_message = re.sub(r"[\s，。！？,.!?]", "", latest_user_message)
+        compact_identity = re.sub(r"[\s，。！？,.!?]", "", normalized_identity)
         intent_type = raw_intent.get("type")
+        normalized_intent_type = intent_type if isinstance(intent_type, str) else None
+        if (
+            not established
+            or source != "USER"
+            or not compact_identity
+            or compact_identity not in compact_user_message
+        ):
+            return DecisionGeography(
+                intent_type=normalized_intent_type,
+                identity=normalized_identity or None,
+                identity_source="INFERRED",
+            )
         return DecisionGeography(
             intent_established=True,
-            intent_type=intent_type if isinstance(intent_type, str) else None,
-            identity=identity.strip(),
+            intent_type=normalized_intent_type,
+            identity=normalized_identity,
+            identity_source="USER",
         )
 
     @staticmethod

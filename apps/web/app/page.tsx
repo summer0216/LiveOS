@@ -135,8 +135,9 @@ export default function HomePage() {
 
     setPhase('forming');
     setWorkVisible(false);
+    setDecisionWorldActive(false);
     try {
-      await sendMessage(currentConversationId, message);
+      await sendMessage(currentConversationId, message, currentLocation);
       const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
@@ -170,12 +171,14 @@ export default function HomePage() {
           { lng: decisionGeography.lng, lat: decisionGeography.lat },
           11.5,
         );
+      } else if (currentLocation) {
+        reorient?.(currentLocation, 12.5);
       }
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
       setPhase('empty');
     }
-  }, [conversationId, reorient]);
+  }, [conversationId, currentLocation, reorient]);
 
   const groundedWork = useMemo(
     () => profile?.geographic_status === 'GROUNDED'

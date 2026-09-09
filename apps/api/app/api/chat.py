@@ -88,14 +88,24 @@ def _stream_events(
 async def chat(
     request: ChatRequest, raw_request: Request, response: Response
 ) -> ChatResponse:
+    logger.info("Chat request started conversation_id=%s", request.conversation_id)
     conversation_manager.get_or_create(
         request.conversation_id, anonymous_user_id(raw_request, response)
     )
     profile_manager.get_or_create(request.conversation_id)
-    reply = chat_service.chat(
-        conversation_id=request.conversation_id,
-        message=request.message,
-    )
+    try:
+        reply = chat_service.chat(
+            conversation_id=request.conversation_id,
+            message=request.message,
+            current_geographic_reality=(
+                (request.current_geographic_reality.lng, request.current_geographic_reality.lat)
+                if request.current_geographic_reality is not None
+                else None
+            ),
+        )
+    except Exception:
+        logger.exception("Chat request failed conversation_id=%s", request.conversation_id)
+        raise
 
     return ChatResponse(reply=reply)
 
@@ -110,6 +120,11 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
         chat_service.chat_stream,
         conversation_id=request.conversation_id,
         message=request.message,
+        current_geographic_reality=(
+            (request.current_geographic_reality.lng, request.current_geographic_reality.lat)
+            if request.current_geographic_reality is not None
+            else None
+        ),
     )
 
     stream_response = StreamingResponse(
