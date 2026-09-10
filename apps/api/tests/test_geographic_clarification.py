@@ -181,6 +181,44 @@ def test_geographic_resolver_uses_explicit_city_to_disambiguate(monkeypatch) -> 
     assert (result.lng, result.lat) == (113.930478, 22.533191)
 
 
+@pytest.mark.parametrize(
+    ("identity", "formatted_address", "location"),
+    [
+        ("北京", "北京市", "116.407387,39.904179"),
+        ("上海", "上海市", "121.473667,31.230525"),
+        ("天津", "天津市", "117.200983,39.084158"),
+        ("重庆", "重庆市", "106.551643,29.562849"),
+    ],
+)
+def test_geographic_resolver_accepts_municipality_province_level(
+    monkeypatch, identity: str, formatted_address: str, location: str
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": formatted_address,
+                        "city": formatted_address,
+                        "level": "省",
+                        "location": location,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve(identity, None, "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == formatted_address
+    assert result.geographic_precision == GeographicPrecision.AREA
+
+
 def test_geographic_resolver_rejects_shortened_identity(monkeypatch) -> None:
     class Response:
         def raise_for_status(self) -> None:

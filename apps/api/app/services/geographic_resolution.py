@@ -17,6 +17,7 @@ class GeographicResolutionResult:
 
 
 _LOCAL_RELATION_SUFFIXES = ("附近", "周边", "那边", "一带")
+_MUNICIPALITIES = ("北京", "上海", "天津", "重庆")
 
 
 def normalize_local_geographic_identity(identity: str) -> str:
@@ -113,7 +114,11 @@ class GeographicResolver:
         except ValueError:
             return GeographicResolutionResult(status="UNRESOLVED")
 
-        precision = _precision_for_level(geocode.get("level"))
+        precision = _precision_for_level(
+            geocode.get("level"),
+            title=title,
+            formatted_address=formatted_address,
+        )
         if precision is None:
             return GeographicResolutionResult(status="UNRESOLVED")
         return GeographicResolutionResult(
@@ -194,13 +199,23 @@ class GeographicResolver:
         )
 
 
-def _precision_for_level(level: str | None) -> GeographicPrecision | None:
+def _precision_for_level(
+    level: str | None,
+    *,
+    title: str,
+    formatted_address: str | None,
+) -> GeographicPrecision | None:
     if level in {"兴趣点", "门牌号", "住宅区"}:
         return GeographicPrecision.PLACE
     if level == "道路":
         return GeographicPrecision.STREET
     if level in {"市", "区县", "乡镇", "街道"}:
         return GeographicPrecision.AREA
+    if level == "省" and formatted_address:
+        normalized_title = _normalize_administrative_text(title)
+        normalized_address = _normalize_administrative_text(formatted_address)
+        if normalized_title in _MUNICIPALITIES and normalized_address == normalized_title:
+            return GeographicPrecision.AREA
     return None
 
 
