@@ -68,7 +68,6 @@ interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
   initialCenter?: { lng: number; lat: number };
   initialZoom?: number;
-  mapStyle?: string;
   presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onCameraReady?: (reorient: (center: { lng: number; lat: number }, zoom: number) => void) => void;
@@ -107,7 +106,6 @@ export default function AMapGround({
   fitLocations = [],
   initialCenter,
   initialZoom,
-  mapStyle = 'amap://styles/fresh',
   presentation = 'default',
   onProjectionReady,
   onCameraReady,
@@ -154,8 +152,6 @@ export default function AMapGround({
             ? { center: [initialCenter.lng, initialCenter.lat] }
             : {}),
           ...(initialZoom !== undefined ? { zoom: initialZoom } : {}),
-          mapStyle,
-          features: ['bg', 'road', 'point'],
           showLabel: true,
           dragEnable: true,
           zoomEnable: true,
@@ -297,7 +293,6 @@ export default function AMapGround({
     onZoomChange,
     initialCenter,
     initialZoom,
-    mapStyle,
   ]);
 
   return (
@@ -313,7 +308,7 @@ export default function AMapGround({
             : '')
       }
     >
-      <div className={`map-reveal-layer absolute inset-0${status === 'ready' ? ' is-ready' : ''}`}>
+      <div className="absolute inset-0">
         <div ref={containerRef} className="h-full w-full" />
       </div>
     </div>

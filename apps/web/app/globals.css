@@ -38,15 +38,6 @@ body {
   animation: runtime-grow var(--motion-normal) var(--motion-ease) both;
 }
 
-.map-reveal-layer {
-  opacity: 0.3;
-  transition: opacity 700ms var(--motion-ease);
-}
-
-.map-reveal-layer.is-ready {
-  opacity: 1;
-}
-
 .world-object {
   display: flex;
   flex-direction: column;
@@ -178,8 +169,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .runtime-flow,
-  .runtime-grow,
-  .map-reveal-layer {
+  .runtime-grow {
     animation: none;
     transition: none;
   }

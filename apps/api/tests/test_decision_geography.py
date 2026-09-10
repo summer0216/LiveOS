@@ -262,7 +262,7 @@ def test_local_decision_geography_uses_current_city_context(monkeypatch) -> None
         current_geographic_reality=(104.0668, 30.5728),
     )
 
-    assert calls == [("高新南", "成都市")]
+    assert calls == [("高新南", None), ("高新南", "成都市")]
     assert state == saved[0]
     assert state.status == GeographicStatus.GROUNDED.value
     assert (state.lng, state.lat) == (104.0657, 30.5436)
@@ -286,7 +286,7 @@ def test_explicit_city_overrides_current_city_context(monkeypatch) -> None:
     monkeypatch.setattr(
         decision_geography_module.geographic_resolver,
         "resolve_city_context",
-        lambda *_args: "成都市",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("context must be bypassed")),
     )
     monkeypatch.setattr(
         decision_geography_module.geographic_resolver,
@@ -309,7 +309,7 @@ def test_explicit_city_overrides_current_city_context(monkeypatch) -> None:
         current_geographic_reality=(104.0668, 30.5728),
     )
 
-    assert calls == [("深圳南山", "成都市"), ("深圳南山", None)]
+    assert calls == [("深圳南山", None)]
     assert state is not None
     assert state.status == GeographicStatus.GROUNDED.value
 
@@ -470,7 +470,7 @@ def test_local_relation_suffix_is_removed_before_resolution(monkeypatch) -> None
         current_geographic_reality=(104.0668, 30.5728),
     )
 
-    assert calls == [("春熙路", "成都市")]
+    assert calls == [("春熙路", None), ("春熙路", "成都市")]
     assert state is not None
     assert state.identity == "春熙路"
     assert state.status == GeographicStatus.GROUNDED.value

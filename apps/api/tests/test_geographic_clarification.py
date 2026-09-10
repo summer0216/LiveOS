@@ -148,6 +148,39 @@ def test_geographic_resolver_rejects_ambiguous_result(monkeypatch) -> None:
     assert result.ambiguous is True
 
 
+def test_geographic_resolver_uses_explicit_city_to_disambiguate(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "广东省深圳市南山区",
+                        "city": "深圳市",
+                        "level": "区县",
+                        "location": "113.930478,22.533191",
+                    },
+                    {
+                        "formatted_address": "黑龙江省鹤岗市南山区",
+                        "city": "鹤岗市",
+                        "level": "区县",
+                        "location": "130.285991,47.315121",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("深圳南山", None, "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "广东省深圳市南山区"
+    assert (result.lng, result.lat) == (113.930478, 22.533191)
+
+
 def test_geographic_resolver_rejects_shortened_identity(monkeypatch) -> None:
     class Response:
         def raise_for_status(self) -> None:

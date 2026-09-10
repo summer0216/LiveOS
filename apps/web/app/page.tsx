@@ -246,22 +246,10 @@ export default function HomePage() {
           fitLocations={NO_FIT_LOCATIONS}
           initialCenter={currentLocation}
           initialZoom={12.5}
-          presentation={decisionWorldActive ? 'active' : 'quiet'}
           onProjectionReady={handleProjectionReady}
           onCameraReady={handleCameraReady}
         />
       )}
-      <div
-        aria-hidden="true"
-        className={
-          'pointer-events-none absolute inset-0 z-[1] transition-[background] duration-1000 ease-out motion-reduce:transition-none ' +
-          (decisionWorldActive
-            ? 'bg-transparent'
-            : worldHasFormed
-            ? 'bg-[radial-gradient(ellipse_at_center,rgba(238,242,237,0.62)_0%,rgba(238,242,237,0.46)_30%,rgba(238,242,237,0.24)_58%,rgba(238,242,237,0.08)_80%,transparent_100%)]'
-            : 'bg-[radial-gradient(ellipse_at_center,rgba(238,242,237,0.78)_0%,rgba(238,242,237,0.62)_30%,rgba(238,242,237,0.35)_58%,rgba(238,242,237,0.12)_80%,transparent_100%)]')
-        }
-      />
       <section
         aria-label={worldHasFormed ? 'First Reality' : 'Empty Living World'}
         className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}

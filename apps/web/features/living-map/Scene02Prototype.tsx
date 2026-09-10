@@ -17,7 +17,6 @@ export default function Scene02Prototype() {
         <AMapGround
           initialCenter={NANSHAN_WORK}
           initialZoom={12.6}
-          mapStyle="amap://styles/light"
           presentation="quiet"
         />
       </div>

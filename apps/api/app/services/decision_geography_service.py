@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class DecisionGeographyService:
     def __init__(self) -> None:
-        self._current_city_contexts: dict[tuple[float, float, int], str] = {}
+        self._current_city_contexts: dict[tuple[float, float, object], str] = {}
 
     def get(self, conversation_id: str) -> DecisionGeography | None:
         return decision_geography_store.get(conversation_id)
@@ -29,7 +29,7 @@ class DecisionGeographyService:
     ) -> str | None:
         resolver_method = geographic_resolver.resolve_city_context
         resolver_function = getattr(resolver_method, "__func__", resolver_method)
-        cache_key = (*current_geographic_reality, id(resolver_function))
+        cache_key = (*current_geographic_reality, resolver_function)
         cached = self._current_city_contexts.get(cache_key)
         if cached is not None:
             return cached
@@ -73,9 +73,12 @@ class DecisionGeographyService:
         if not normalized_identity:
             return self.get(conversation_id)
 
+        direct_result = geographic_resolver.resolve(normalized_identity, None, api_key)
         context_location = None
-        if current_geographic_reality is None:
-            result = geographic_resolver.resolve(normalized_identity, None, api_key)
+        if identity_explicitly_names_city(normalized_identity, direct_result):
+            result = direct_result
+        elif current_geographic_reality is None:
+            result = direct_result
             if result.status != GeographicStatus.GROUNDED.value:
                 direct_local_result = geographic_resolver.resolve_local_area(
                     normalized_identity, None, api_key
@@ -112,14 +115,6 @@ class DecisionGeographyService:
                     contextual_result,
                     local_result,
                 )
-                if result.status != GeographicStatus.GROUNDED.value:
-                    direct_result = geographic_resolver.resolve(
-                        normalized_identity, None, api_key
-                    )
-                    if identity_explicitly_names_city(
-                        normalized_identity, direct_result
-                    ):
-                        result = direct_result
         logger.info(
             "Decision geography resolved conversation_id=%s "
             "identity_source=%s geographic_context=%r normalized_identity=%r "

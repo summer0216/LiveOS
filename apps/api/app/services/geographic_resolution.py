@@ -85,6 +85,16 @@ class GeographicResolver:
         except (httpx.HTTPError, ValueError):
             return GeographicResolutionResult(status="UNRESOLVED")
         geocodes = payload.get("geocodes") or []
+        if context_location is None and len(geocodes) > 1:
+            explicit_city_matches = [
+                geocode
+                for geocode in geocodes
+                if isinstance(geocode, dict)
+                and isinstance(geocode.get("city"), str)
+                and geocode["city"].removesuffix("市") in title.replace("市", "")
+            ]
+            if len(explicit_city_matches) == 1:
+                geocodes = explicit_city_matches
         if payload.get("status") != "1" or len(geocodes) != 1:
             return GeographicResolutionResult(
                 status="UNRESOLVED",
@@ -198,9 +208,15 @@ def _matches_title(title: str, *identities: str | None) -> bool:
     normalized_title = "".join(title.split())
     return any(
         normalized_title in "".join(identity.split())
+        or _normalize_administrative_text(normalized_title)
+        in _normalize_administrative_text(identity)
         for identity in identities
         if identity
     )
+
+
+def _normalize_administrative_text(value: str) -> str:
+    return re.sub(r"[省市区县]", "", "".join(value.split()))
 
 
 def _poi_is_within_context(candidate: dict, context_location: str | None) -> bool:
