@@ -169,7 +169,7 @@ export default function HomePage() {
         setDecisionWorldActive(true);
         reorient?.(
           { lng: decisionGeography.lng, lat: decisionGeography.lat },
-          11.5,
+          10.5,
         );
       } else if (currentLocation) {
         reorient?.(currentLocation, 12.5);

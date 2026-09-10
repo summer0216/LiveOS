@@ -155,7 +155,7 @@ export default function AMapGround({
             : {}),
           ...(initialZoom !== undefined ? { zoom: initialZoom } : {}),
           mapStyle,
-          features: ['bg', 'road'],
+          features: ['bg', 'road', 'point'],
           showLabel: true,
           dragEnable: true,
           zoomEnable: true,
