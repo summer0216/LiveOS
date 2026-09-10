@@ -9,6 +9,7 @@ from app.main import app
 from app.models.decision_challenge import DecisionChallenge
 from app.models.decision_change import ChallengeCause
 from app.models.decision_feedback import DecisionRelevantFeedback
+from app.services.chat_service import WORLD_STATE_READY
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
@@ -89,8 +90,13 @@ def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
     conversation_id = uuid_for("browser-stream-owner")
     conversation_manager.delete(conversation_id)
 
-    def stream_reply(*, conversation_id: str, message: str):
-        del conversation_id, message
+    def stream_reply(
+        *,
+        conversation_id: str,
+        message: str,
+        current_geographic_reality=None,
+    ):
+        del conversation_id, message, current_geographic_reality
         yield "first"
         yield "second"
 
@@ -141,6 +147,14 @@ def test_stream_events_turn_model_exception_into_a_terminal_error_event() -> Non
     ]
 
 
+def test_stream_events_exposes_persisted_world_state_before_reply() -> None:
+    assert list(_stream_events(iter((WORLD_STATE_READY, "reply")))) == [
+        ": connected\n\n",
+        "event: world-state-ready\ndata: true\n\n",
+        'data: "reply"\n\n',
+    ]
+
+
 def test_stream_events_turns_a_first_token_timeout_into_a_terminal_error_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -166,8 +180,13 @@ def test_pre_stream_work_and_first_token_have_separate_timeout_boundaries(
 
     conversation_id = uuid_for("browser-stream-separated-boundaries")
 
-    def prepare_then_stream(*, conversation_id: str, message: str):
-        del conversation_id, message
+    def prepare_then_stream(
+        *,
+        conversation_id: str,
+        message: str,
+        current_geographic_reality=None,
+    ):
+        del conversation_id, message, current_geographic_reality
         time.sleep(0.02)
 
         def first_token_stream():

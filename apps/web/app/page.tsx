@@ -8,15 +8,14 @@ import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
-import { sendMessage } from '@/services/chat';
+import { streamMessage } from '@/services/chat';
 import { getDecisionGeography } from '@/services/decisionGeography';
 import { getProperties, type Property } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
-type LocationResolution = 'pending' | 'resolved' | 'fallback';
+type LocationResolution = 'pending' | 'resolved' | 'unknown';
 
-const FIRST_OPEN_CENTER = { lng: 113.93, lat: 22.54 };
 const NO_FIT_LOCATIONS: readonly { lng: number; lat: number }[] = [];
 
 function formatGeographicIdentity(
@@ -50,19 +49,19 @@ export default function HomePage() {
 
   useEffect(() => {
     let settled = false;
-    const fallbackToDefaultContext = () => {
+    const markLocationUnknown = () => {
       if (settled) return;
       settled = true;
-      console.info('[First Open] Current Geographic Reality unavailable; using default context');
-      setLocationResolution('fallback');
+      console.info('[First Open] Current Geographic Reality unavailable; remaining unknown');
+      setLocationResolution('unknown');
     };
 
     if (!navigator.geolocation) {
-      fallbackToDefaultContext();
+      markLocationUnknown();
       return;
     }
 
-    const fallbackTimer = window.setTimeout(fallbackToDefaultContext, 10500);
+    const fallbackTimer = window.setTimeout(markLocationUnknown, 10500);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (settled) return;
@@ -80,7 +79,7 @@ export default function HomePage() {
       },
       () => {
         window.clearTimeout(fallbackTimer);
-        fallbackToDefaultContext();
+        markLocationUnknown();
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
@@ -137,7 +136,22 @@ export default function HomePage() {
     setWorkVisible(false);
     setDecisionWorldActive(false);
     try {
-      await sendMessage(currentConversationId, message, currentLocation);
+      let markWorldStateReady: (() => void) | undefined;
+      const worldStateReady = new Promise<void>((resolve) => {
+        markWorldStateReady = resolve;
+      });
+      const chatCompletion = streamMessage({
+        conversationId: currentConversationId,
+        message,
+        currentGeographicReality: currentLocation,
+        onChunk: () => {},
+        onWorldStateReady: () => markWorldStateReady?.(),
+      });
+
+      await Promise.race([
+        worldStateReady,
+        chatCompletion.then(() => undefined),
+      ]);
       const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
@@ -174,6 +188,7 @@ export default function HomePage() {
       } else if (currentLocation) {
         reorient?.(currentLocation, 12.5);
       }
+      await chatCompletion;
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
       setPhase('empty');
@@ -224,14 +239,12 @@ export default function HomePage() {
     [groundedChoices, projection],
   );
   const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
-  const initialCenter = currentLocation ?? FIRST_OPEN_CENTER;
-
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#eef2ed] text-slate-950">
-      {locationResolution !== 'pending' && (
+      {locationResolution === 'resolved' && currentLocation && (
         <AMapGround
           fitLocations={NO_FIT_LOCATIONS}
-          initialCenter={initialCenter}
+          initialCenter={currentLocation}
           initialZoom={12.5}
           presentation={decisionWorldActive ? 'active' : 'quiet'}
           onProjectionReady={handleProjectionReady}

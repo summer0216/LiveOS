@@ -1,6 +1,28 @@
 from app.models.conversation import ConversationMessage
 from app.models.property import Property
 
+DECISION_SIGNAL_PROMPT = """
+Extract only the current user's explicit world-changing decision signal.
+
+Return exactly one JSON object:
+{
+  "decision_intent": {"established": boolean, "type": string | null},
+  "decision_geography": {"identity": string | null, "source": "USER" | "INFERRED" | null}
+}
+
+Rules:
+- Use only the current user turn as established truth.
+- Establish intent only for a concrete living decision oriented toward a place.
+- A factual, weather, or incidental location mention is not a decision intent.
+- identity is only a place explicitly stated by the user.
+- Never infer coordinates, profile facts, choices, or recommendations.
+- Return JSON only.
+""".strip()
+
+
+def build_decision_signal_prompt(user_message: str) -> str:
+    return f"{DECISION_SIGNAL_PROMPT}\n\nCurrent user turn:\n{user_message}"
+
 PROFILE_EXTRACTION_SYSTEM_PROMPT = """
 You are the Profile Intelligence module inside LiveOS.
 

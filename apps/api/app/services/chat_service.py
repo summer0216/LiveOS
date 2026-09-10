@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from time import perf_counter
 
 from app.core.config import settings
@@ -14,6 +15,7 @@ from app.models.decision_change import (
     feedback_cause,
     verification_outcome_cause,
 )
+from app.models.profile_analysis import ProfileAnalysis
 from app.models.property import GeographicStatus, Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
@@ -24,6 +26,7 @@ from app.services.decision_feedback_context import decision_feedback_context
 from app.services.decision_geography_service import decision_geography_service
 from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
+from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
@@ -32,6 +35,13 @@ from app.services.property_manager import property_manager
 from app.services.transit_duration import transit_duration_service
 
 logger = logging.getLogger(__name__)
+
+
+class WorldStateReady:
+    pass
+
+
+WORLD_STATE_READY = WorldStateReady()
 
 
 class ChatService:
@@ -63,6 +73,8 @@ class ChatService:
         conversation_id: str,
         history: list[ConversationMessage],
         current_geographic_reality: tuple[float, float] | None = None,
+        analysis: ProfileAnalysis | None = None,
+        apply_decision_geography: bool = True,
     ) -> tuple[DecisionChangeCause, ...]:
         """
         从当前会话历史中生成 Profile Analysis，
@@ -79,10 +91,11 @@ class ChatService:
         )
         try:
             properties = property_manager.list(conversation_id)
-            if properties:
-                analysis = profile_intelligence.analyze(history, properties)
-            else:
-                analysis = profile_intelligence.analyze(history)
+            if analysis is None:
+                if properties:
+                    analysis = profile_intelligence.analyze(history, properties)
+                else:
+                    analysis = profile_intelligence.analyze(history)
             current_user_text = next(
                 (
                     item.content
@@ -105,15 +118,16 @@ class ChatService:
                 conversation_id,
                 analysis.choices,
             )
-            decision_geography_service.apply(
-                conversation_id,
-                intent_established=analysis.decision_geography.intent_established,
-                intent_type=analysis.decision_geography.intent_type,
-                identity=analysis.decision_geography.identity,
-                identity_source=analysis.decision_geography.identity_source,
-                api_key=settings.AMAP_WEB_SERVICE_KEY,
-                current_geographic_reality=current_geographic_reality,
-            )
+            if apply_decision_geography:
+                decision_geography_service.apply(
+                    conversation_id,
+                    intent_established=analysis.decision_geography.intent_established,
+                    intent_type=analysis.decision_geography.intent_type,
+                    identity=analysis.decision_geography.identity,
+                    identity_source=analysis.decision_geography.identity_source,
+                    api_key=settings.AMAP_WEB_SERVICE_KEY,
+                    current_geographic_reality=current_geographic_reality,
+                )
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
                 conversation_id,
@@ -301,20 +315,75 @@ class ChatService:
         conversation_id: str,
         message: str,
         current_geographic_reality: tuple[float, float] | None = None,
-    ) -> Iterator[str]:
+    ) -> Iterator[str | WorldStateReady]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
         )
 
-        change_causes = self._update_profile(
-            conversation_id=conversation_id,
-            history=history,
-            current_geographic_reality=current_geographic_reality,
-        )
-        decision_change_context.set(conversation_id, change_causes)
+        properties = property_manager.list(conversation_id)
+        executor = ThreadPoolExecutor(max_workers=2)
+        def analyze_profile() -> ProfileAnalysis:
+            return profile_intelligence.analyze(history, properties or None)
 
-        return self._stream_assistant_reply(conversation_id, history)
+        def extract_signal():
+            return decision_signal_intelligence.analyze(message)
+
+        profile_future: Future[ProfileAnalysis] = executor.submit(analyze_profile)
+        signal_future = executor.submit(extract_signal)
+
+        world_state_ready = False
+        try:
+            signal = signal_future.result()
+            state = decision_geography_service.apply(
+                conversation_id,
+                intent_established=signal.intent_established,
+                intent_type=signal.intent_type,
+                identity=signal.identity,
+                identity_source=signal.identity_source,
+                api_key=settings.AMAP_WEB_SERVICE_KEY,
+                current_geographic_reality=current_geographic_reality,
+            )
+            world_state_ready = state is not None
+        except Exception:
+            logger.exception(
+                "Early Decision Signal failed conversation_id=%s", conversation_id
+            )
+
+        return self._complete_stream_turn(
+            conversation_id,
+            history,
+            current_geographic_reality,
+            profile_future,
+            executor,
+            world_state_ready,
+        )
+
+    def _complete_stream_turn(
+        self,
+        conversation_id: str,
+        history: list[ConversationMessage],
+        current_geographic_reality: tuple[float, float] | None,
+        profile_future: Future[ProfileAnalysis],
+        executor: ThreadPoolExecutor,
+        world_state_ready: bool,
+    ) -> Iterator[str | WorldStateReady]:
+        try:
+            if world_state_ready:
+                yield WORLD_STATE_READY
+            analysis = profile_future.result()
+            change_causes = self._update_profile(
+                conversation_id=conversation_id,
+                history=history,
+                current_geographic_reality=current_geographic_reality,
+                analysis=analysis,
+                apply_decision_geography=False,
+            )
+            decision_change_context.set(conversation_id, change_causes)
+
+            yield from self._stream_assistant_reply(conversation_id, history)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def _stream_assistant_reply(
         self,

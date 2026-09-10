@@ -90,12 +90,19 @@ class AIClient:
     def generate_json(
         self,
         prompt: str,
+        *,
+        model: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> str:
         try:
+            request_options = {}
+            if max_output_tokens is not None:
+                request_options["max_tokens"] = max_output_tokens
+
             response = self.client.with_options(
                 timeout=JSON_REQUEST_TIMEOUT_SECONDS,
             ).chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=model or settings.OPENAI_MODEL,
                 messages=[
                     {
                         "role": "user",
@@ -106,6 +113,7 @@ class AIClient:
                     "type": "json_object",
                 },
                 temperature=0,
+                **request_options,
             )
 
             content = response.choices[0].message.content

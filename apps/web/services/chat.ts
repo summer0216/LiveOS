@@ -21,7 +21,9 @@ export async function sendMessage(
 interface StreamMessageOptions {
   conversationId: string;
   message: string;
+  currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
+  onWorldStateReady?: () => void;
   onDecisionRelevantFeedback?: () => void;
   onDecisionChange?: (change: DecisionChange) => void;
 }
@@ -68,13 +70,16 @@ const STREAM_READ_TIMEOUT_MS = 90_000;
 export async function streamMessage({
   conversationId,
   message,
+  currentGeographicReality,
   onChunk,
+  onWorldStateReady,
   onDecisionRelevantFeedback,
   onDecisionChange,
 }: StreamMessageOptions): Promise<void> {
   const request: ChatRequest = {
     conversation_id: conversationId,
     message,
+    ...(currentGeographicReality ? { current_geographic_reality: currentGeographicReality } : {}),
   };
 
   const response = await apiRequest('/chat/stream', {
@@ -115,6 +120,13 @@ export async function streamMessage({
       }
 
       const chunk: unknown = JSON.parse(data.slice(6));
+      if (eventType === 'event: world-state-ready') {
+        if (chunk === true) {
+          onWorldStateReady?.();
+          continue;
+        }
+        throw new Error('Streaming API returned an invalid world state event.');
+      }
       if (eventType === 'event: decision-change') {
         if (isDecisionChange(chunk)) {
           onDecisionChange?.(chunk);
