@@ -87,15 +87,13 @@ class GeographicResolver:
             return GeographicResolutionResult(status="UNRESOLVED")
         geocodes = payload.get("geocodes") or []
         if context_location is None and len(geocodes) > 1:
-            explicit_city_matches = [
+            identity_matches = [
                 geocode
                 for geocode in geocodes
                 if isinstance(geocode, dict)
-                and isinstance(geocode.get("city"), str)
-                and geocode["city"].removesuffix("市") in title.replace("市", "")
+                and _geocode_matches_identity(title, geocode)
             ]
-            if len(explicit_city_matches) == 1:
-                geocodes = explicit_city_matches
+            geocodes = identity_matches
         if payload.get("status") != "1" or len(geocodes) != 1:
             return GeographicResolutionResult(
                 status="UNRESOLVED",
@@ -104,7 +102,7 @@ class GeographicResolver:
 
         geocode = geocodes[0]
         formatted_address = geocode.get("formatted_address")
-        if not _matches_title(title, formatted_address, geocode.get("name")):
+        if not _geocode_matches_identity(title, geocode):
             return GeographicResolutionResult(status="UNRESOLVED")
         location = geocode.get("location", "").split(",")
         if len(location) != 2:
@@ -205,11 +203,15 @@ def _precision_for_level(
     title: str,
     formatted_address: str | None,
 ) -> GeographicPrecision | None:
-    if level in {"兴趣点", "门牌号", "住宅区"}:
+    if level in {"兴趣点", "门牌号", "门址", "住宅区"}:
         return GeographicPrecision.PLACE
     if level == "道路":
         return GeographicPrecision.STREET
     if level in {"市", "区县", "乡镇", "街道"}:
+        return GeographicPrecision.AREA
+    if level == "未知" and formatted_address and _matches_title(
+        title, formatted_address
+    ):
         return GeographicPrecision.AREA
     if level == "省" and formatted_address:
         normalized_title = _normalize_administrative_text(title)
@@ -227,6 +229,31 @@ def _matches_title(title: str, *identities: str | None) -> bool:
         in _normalize_administrative_text(identity)
         for identity in identities
         if identity
+    )
+
+
+def _geocode_matches_identity(title: str, geocode: dict) -> bool:
+    formatted_address = geocode.get("formatted_address")
+    name = geocode.get("name")
+    if not _matches_title(title, formatted_address, name):
+        return False
+
+    candidate_fields = {
+        "省": geocode.get("province"),
+        "市": geocode.get("city"),
+        "区": geocode.get("district"),
+        "县": geocode.get("district"),
+    }
+    for token in re.findall(r"([^省市区县]+[省市区县])", title):
+        field = candidate_fields[token[-1]]
+        if isinstance(field, str) and field and token not in field:
+            return False
+
+    street_number = re.search(r"([0-9一二三四五六七八九十百]+号)", title)
+    return street_number is None or any(
+        street_number.group(1) in identity
+        for identity in (formatted_address, name)
+        if isinstance(identity, str)
     )
 
 
@@ -254,7 +281,7 @@ def _poi_match_score(title: str, candidate: dict) -> int | None:
     )
     if normalized_title in normalized_name or normalized_title in normalized_identity:
         match_score = 100
-    elif _is_ordered_subsequence(normalized_title, normalized_name):
+    elif _matches_directional_local_alias(normalized_title, normalized_name):
         match_score = 50
     else:
         return None
@@ -287,9 +314,12 @@ def _normalize_location_text(value: str) -> str:
     return re.sub(r"[\s()（）·-]", "", value).replace("市", "").replace("区", "")
 
 
-def _is_ordered_subsequence(needle: str, haystack: str) -> bool:
-    iterator = iter(haystack)
-    return all(character in iterator for character in needle)
+def _matches_directional_local_alias(identity: str, candidate_name: str) -> bool:
+    if len(identity) < 3 or identity[-1] not in "东西南北":
+        return False
+    stem = identity[:-1]
+    direction = identity[-1]
+    return stem in candidate_name and candidate_name.endswith(direction)
 
 
 geographic_resolver = GeographicResolver()

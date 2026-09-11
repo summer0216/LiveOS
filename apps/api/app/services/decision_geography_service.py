@@ -75,7 +75,10 @@ class DecisionGeographyService:
 
         direct_result = geographic_resolver.resolve(normalized_identity, None, api_key)
         context_location = None
-        if identity_explicitly_names_city(normalized_identity, direct_result):
+        if (
+            direct_result.status == GeographicStatus.GROUNDED.value
+            or identity_explicitly_names_city(normalized_identity, direct_result)
+        ):
             result = direct_result
         elif current_geographic_reality is None:
             result = direct_result

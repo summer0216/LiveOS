@@ -314,6 +314,54 @@ def test_explicit_city_overrides_current_city_context(monkeypatch) -> None:
     assert state.status == GeographicStatus.GROUNDED.value
 
 
+def test_unique_trusted_direct_identity_bypasses_current_city_context(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, str | None]] = []
+
+    def resolve(title: str, context: str | None, _api_key: str):
+        calls.append((title, context))
+        return GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="广东省深圳市南山区科技园",
+            geographic_precision=GeographicPrecision.AREA,
+            lng=113.946040,
+            lat=22.544610,
+        )
+
+    monkeypatch.setattr(decision_geography_module.geographic_resolver, "resolve", resolve)
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("context must be bypassed")),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_local_area",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("POI must be bypassed")),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "save",
+        lambda _conversation_id, state: state,
+    )
+
+    state = decision_geography_module.decision_geography_service.apply(
+        "conversation-id",
+        intent_established=True,
+        intent_type="housing_search",
+        identity="南山科技园",
+        identity_source="USER",
+        api_key="server-key",
+        current_geographic_reality=(104.0668, 30.5728),
+    )
+
+    assert calls == [("南山科技园", None)]
+    assert state is not None
+    assert state.status == GeographicStatus.GROUNDED.value
+    assert (state.lng, state.lat) == (113.946040, 22.544610)
+
+
 def test_new_user_geography_overwrites_previous_inferred_city(monkeypatch) -> None:
     previous = DecisionGeography(
         intent_established=True,

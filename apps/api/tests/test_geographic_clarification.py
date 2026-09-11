@@ -181,6 +181,137 @@ def test_geographic_resolver_uses_explicit_city_to_disambiguate(monkeypatch) -> 
     assert (result.lng, result.lat) == (113.930478, 22.533191)
 
 
+def test_geographic_resolver_selects_one_complete_identity_match(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "广东省深圳市南山区科技园",
+                        "city": "深圳市",
+                        "level": "未知",
+                        "location": "113.946040,22.544610",
+                    },
+                    {
+                        "formatted_address": "黑龙江省鹤岗市南山区",
+                        "city": "鹤岗市",
+                        "level": "区县",
+                        "location": "130.285991,47.315121",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("南山科技园", None, "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "广东省深圳市南山区科技园"
+    assert result.geographic_precision == GeographicPrecision.AREA
+    assert (result.lng, result.lat) == (113.946040, 22.544610)
+
+
+def test_geographic_resolver_keeps_multiple_complete_matches_ambiguous(
+    monkeypatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "甲市科技园",
+                        "level": "未知",
+                        "location": "110.0,30.0",
+                    },
+                    {
+                        "formatted_address": "乙市科技园",
+                        "level": "未知",
+                        "location": "111.0,31.0",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("科技园", None, "server-key")
+
+    assert result.status == "UNRESOLVED"
+    assert result.ambiguous is True
+
+
+def test_full_explicit_address_grounds_one_matching_candidate(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "广东省深圳市南山区科苑路15号",
+                        "city": "深圳市",
+                        "district": "南山区",
+                        "level": "门址",
+                        "location": "113.946100,22.540100",
+                    },
+                    {
+                        "formatted_address": "广东省深圳市南山区科苑路",
+                        "city": "深圳市",
+                        "district": "南山区",
+                        "level": "道路",
+                        "location": "113.946000,22.540000",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve(
+        "深圳市南山区科苑路15号", None, "server-key"
+    )
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "广东省深圳市南山区科苑路15号"
+    assert result.geographic_precision == GeographicPrecision.PLACE
+    assert (result.lng, result.lat) == (113.946100, 22.540100)
+
+
+def test_local_area_rejects_fragment_only_identity_match(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "pois": [
+                    {
+                        "name": "南山控股·新都科技园",
+                        "cityname": "成都市",
+                        "location": "104.222510,30.851695",
+                        "type": "商务住宅;产业园区;产业园区",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve_local_area(
+        "南山科技园", "成都市", "server-key"
+    )
+
+    assert result.status == "UNRESOLVED"
+
+
 @pytest.mark.parametrize(
     ("identity", "formatted_address", "location"),
     [
