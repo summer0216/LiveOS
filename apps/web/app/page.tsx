@@ -9,7 +9,10 @@ import AMapGround, {
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
 import { streamMessage } from '@/services/chat';
-import { getDecisionGeography } from '@/services/decisionGeography';
+import {
+  getDecisionGeography,
+  type DecisionGeography,
+} from '@/services/decisionGeography';
 import { getProperties, type Property } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
@@ -46,6 +49,9 @@ export default function HomePage() {
     ((center: { lng: number; lat: number }, zoom: number) => void) | null
   >(null);
   const [decisionWorldActive, setDecisionWorldActive] = useState(false);
+  const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
+    DecisionGeography | null | undefined
+  >(undefined);
 
   useEffect(() => {
     let settled = false;
@@ -97,9 +103,19 @@ export default function HomePage() {
     void Promise.all([
       getLivingProfile(conversationId),
       getProperties(conversationId),
-    ]).then(([nextProfile, nextProperties]) => {
+      getDecisionGeography(conversationId),
+    ]).then(([nextProfile, nextProperties, decisionGeography]) => {
       if (!active) return;
       setProperties(nextProperties);
+      setRestoredDecisionGeography(decisionGeography);
+      if (
+        decisionGeography?.intent_established
+        && decisionGeography.status === 'GROUNDED'
+        && typeof decisionGeography.lng === 'number'
+        && typeof decisionGeography.lat === 'number'
+      ) {
+        setDecisionWorldActive(true);
+      }
       if (!nextProfile) return;
       setProfile(nextProfile);
       if (nextProfile.geographic_status === 'GROUNDED') {
@@ -128,6 +144,27 @@ export default function HomePage() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (
+      !reorient
+      || restoredDecisionGeography?.conversation_id !== conversationId
+      || !restoredDecisionGeography?.intent_established
+      || restoredDecisionGeography.status !== 'GROUNDED'
+      || typeof restoredDecisionGeography.lng !== 'number'
+      || typeof restoredDecisionGeography.lat !== 'number'
+    ) {
+      return;
+    }
+
+    reorient(
+      {
+        lng: restoredDecisionGeography.lng,
+        lat: restoredDecisionGeography.lat,
+      },
+      10.5,
+    );
+  }, [conversationId, reorient, restoredDecisionGeography]);
 
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
@@ -239,13 +276,28 @@ export default function HomePage() {
     [groundedChoices, projection],
   );
   const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
+  const restoredDecisionCenter = useMemo(
+    () => restoredDecisionGeography?.conversation_id === conversationId
+      && restoredDecisionGeography.intent_established
+      && restoredDecisionGeography.status === 'GROUNDED'
+      && typeof restoredDecisionGeography.lng === 'number'
+      && typeof restoredDecisionGeography.lat === 'number'
+      ? {
+          lng: restoredDecisionGeography.lng,
+          lat: restoredDecisionGeography.lat,
+        }
+      : null,
+    [conversationId, restoredDecisionGeography],
+  );
+  const initialMapCenter = restoredDecisionCenter ?? currentLocation;
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#eef2ed] text-slate-950">
-      {locationResolution === 'resolved' && currentLocation && (
+      {initialMapCenter
+        && (restoredDecisionCenter || locationResolution === 'resolved') && (
         <AMapGround
           fitLocations={NO_FIT_LOCATIONS}
-          initialCenter={currentLocation}
-          initialZoom={12.5}
+          initialCenter={initialMapCenter}
+          initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
           onProjectionReady={handleProjectionReady}
           onCameraReady={handleCameraReady}
         />
@@ -277,13 +329,32 @@ export default function HomePage() {
           >
             <div
               className="world-object work-anchor"
-              aria-label={'我的工作，' + groundedWork.displayIdentity}
+              aria-label={[
+                '我的工作',
+                groundedWork.displayIdentity,
+                typeof profile?.commute_minutes === 'number'
+                  ? `通勤不超过 ${profile.commute_minutes} 分钟`
+                  : null,
+                typeof profile?.budget === 'number'
+                  ? `预算约 ${profile.budget} 元`
+                  : null,
+              ].filter(Boolean).join('，')}
             >
               <span className="object-mark">◎</span>
               <span className="object-kicker mt-2">我的工作</span>
               <span className="object-name mt-2">
                 {groundedWork.displayIdentity}
               </span>
+              {typeof profile?.commute_minutes === 'number' && (
+                <span className="mt-2 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
+                  ≤ {profile.commute_minutes}min 通勤
+                </span>
+              )}
+              {typeof profile?.budget === 'number' && (
+                <span className="mt-1 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
+                  ≈ ¥{profile.budget} 预算
+                </span>
+              )}
             </div>
           </div>
         )}
