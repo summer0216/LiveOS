@@ -19,8 +19,6 @@ import { getLivingProfile, type LivingProfile } from '@/services/profile';
 type ScenePhase = 'empty' | 'forming' | 'formed';
 type LocationResolution = 'pending' | 'resolved' | 'unknown';
 
-const NO_FIT_LOCATIONS: readonly { lng: number; lat: number }[] = [];
-
 function formatGeographicIdentity(
   identity: string,
   precision: LivingProfile['geographic_precision'],
@@ -145,9 +143,49 @@ export default function HomePage() {
     [],
   );
 
+  const groundedWork = useMemo(
+    () => profile?.geographic_status === 'GROUNDED'
+      && typeof profile.lng === 'number'
+      && typeof profile.lat === 'number'
+      ? {
+          lng: profile.lng,
+          lat: profile.lat,
+          identity: profile.geographic_identity ?? profile.work_location ?? '',
+          displayIdentity: formatGeographicIdentity(
+            profile.geographic_identity ?? profile.work_location ?? '',
+            profile.geographic_precision,
+          ),
+        }
+      : null,
+    [profile],
+  );
+  const groundedChoices = useMemo(
+    () => properties.filter(
+      (property): property is Property & { lng: number; lat: number } =>
+        property.geographic_status === 'GROUNDED'
+        && typeof property.lng === 'number'
+        && typeof property.lat === 'number',
+    ),
+    [properties],
+  );
+  const housingFitLocations = useMemo(
+    () => groundedWork && groundedChoices.length > 0
+      ? [
+          { lng: groundedWork.lng, lat: groundedWork.lat },
+          ...groundedChoices.map((property) => ({
+            lng: property.lng,
+            lat: property.lat,
+          })),
+        ]
+      : [],
+    [groundedChoices, groundedWork],
+  );
+  const hasHousingDecisionExtent = housingFitLocations.length >= 2;
+
   useEffect(() => {
     if (
       !reorient
+      || hasHousingDecisionExtent
       || restoredDecisionGeography?.conversation_id !== conversationId
       || !restoredDecisionGeography?.intent_established
       || restoredDecisionGeography.status !== 'GROUNDED'
@@ -164,7 +202,12 @@ export default function HomePage() {
       },
       10.5,
     );
-  }, [conversationId, reorient, restoredDecisionGeography]);
+  }, [
+    conversationId,
+    hasHousingDecisionExtent,
+    reorient,
+    restoredDecisionGeography,
+  ]);
 
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
@@ -218,10 +261,20 @@ export default function HomePage() {
         && typeof decisionGeography.lat === 'number'
       ) {
         setDecisionWorldActive(true);
-        reorient?.(
-          { lng: decisionGeography.lng, lat: decisionGeography.lat },
-          10.5,
+        const hasGroundedWork = nextProfile.geographic_status === 'GROUNDED'
+          && typeof nextProfile.lng === 'number'
+          && typeof nextProfile.lat === 'number';
+        const hasGroundedChoices = nextProperties.some(
+          (property) => property.geographic_status === 'GROUNDED'
+            && typeof property.lng === 'number'
+            && typeof property.lat === 'number',
         );
+        if (!hasGroundedWork || !hasGroundedChoices) {
+          reorient?.(
+            { lng: decisionGeography.lng, lat: decisionGeography.lat },
+            10.5,
+          );
+        }
       } else if (currentLocation) {
         reorient?.(currentLocation, 12.5);
       }
@@ -232,33 +285,9 @@ export default function HomePage() {
     }
   }, [conversationId, currentLocation, reorient]);
 
-  const groundedWork = useMemo(
-    () => profile?.geographic_status === 'GROUNDED'
-      && typeof profile.lng === 'number'
-      && typeof profile.lat === 'number'
-      ? {
-          lng: profile.lng,
-          lat: profile.lat,
-          identity: profile.geographic_identity ?? profile.work_location ?? '',
-          displayIdentity: formatGeographicIdentity(
-            profile.geographic_identity ?? profile.work_location ?? '',
-            profile.geographic_precision,
-          ),
-        }
-      : null,
-    [profile],
-  );
   const workPosition = useMemo(
     () => groundedWork && projection ? projection(groundedWork) : null,
     [groundedWork, projection],
-  );
-  const groundedChoices = useMemo(
-    () => properties.filter(
-      (property) => property.geographic_status === 'GROUNDED'
-        && typeof property.lng === 'number'
-        && typeof property.lat === 'number',
-    ),
-    [properties],
   );
   const choicePositions = useMemo(
     () => groundedChoices.reduce<Record<string, { x: number; y: number }>>(
@@ -295,7 +324,7 @@ export default function HomePage() {
       {initialMapCenter
         && (restoredDecisionCenter || locationResolution === 'resolved') && (
         <AMapGround
-          fitLocations={NO_FIT_LOCATIONS}
+          fitLocations={housingFitLocations}
           initialCenter={initialMapCenter}
           initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
           onProjectionReady={handleProjectionReady}
