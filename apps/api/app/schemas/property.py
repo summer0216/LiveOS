@@ -2,7 +2,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.property import GeographicPrecision, GeographicStatus
+from app.models.property import (
+    CommuteMode,
+    GeographicPrecision,
+    GeographicStatus,
+    PropertyProvenance,
+)
 from app.schemas.decision_unknown import DecisionUnknownResponse
 
 
@@ -61,6 +66,9 @@ class PropertyResponse(PropertyFields):
     geographic_status: GeographicStatus = GeographicStatus.UNRESOLVED
     lng: float | None = None
     lat: float | None = None
+    provenance: PropertyProvenance = PropertyProvenance.USER_PROVIDED
+    external_id: str | None = None
+    commute_mode: CommuteMode | None = None
 
 
 class PropertyListResponse(BaseModel):

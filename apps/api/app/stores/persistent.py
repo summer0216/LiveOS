@@ -17,7 +17,13 @@ from app.models.conversation import Conversation, ConversationMessage
 from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.profile import LivingProfile
-from app.models.property import GeographicPrecision, GeographicStatus, Property
+from app.models.property import (
+    CommuteMode,
+    GeographicPrecision,
+    GeographicStatus,
+    Property,
+    PropertyProvenance,
+)
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
@@ -421,6 +427,11 @@ class PropertyStore:
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
             commute_minutes=row["commute_minutes"],
+            commute_mode=(
+                CommuteMode(row["commute_mode"])
+                if row.get("commute_mode") is not None
+                else None
+            ),
             pet_friendly=row["pet_friendly"],
             geographic_identity=row.get("geographic_identity"),
             geographic_precision=(
@@ -433,6 +444,10 @@ class PropertyStore:
             ),
             lng=row.get("lng"),
             lat=row.get("lat"),
+            provenance=PropertyProvenance(
+                row.get("provenance", PropertyProvenance.USER_PROVIDED.value)
+            ),
+            external_id=row.get("external_id"),
         )
 
     def create(self, property_: Property) -> Property:
@@ -453,10 +468,12 @@ class PropertyStore:
                 """
                 INSERT INTO properties(
                     id, owner_id, conversation_id, title, district, rent, area, bedrooms,
-                    bathrooms, commute_minutes, pet_friendly, geographic_identity,
-                    geographic_precision, geographic_status, lng, lat, created_at, updated_at
+                    bathrooms, commute_minutes, commute_mode, pet_friendly,
+                    geographic_identity,
+                    geographic_precision, geographic_status, lng, lat, provenance,
+                    external_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -469,6 +486,7 @@ class PropertyStore:
                     property_.bedrooms,
                     property_.bathrooms,
                     property_.commute_minutes,
+                    property_.commute_mode.value if property_.commute_mode else None,
                     property_.pet_friendly,
                     property_.geographic_identity,
                     property_.geographic_precision.value
@@ -477,6 +495,8 @@ class PropertyStore:
                     property_.geographic_status.value,
                     property_.lng,
                     property_.lat,
+                    property_.provenance.value,
+                    property_.external_id,
                     timestamp,
                     timestamp,
                 ),
@@ -531,6 +551,7 @@ class PropertyStore:
         property_id: str,
         conversation_id: str,
         commute_minutes: int | None,
+        commute_mode: CommuteMode | None = None,
     ) -> Property | None:
         owner_id = resolve_owner_id(self._database, conversation_id)
         property_uuid = optional_uuid(property_id)
@@ -541,12 +562,13 @@ class PropertyStore:
             row = connection.execute(
                 """
                 UPDATE properties
-                SET commute_minutes = %s, updated_at = %s
+                SET commute_minutes = %s, commute_mode = %s, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
                 (
                     commute_minutes,
+                    commute_mode.value if commute_mode else None,
                     now(),
                     property_uuid,
                     owner_id,

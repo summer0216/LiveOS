@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 from uuid import uuid4
 
-from app.models.property import GeographicPrecision, GeographicStatus, Property
+from app.models.property import (
+    CommuteMode,
+    GeographicPrecision,
+    GeographicStatus,
+    Property,
+)
 from app.services.conversation_manager import conversation_manager
 from app.services.geographic_resolution import (
     GeographicResolutionResult,
@@ -86,11 +91,13 @@ class PropertyManager:
         property_id: str,
         conversation_id: str,
         commute_minutes: int | None,
+        commute_mode: CommuteMode | None = None,
     ) -> Property | None:
         return property_store.update_commute_minutes(
             property_id,
             conversation_id,
             commute_minutes,
+            commute_mode,
         )
 
     def resolve_geographic_grounding(

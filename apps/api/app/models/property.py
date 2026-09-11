@@ -14,6 +14,16 @@ class GeographicStatus(str, Enum):
     GROUNDED = "GROUNDED"
 
 
+class PropertyProvenance(str, Enum):
+    USER_PROVIDED = "USER_PROVIDED"
+    AMAP_RESIDENTIAL_POI = "AMAP_RESIDENTIAL_POI"
+
+
+class CommuteMode(str, Enum):
+    WALKING = "WALKING"
+    PUBLIC_TRANSIT = "PUBLIC_TRANSIT"
+
+
 @dataclass
 class Property:
     id: str | None = None
@@ -25,9 +35,12 @@ class Property:
     bedrooms: int | None = None
     bathrooms: int | None = None
     commute_minutes: int | None = None
+    commute_mode: CommuteMode | None = None
     pet_friendly: bool | None = None
     geographic_identity: str | None = None
     geographic_precision: GeographicPrecision | None = None
     geographic_status: GeographicStatus = GeographicStatus.UNRESOLVED
     lng: float | None = None
     lat: float | None = None
+    provenance: PropertyProvenance = PropertyProvenance.USER_PROVIDED
+    external_id: str | None = None

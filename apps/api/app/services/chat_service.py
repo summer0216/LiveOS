@@ -194,17 +194,18 @@ class ChatService:
                         or current_property.lat is None
                     ):
                         continue
-                    commute_minutes = transit_duration_service.calculate_minutes(
-                        origin_lng=grounded_profile.lng,
-                        origin_lat=grounded_profile.lat,
-                        destination_lng=current_property.lng,
-                        destination_lat=current_property.lat,
+                    living_time = transit_duration_service.calculate_living_time(
+                        origin_lng=current_property.lng,
+                        origin_lat=current_property.lat,
+                        destination_lng=grounded_profile.lng,
+                        destination_lat=grounded_profile.lat,
                         api_key=settings.AMAP_WEB_SERVICE_KEY,
                     )
                     property_manager.update_commute_minutes(
                         current_property.id or "",
                         conversation_id,
-                        commute_minutes,
+                        living_time.minutes if living_time else None,
+                        living_time.mode if living_time else None,
                     )
             decision_feedback_context.set(
                 conversation_id,

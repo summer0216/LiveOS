@@ -67,6 +67,9 @@ SCHEMA_STATEMENTS = (
         work_location TEXT,
         budget INTEGER,
         commute_minutes INTEGER,
+        commute_mode TEXT CHECK (
+            commute_mode IS NULL OR commute_mode IN ('WALKING', 'PUBLIC_TRANSIT')
+        ),
         preferred_city TEXT,
         family_size INTEGER,
         has_pet BOOLEAN,
@@ -110,6 +113,10 @@ SCHEMA_STATEMENTS = (
         ),
         lng DOUBLE PRECISION,
         lat DOUBLE PRECISION,
+        provenance TEXT NOT NULL DEFAULT 'USER_PROVIDED' CHECK (
+            provenance IN ('USER_PROVIDED', 'AMAP_RESIDENTIAL_POI')
+        ),
+        external_id TEXT,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
     )
@@ -216,6 +223,10 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED'",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT 'USER_PROVIDED'",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_id TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS commute_mode TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_conversation_provenance_external_id ON properties(conversation_id, provenance, external_id) WHERE external_id IS NOT NULL",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",
     "ALTER TABLE latest_verified_actions ADD COLUMN IF NOT EXISTS unknown_id UUID",
