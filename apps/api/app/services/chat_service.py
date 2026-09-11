@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from time import perf_counter
 
@@ -15,6 +15,7 @@ from app.models.decision_change import (
     feedback_cause,
     verification_outcome_cause,
 )
+from app.models.decision_geography import DecisionGeography
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.property import GeographicStatus, Property
 from app.runtime.runtime import ai_runtime
@@ -28,6 +29,7 @@ from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
+from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -35,6 +37,22 @@ from app.services.property_manager import property_manager
 from app.services.transit_duration import transit_duration_service
 
 logger = logging.getLogger(__name__)
+
+_HOUSING_INTENT_TYPES = frozenset(
+    {
+        "housing",
+        "housing_search",
+        "find_housing",
+        "rental_search",
+    }
+)
+
+
+def _is_housing_intent(intent_type: str | None) -> bool:
+    if intent_type is None:
+        return False
+    normalized = intent_type.strip().casefold().replace("-", "_").replace(" ", "_")
+    return normalized in _HOUSING_INTENT_TYPES
 
 
 class WorldStateReady:
@@ -75,6 +93,9 @@ class ChatService:
         current_geographic_reality: tuple[float, float] | None = None,
         analysis: ProfileAnalysis | None = None,
         apply_decision_geography: bool = True,
+        current_decision_geography: DecisionGeography | None = None,
+        schedule_housing_discovery: Callable[[Callable[[], None]], object]
+        | None = None,
     ) -> tuple[DecisionChangeCause, ...]:
         """
         从当前会话历史中生成 Profile Analysis，
@@ -119,7 +140,7 @@ class ChatService:
                 analysis.choices,
             )
             if apply_decision_geography:
-                decision_geography_service.apply(
+                current_decision_geography = decision_geography_service.apply(
                     conversation_id,
                     intent_established=analysis.decision_geography.intent_established,
                     intent_type=analysis.decision_geography.intent_type,
@@ -182,6 +203,24 @@ class ChatService:
                 and grounded_profile.lng is not None
                 and grounded_profile.lat is not None
             ):
+                if (
+                    current_decision_geography is not None
+                    and current_decision_geography.intent_established
+                    and _is_housing_intent(
+                        current_decision_geography.intent_type
+                    )
+                    and grounded_profile.commute_minutes is not None
+                ):
+                    discovery_task = lambda: self._discover_housing_candidates(
+                        conversation_id,
+                        grounded_profile.lng,
+                        grounded_profile.lat,
+                        grounded_profile.commute_minutes,
+                    )
+                    if schedule_housing_discovery is None:
+                        discovery_task()
+                    else:
+                        schedule_housing_discovery(discovery_task)
                 for property_ in materialized_choices:
                     current_property = property_manager.get_scoped(
                         property_.id or "",
@@ -283,6 +322,37 @@ class ChatService:
 
             return ()
 
+    @staticmethod
+    def _discover_housing_candidates(
+        conversation_id: str,
+        work_lng: float,
+        work_lat: float,
+        commute_limit_minutes: int,
+    ) -> None:
+        try:
+            discovery = housing_candidate_discovery.discover(
+                conversation_id=conversation_id,
+                work_lng=work_lng,
+                work_lat=work_lat,
+                commute_limit_minutes=commute_limit_minutes,
+                api_key=settings.AMAP_WEB_SERVICE_KEY,
+            )
+            logger.info(
+                "Housing candidate discovery completed "
+                "conversation_id=%s raw_pois=%d residential_pois=%d "
+                "commute_qualified=%d persisted=%d",
+                conversation_id,
+                discovery.raw_poi_count,
+                discovery.residential_poi_count,
+                discovery.commute_qualified_count,
+                len(discovery.properties),
+            )
+        except Exception:
+            logger.exception(
+                "Housing candidate discovery failed conversation_id=%s",
+                conversation_id,
+            )
+
     def chat(
         self,
         conversation_id: str,
@@ -334,9 +404,10 @@ class ChatService:
         signal_future = executor.submit(extract_signal)
 
         world_state_ready = False
+        current_decision_geography: DecisionGeography | None = None
         try:
             signal = signal_future.result()
-            state = decision_geography_service.apply(
+            current_decision_geography = decision_geography_service.apply(
                 conversation_id,
                 intent_established=signal.intent_established,
                 intent_type=signal.intent_type,
@@ -345,7 +416,7 @@ class ChatService:
                 api_key=settings.AMAP_WEB_SERVICE_KEY,
                 current_geographic_reality=current_geographic_reality,
             )
-            world_state_ready = state is not None
+            world_state_ready = current_decision_geography is not None
         except Exception:
             logger.exception(
                 "Early Decision Signal failed conversation_id=%s", conversation_id
@@ -358,6 +429,7 @@ class ChatService:
             profile_future,
             executor,
             world_state_ready,
+            current_decision_geography,
         )
 
     def _complete_stream_turn(
@@ -368,6 +440,7 @@ class ChatService:
         profile_future: Future[ProfileAnalysis],
         executor: ThreadPoolExecutor,
         world_state_ready: bool,
+        current_decision_geography: DecisionGeography | None,
     ) -> Iterator[str | WorldStateReady]:
         try:
             if world_state_ready:
@@ -379,6 +452,8 @@ class ChatService:
                 current_geographic_reality=current_geographic_reality,
                 analysis=analysis,
                 apply_decision_geography=False,
+                current_decision_geography=current_decision_geography,
+                schedule_housing_discovery=executor.submit,
             )
             decision_change_context.set(conversation_id, change_causes)
 
