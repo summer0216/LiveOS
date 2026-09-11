@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.api.ownership import anonymous_user_id, require_conversation_owner
+from app.core.config import settings
 from app.models.profile import LivingProfile
 from app.schemas.profile import (
     LivingProfileResponse,
@@ -53,6 +54,14 @@ async def get_living_profile(
             status_code=404,
             detail="Living profile not found.",
         )
+
+    if profile_manager.needs_work_geographic_resolution(profile):
+        profile_manager.resolve_work_geographic_grounding(
+            conversation_id,
+            context_location=None,
+            api_key=settings.AMAP_WEB_SERVICE_KEY,
+        )
+        profile = profile_manager.get(conversation_id) or profile
 
     return build_profile_response(
         conversation_id=conversation_id,

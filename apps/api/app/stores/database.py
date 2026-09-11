@@ -291,7 +291,6 @@ OWNERSHIP_CONSTRAINT_STATEMENTS = (
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED'",
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION",
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION",
-    "UPDATE living_profiles SET geographic_identity = '深圳市南山区南山科技园', geographic_precision = 'AREA', geographic_status = 'GROUNDED', lng = 113.947, lat = 22.541 WHERE work_location = '南山科技园' AND geographic_status = 'UNRESOLVED'",
     "ALTER TABLE properties ALTER COLUMN conversation_id DROP NOT NULL",
     "ALTER TABLE decision_records ALTER COLUMN conversation_id DROP NOT NULL",
     "ALTER TABLE decision_memories ALTER COLUMN conversation_id DROP NOT NULL",

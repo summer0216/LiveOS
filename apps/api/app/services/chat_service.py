@@ -164,8 +164,7 @@ class ChatService:
             merged_profile = getattr(merge_result, "profile", None)
             if (
                 merged_profile is not None
-                and merged_profile.work_location
-                and merged_profile.geographic_status == GeographicStatus.UNRESOLVED
+                and profile_manager.needs_work_geographic_resolution(merged_profile)
             ):
                 profile_manager.resolve_work_geographic_grounding(
                     conversation_id,

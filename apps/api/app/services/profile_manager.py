@@ -11,6 +11,14 @@ from app.services.geographic_resolution import (
 )
 from app.stores.runtime import profile_store
 
+_LEGACY_NANSHAN_WORK_GROUNDING = (
+    "南山科技园",
+    "深圳市南山区南山科技园",
+    GeographicStatus.GROUNDED,
+    113.947,
+    22.541,
+)
+
 
 class ProfileManager:
     def get_or_create(
@@ -64,6 +72,20 @@ class ProfileManager:
         profile.lng = None
         profile.lat = None
 
+    @staticmethod
+    def needs_work_geographic_resolution(profile: LivingProfile) -> bool:
+        if not profile.work_location:
+            return False
+        if profile.geographic_status == GeographicStatus.UNRESOLVED:
+            return True
+        return (
+            profile.work_location,
+            profile.geographic_identity,
+            profile.geographic_status,
+            profile.lng,
+            profile.lat,
+        ) == _LEGACY_NANSHAN_WORK_GROUNDING
+
     def delete(
         self,
         conversation_id: str,
@@ -80,6 +102,12 @@ class ProfileManager:
         profile = self.get(conversation_id)
         if profile is None or not profile.work_location:
             return GeographicResolutionResult(status="UNRESOLVED")
+
+        if self.needs_work_geographic_resolution(profile) and (
+            profile.geographic_status == GeographicStatus.GROUNDED
+        ):
+            self._clear_work_grounding(profile)
+            profile_store.save(conversation_id, profile)
 
         result = geographic_resolver.resolve(
             profile.work_location,
