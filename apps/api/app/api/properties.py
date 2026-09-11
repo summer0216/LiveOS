@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.core.config import settings
-from app.models.property import Property
+from app.models.property import GeographicStatus, Property
 from app.schemas.property import (
     PropertyCreateRequest,
     PropertyGeographicGroundingUpdate,
@@ -15,6 +15,8 @@ from app.services.candidate_decision_state import project_candidate_decision_sta
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_unknown_service import decision_unknown_service
+from app.services.housing_candidate_discovery import housing_candidate_discovery
+from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 
 router = APIRouter(
@@ -31,6 +33,20 @@ class PropertyAnalyzeRequest(BaseModel):
 class PropertyGeographicResolutionRequest(BaseModel):
     conversation_id: str
     context_location: str | None = None
+
+
+class HousingCandidateDiscoveryRequest(BaseModel):
+    conversation_id: str
+    radius_meters: int = Field(default=8_000, ge=1_000, le=20_000)
+    pages: int = Field(default=2, ge=1, le=3)
+    max_results: int = Field(default=4, ge=1, le=4)
+
+
+class HousingCandidateDiscoveryResponse(BaseModel):
+    raw_poi_count: int
+    residential_poi_count: int
+    commute_qualified_count: int
+    items: list[PropertyResponse]
 
 
 @router.post(
@@ -83,6 +99,48 @@ def list_properties(
             for property_ in properties
             if property_.id is not None
         ],
+    )
+
+
+@router.post(
+    "/discover-housing-candidates",
+    response_model=HousingCandidateDiscoveryResponse,
+)
+def discover_housing_candidates(
+    request: HousingCandidateDiscoveryRequest,
+    raw_request: Request,
+    response: Response,
+) -> HousingCandidateDiscoveryResponse:
+    require_conversation_owner(
+        request.conversation_id, anonymous_user_id(raw_request, response)
+    )
+    profile = profile_manager.get(request.conversation_id)
+    if (
+        profile is None
+        or profile.geographic_status != GeographicStatus.GROUNDED
+        or profile.lng is None
+        or profile.lat is None
+        or profile.commute_minutes is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Grounded Work and a commute constraint are required.",
+        )
+    result = housing_candidate_discovery.discover(
+        conversation_id=request.conversation_id,
+        work_lng=profile.lng,
+        work_lat=profile.lat,
+        commute_limit_minutes=profile.commute_minutes,
+        api_key=settings.AMAP_WEB_SERVICE_KEY,
+        radius_meters=request.radius_meters,
+        pages=request.pages,
+        max_results=request.max_results,
+    )
+    return HousingCandidateDiscoveryResponse(
+        raw_poi_count=result.raw_poi_count,
+        residential_poi_count=result.residential_poi_count,
+        commute_qualified_count=result.commute_qualified_count,
+        items=[PropertyResponse.model_validate(item) for item in result.properties],
     )
 
 
