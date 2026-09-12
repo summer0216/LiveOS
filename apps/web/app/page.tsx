@@ -194,10 +194,11 @@ export default function HomePage() {
           lng: profile.lng,
           lat: profile.lat,
           identity: profile.geographic_identity ?? profile.work_location ?? '',
-          displayIdentity: formatGeographicIdentity(
-            profile.geographic_identity ?? profile.work_location ?? '',
-            profile.geographic_precision,
-          ),
+          displayIdentity: profile.work_location?.trim()
+            || formatGeographicIdentity(
+              profile.geographic_identity ?? '',
+              profile.geographic_precision,
+            ),
         }
       : null,
     [profile],
@@ -346,7 +347,17 @@ export default function HomePage() {
         reorient?.(currentLocation, 12.5);
       }
       await chatCompletion;
-      const completedProperties = await getProperties(currentConversationId);
+      const [completedProfile, completedProperties] = await Promise.all([
+        getLivingProfile(currentConversationId),
+        getProperties(currentConversationId),
+      ]);
+      if (completedProfile) {
+        setProfile(completedProfile);
+        setPhase(completedProfile.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
+        if (completedProfile.geographic_status === 'GROUNDED') {
+          requestAnimationFrame(() => setWorkVisible(true));
+        }
+      }
       setProperties(completedProperties);
       setPendingAction((current) => {
         if (!current) return null;
