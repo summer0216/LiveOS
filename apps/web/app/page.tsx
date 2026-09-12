@@ -44,6 +44,7 @@ export default function HomePage() {
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [projection, setProjection] = useState<GeographicProjection | null>(null);
+  const [geographicGroundReady, setGeographicGroundReady] = useState(false);
   const [phase, setPhase] = useState<ScenePhase>('empty');
   const [workVisible, setWorkVisible] = useState(false);
   const [locationResolution, setLocationResolution] = useState<LocationResolution>('pending');
@@ -142,6 +143,10 @@ export default function HomePage() {
     },
     [],
   );
+
+  const handleGroundReadyChange = useCallback((ready: boolean) => {
+    setGeographicGroundReady(ready);
+  }, []);
 
   const handleCameraReady = useCallback(
     (nextReorient: (center: { lng: number; lat: number }, zoom: number) => void) => {
@@ -405,6 +410,7 @@ export default function HomePage() {
           initialCenter={initialMapCenter}
           initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
           onProjectionReady={handleProjectionReady}
+          onGroundReadyChange={handleGroundReadyChange}
           onCameraReady={handleCameraReady}
           onMapClick={clearChoiceFocus}
         />
@@ -426,7 +432,7 @@ export default function HomePage() {
           从哪里开始？
         </h1>
 
-        {groundedWork && workPosition && (
+        {geographicGroundReady && groundedWork && workPosition && (
           <div
             className={
               'absolute -translate-x-1/2 -translate-y-1/2 text-center transition-opacity delay-300 duration-700 ease-out motion-reduce:delay-0 motion-reduce:transition-none ' +
@@ -466,7 +472,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {groundedChoices.map((property) => {
+        {geographicGroundReady && groundedChoices.map((property) => {
           const position = choicePositions[property.id];
           if (!position) return null;
           const focused = focusedChoiceIds.includes(property.id);
@@ -561,7 +567,7 @@ export default function HomePage() {
           );
         })}
 
-        {tradeoffMeaning && tradeoffPosition && (
+        {geographicGroundReady && tradeoffMeaning && tradeoffPosition && (
           <div
             className="compare-meaning pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 text-center"
             style={{ left: tradeoffPosition.x, top: tradeoffPosition.y }}

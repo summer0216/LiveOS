@@ -72,6 +72,7 @@ interface AMapGroundProps {
   initialZoom?: number;
   presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
+  onGroundReadyChange?: (ready: boolean) => void;
   onCameraReady?: (reorient: (center: { lng: number; lat: number }, zoom: number) => void) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
@@ -112,6 +113,7 @@ export default function AMapGround({
   initialZoom,
   presentation = 'default',
   onProjectionReady,
+  onGroundReadyChange,
   onCameraReady,
   onReturnToLivingWorldReady,
   onUserExploredCameraChange,
@@ -135,6 +137,7 @@ export default function AMapGround({
   }, [fitRequestKey]);
 
   useEffect(() => {
+    onGroundReadyChange?.(false);
     const key = process.env.NEXT_PUBLIC_AMAP_KEY;
     const securityJsCode = process.env.NEXT_PUBLIC_AMAP_SECURITY_CODE;
 
@@ -274,6 +277,7 @@ export default function AMapGround({
             refreshProjection();
             refreshZoom();
             setStatus('ready');
+            onGroundReadyChange?.(true);
             return;
           }
           refreshProjection();
@@ -299,10 +303,12 @@ export default function AMapGround({
       resizeObserver?.disconnect();
       refitForLocationsChangeRef.current = null;
       onReturnToLivingWorldReady?.(null);
+      onGroundReadyChange?.(false);
       map?.destroy();
     };
   }, [
     onProjectionReady,
+    onGroundReadyChange,
     onCameraReady,
     onReturnToLivingWorldReady,
     onUserExploredCameraChange,
