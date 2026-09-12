@@ -7,6 +7,7 @@ from app.models.property import (
     GeographicPrecision,
     GeographicStatus,
     PropertyProvenance,
+    PropertyRentSource,
 )
 from app.schemas.decision_unknown import DecisionUnknownResponse
 
@@ -69,6 +70,7 @@ class PropertyResponse(PropertyFields):
     provenance: PropertyProvenance = PropertyProvenance.USER_PROVIDED
     external_id: str | None = None
     commute_mode: CommuteMode | None = None
+    rent_source: PropertyRentSource | None = None
 
 
 class PropertyListResponse(BaseModel):

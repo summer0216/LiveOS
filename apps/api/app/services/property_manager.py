@@ -100,6 +100,18 @@ class PropertyManager:
             commute_mode,
         )
 
+    def update_confirmed_rent(
+        self,
+        property_id: str,
+        conversation_id: str,
+        rent: int,
+    ) -> Property | None:
+        return property_store.update_confirmed_rent(
+            property_id,
+            conversation_id,
+            rent,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

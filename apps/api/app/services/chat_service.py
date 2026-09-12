@@ -34,6 +34,7 @@ from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
+from app.services.property_reality_service import property_reality_service
 from app.services.transit_duration import transit_duration_service
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,17 @@ class ChatService:
 
         conversation_manager.append_user_message(conversation_id, message)
         logger.info("Chat user message persisted conversation_id=%s", conversation_id)
+        rent_reality = property_reality_service.apply_explicit_rent(
+            conversation_id,
+            message,
+        )
+        logger.info(
+            "Property rent reality conversation_id=%s status=%s property_id=%s rent=%s",
+            conversation_id,
+            rent_reality.status,
+            rent_reality.property.id if rent_reality.property else None,
+            rent_reality.rent,
+        )
         conversation = conversation_manager.get(conversation_id) or conversation
         history = conversation.get_messages()
         logger.warning(

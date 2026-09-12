@@ -97,6 +97,9 @@ SCHEMA_STATEMENTS = (
         title TEXT,
         district TEXT,
         rent INTEGER,
+        rent_source TEXT CHECK (
+            rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY')
+        ),
         area INTEGER,
         bedrooms INTEGER,
         bathrooms INTEGER,
@@ -226,6 +229,9 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT 'USER_PROVIDED'",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_id TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS commute_mode TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_source TEXT",
+    "ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_rent_source_check",
+    "ALTER TABLE properties ADD CONSTRAINT properties_rent_source_check CHECK (rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY'))",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_conversation_provenance_external_id ON properties(conversation_id, provenance, external_id) WHERE external_id IS NOT NULL",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",

@@ -6,6 +6,7 @@ export interface Property {
   title: string | null;
   district: string | null;
   rent: number | null;
+  rent_source: 'USER_CONFIRMED_REALITY' | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -28,6 +29,7 @@ export type PropertyInput = Omit<
   | 'decision_state'
   | 'state_reason'
   | 'commute_mode'
+  | 'rent_source'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'

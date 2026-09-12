@@ -23,6 +23,7 @@ from app.models.property import (
     GeographicStatus,
     Property,
     PropertyProvenance,
+    PropertyRentSource,
 )
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
@@ -423,6 +424,11 @@ class PropertyStore:
             title=row["title"],
             district=row["district"],
             rent=row["rent"],
+            rent_source=(
+                PropertyRentSource(row["rent_source"])
+                if row.get("rent_source") is not None
+                else None
+            ),
             area=row["area"],
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
@@ -467,13 +473,14 @@ class PropertyStore:
             connection.execute(
                 """
                 INSERT INTO properties(
-                    id, owner_id, conversation_id, title, district, rent, area, bedrooms,
+                    id, owner_id, conversation_id, title, district, rent, rent_source,
+                    area, bedrooms,
                     bathrooms, commute_minutes, commute_mode, pet_friendly,
                     geographic_identity,
                     geographic_precision, geographic_status, lng, lat, provenance,
                     external_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -482,6 +489,7 @@ class PropertyStore:
                     property_.title,
                     property_.district,
                     property_.rent,
+                    property_.rent_source.value if property_.rent_source else None,
                     property_.area,
                     property_.bedrooms,
                     property_.bathrooms,
@@ -538,6 +546,36 @@ class PropertyStore:
                     geographic_status.value,
                     lng,
                     lat,
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_confirmed_rent(
+        self,
+        property_id: str,
+        conversation_id: str,
+        rent: int,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET rent = %s, rent_source = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    rent,
+                    PropertyRentSource.USER_CONFIRMED_REALITY.value,
                     now(),
                     property_uuid,
                     owner_id,

@@ -114,6 +114,14 @@ body {
   line-height: 1.45;
 }
 
+.choice-confirmed-rent {
+  color: #0f172a;
+  font-family: var(--font-mono-system);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .choice-reality-action {
   background: transparent;
   border: 0;

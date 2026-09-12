@@ -19,6 +19,10 @@ class PropertyProvenance(str, Enum):
     AMAP_RESIDENTIAL_POI = "AMAP_RESIDENTIAL_POI"
 
 
+class PropertyRentSource(str, Enum):
+    USER_CONFIRMED_REALITY = "USER_CONFIRMED_REALITY"
+
+
 class CommuteMode(str, Enum):
     WALKING = "WALKING"
     PUBLIC_TRANSIT = "PUBLIC_TRANSIT"
@@ -31,6 +35,7 @@ class Property:
     title: str | None = None
     district: str | None = None
     rent: int | None = None
+    rent_source: PropertyRentSource | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

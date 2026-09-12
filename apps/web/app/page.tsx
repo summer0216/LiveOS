@@ -290,6 +290,11 @@ export default function HomePage() {
       }
       setProfile(nextProfile);
       setProperties(nextProperties);
+      setPendingAction((current) => {
+        if (!current) return null;
+        const target = nextProperties.find(({ id }) => id === current.propertyId);
+        return target && typeof target.rent === 'number' ? null : current;
+      });
       setPhase(nextProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
       if (nextProfile?.geographic_status === 'GROUNDED') {
         requestAnimationFrame(() => setWorkVisible(true));
@@ -319,6 +324,13 @@ export default function HomePage() {
         reorient?.(currentLocation, 12.5);
       }
       await chatCompletion;
+      const completedProperties = await getProperties(currentConversationId);
+      setProperties(completedProperties);
+      setPendingAction((current) => {
+        if (!current) return null;
+        const target = completedProperties.find(({ id }) => id === current.propertyId);
+        return target && typeof target.rent === 'number' ? null : current;
+      });
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
       setPhase('empty');
@@ -506,6 +518,11 @@ export default function HomePage() {
                       <span className="choice-unknown mt-2">
                         <span>租金 ?</span>
                         <span>仍需确认</span>
+                      </span>
+                    )}
+                    {singleFocused && typeof property.rent === 'number' && (
+                      <span className="choice-confirmed-rent mt-2">
+                        ¥{property.rent} / 月
                       </span>
                     )}
                   </span>
