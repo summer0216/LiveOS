@@ -50,7 +50,7 @@ export default function HomePage() {
   const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
     DecisionGeography | null | undefined
   >(undefined);
-  const [focusedPropertyId, setFocusedPropertyId] = useState<string | null>(null);
+  const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
 
   useEffect(() => {
     let settled = false;
@@ -145,7 +145,15 @@ export default function HomePage() {
   );
 
   const clearChoiceFocus = useCallback(() => {
-    setFocusedPropertyId(null);
+    setFocusedChoiceIds([]);
+  }, []);
+
+  const focusChoice = useCallback((propertyId: string) => {
+    setFocusedChoiceIds((current) => {
+      if (current.includes(propertyId)) return current;
+      if (current.length < 2) return [...current, propertyId];
+      return [current[1], propertyId];
+    });
   }, []);
 
   const groundedWork = useMemo(
@@ -185,6 +193,25 @@ export default function HomePage() {
       : [],
     [groundedChoices, groundedWork],
   );
+  const focusedChoices = useMemo(
+    () => focusedChoiceIds
+      .map((propertyId) => groundedChoices.find(({ id }) => id === propertyId))
+      .filter((property): property is Property & { lng: number; lat: number } => Boolean(property)),
+    [focusedChoiceIds, groundedChoices],
+  );
+  const dualFocusActive = focusedChoices.length === 2;
+  const worldFitLocations = useMemo(
+    () => groundedWork && dualFocusActive
+      ? [
+          { lng: groundedWork.lng, lat: groundedWork.lat },
+          ...focusedChoices.map(({ lng, lat }) => ({ lng, lat })),
+        ]
+      : housingFitLocations,
+    [dualFocusActive, focusedChoices, groundedWork, housingFitLocations],
+  );
+  const dualFocusFitKey = dualFocusActive
+    ? focusedChoices.map(({ id }) => id).join('|')
+    : undefined;
   const hasHousingDecisionExtent = housingFitLocations.length >= 2;
 
   useEffect(() => {
@@ -309,6 +336,30 @@ export default function HomePage() {
     ),
     [groundedChoices, projection],
   );
+  const tradeoffMeaning = useMemo(() => {
+    if (!dualFocusActive) return null;
+    const [first, second] = focusedChoices;
+    if (
+      typeof first.commute_minutes !== 'number'
+      || typeof second.commute_minutes !== 'number'
+    ) {
+      return null;
+    }
+    const difference = Math.abs(first.commute_minutes - second.commute_minutes);
+    if (difference === 0) return '通勤时间相同';
+    const faster = first.commute_minutes < second.commute_minutes ? first : second;
+    const slower = faster.id === first.id ? second : first;
+    return `${faster.title ?? '一个选择'} 比 ${slower.title ?? '另一个选择'} 少 ${difference} min 通勤`;
+  }, [dualFocusActive, focusedChoices]);
+  const tradeoffPosition = useMemo(() => {
+    if (!dualFocusActive) return null;
+    const positions = focusedChoices.map(({ id }) => choicePositions[id]);
+    if (positions.some((position) => !position)) return null;
+    return {
+      x: (positions[0].x + positions[1].x) / 2,
+      y: (positions[0].y + positions[1].y) / 2 + 88,
+    };
+  }, [choicePositions, dualFocusActive, focusedChoices]);
   const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
   const restoredDecisionCenter = useMemo(
     () => restoredDecisionGeography?.conversation_id === conversationId
@@ -329,7 +380,8 @@ export default function HomePage() {
       {initialMapCenter
         && (restoredDecisionCenter || locationResolution === 'resolved') && (
         <AMapGround
-          fitLocations={housingFitLocations}
+          fitLocations={worldFitLocations}
+          fitRequestKey={dualFocusFitKey}
           initialCenter={initialMapCenter}
           initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
           onProjectionReady={handleProjectionReady}
@@ -363,7 +415,7 @@ export default function HomePage() {
             style={{ left: workPosition.x, top: workPosition.y }}
           >
             <div
-              className={`world-object work-anchor ${focusedPropertyId ? 'world-object-context' : ''}`}
+              className={`world-object work-anchor ${focusedChoiceIds.length > 0 ? 'world-object-context' : ''}`}
               aria-label={[
                 '我的工作',
                 groundedWork.displayIdentity,
@@ -397,8 +449,9 @@ export default function HomePage() {
         {groundedChoices.map((property) => {
           const position = choicePositions[property.id];
           if (!position) return null;
-          const focused = focusedPropertyId === property.id;
-          const receded = focusedPropertyId !== null && !focused;
+          const focused = focusedChoiceIds.includes(property.id);
+          const focusedOrder = focusedChoiceIds.indexOf(property.id);
+          const receded = focusedChoiceIds.length > 0 && !focused;
           const commuteMode = property.commute_mode === 'WALKING'
             ? '步行'
             : property.commute_mode === 'PUBLIC_TRANSIT'
@@ -417,26 +470,58 @@ export default function HomePage() {
                 aria-pressed={focused}
                 onClick={(event) => {
                   event.stopPropagation();
-                  setFocusedPropertyId(property.id);
+                  focusChoice(property.id);
                 }}
               >
-                <span className="object-mark">{focused ? '◉' : '●'}</span>
-                {focused && (
-                  <span className="object-kicker mt-2">可能的家</span>
-                )}
-                <span className="object-name mt-2">
-                  {property.title ?? '未命名选择'}
+                <span className="object-mark">
+                  {focused ? '◉' : dualFocusActive ? '○' : '●'}
                 </span>
-                {typeof property.commute_minutes === 'number' && (
-                  <span className="mt-1 font-mono text-[10px] font-medium tracking-[0.08em] text-slate-700">
-                    {focused ? '到工作地点 ' : ''}{property.commute_minutes} min
-                    {focused && commuteMode ? ` · ${commuteMode}` : ''}
+                {focused ? (
+                  <span
+                    className={`choice-focus-copy ${dualFocusActive ? (focusedOrder === 0 ? 'choice-focus-copy-left' : 'choice-focus-copy-right') : 'choice-focus-copy-single'}`}
+                  >
+                    <span className="object-kicker">可能的家</span>
+                    <span className="object-name mt-2">
+                      {property.title ?? '未命名选择'}
+                    </span>
+                    {typeof property.commute_minutes === 'number' && (
+                      <span className="mt-1 font-mono text-[10px] font-medium tracking-[0.08em] text-slate-700">
+                        到工作地点 {property.commute_minutes} min
+                        {commuteMode ? ` · ${commuteMode}` : ''}
+                      </span>
+                    )}
                   </span>
+                ) : (
+                  <>
+                    <span className="object-name mt-2">
+                      {property.title ?? '未命名选择'}
+                    </span>
+                    {typeof property.commute_minutes === 'number' && (
+                      <span className="mt-1 font-mono text-[10px] font-medium tracking-[0.08em] text-slate-700">
+                        {property.commute_minutes} min
+                      </span>
+                    )}
+                  </>
                 )}
               </button>
             </div>
           );
         })}
+
+        {tradeoffMeaning && tradeoffPosition && (
+          <div
+            className="compare-meaning pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 text-center"
+            style={{ left: tradeoffPosition.x, top: tradeoffPosition.y }}
+            aria-label={`比较结果：${tradeoffMeaning}`}
+          >
+            <div className="font-mono text-[11px] font-medium tracking-[0.18em] text-slate-600">
+              {(focusedChoices[0].title ?? 'Choice A')} ↔ {(focusedChoices[1].title ?? 'Choice B')}
+            </div>
+            <div className="mt-2 text-[16px] font-semibold tracking-[0.02em] text-slate-900">
+              {tradeoffMeaning}
+            </div>
+          </div>
+        )}
       </section>
       <div className="absolute inset-x-0 bottom-0 z-20 px-5 pb-5 sm:px-10 sm:pb-8">
         <div className="mx-auto max-w-3xl">

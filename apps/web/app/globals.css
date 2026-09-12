@@ -67,14 +67,40 @@ body {
 }
 
 .choice-object-focused {
+  align-items: center;
   color: #0f172a;
+  position: relative;
   text-shadow:
     0 0 5px rgb(255 255 255 / 0.96),
     0 0 12px rgb(255 255 255 / 0.9);
 }
 
-.choice-object-focused .object-kicker {
-  margin-top: 1rem;
+.choice-focus-copy {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 18px;
+  width: 190px;
+}
+
+.choice-focus-copy-left {
+  align-items: flex-end;
+  right: calc(50% + 18px);
+  text-align: right;
+}
+
+.choice-focus-copy-right {
+  align-items: flex-start;
+  left: calc(50% + 18px);
+  text-align: left;
+}
+
+.choice-focus-copy-single {
+  align-items: center;
+  left: 50%;
+  text-align: center;
+  top: 40px;
+  transform: translateX(-50%);
 }
 
 .choice-object-quiet {

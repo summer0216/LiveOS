@@ -67,6 +67,7 @@ export interface GeographicProjection {
 
 interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
+  fitRequestKey?: string;
   initialCenter?: { lng: number; lat: number };
   initialZoom?: number;
   presentation?: 'default' | 'quiet' | 'active';
@@ -106,6 +107,7 @@ function loadAMap(key: string, securityJsCode: string) {
 
 export default function AMapGround({
   fitLocations = [],
+  fitRequestKey,
   initialCenter,
   initialZoom,
   presentation = 'default',
@@ -118,7 +120,7 @@ export default function AMapGround({
 }: AMapGroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitLocationsRef = useRef(fitLocations);
-  const refitForLocationsChangeRef = useRef<(() => void) | null>(null);
+  const refitForLocationsChangeRef = useRef<((force?: boolean) => void) | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing-config' | 'error'>(
     'loading',
   );
@@ -127,6 +129,10 @@ export default function AMapGround({
     fitLocationsRef.current = fitLocations;
     refitForLocationsChangeRef.current?.();
   }, [fitLocations]);
+
+  useEffect(() => {
+    if (fitRequestKey) refitForLocationsChangeRef.current?.(true);
+  }, [fitRequestKey]);
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_AMAP_KEY;
@@ -231,8 +237,14 @@ export default function AMapGround({
           fitGroundedLocations(true);
         };
         onReturnToLivingWorldReady?.(returnToLivingWorld);
-        refitForLocationsChangeRef.current = () => {
+        refitForLocationsChangeRef.current = (force = false) => {
           refreshProjection();
+          if (force) {
+            userExploredCamera = false;
+            onUserExploredCameraChange?.(false);
+            fitGroundedLocations(true);
+            return;
+          }
           if (!userExploredCamera) fitGroundedLocations();
         };
 
