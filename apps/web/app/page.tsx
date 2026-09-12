@@ -24,6 +24,23 @@ type PendingAction = {
   status: 'PENDING';
 };
 
+type BudgetMeaning = '预算内' | '超预算' | null;
+
+function deriveBudgetMeaning(
+  budget: number | null | undefined,
+  property: Pick<Property, 'rent' | 'rent_source'>,
+): BudgetMeaning {
+  if (
+    typeof budget !== 'number'
+    || typeof property.rent !== 'number'
+    || property.rent_source !== 'USER_CONFIRMED_REALITY'
+  ) {
+    return null;
+  }
+
+  return property.rent <= budget ? '预算内' : '超预算';
+}
+
 function formatGeographicIdentity(
   identity: string,
   precision: LivingProfile['geographic_precision'],
@@ -482,6 +499,8 @@ export default function HomePage() {
             && pendingAction.type === 'CONFIRM_RENT'
             && pendingAction.status === 'PENDING';
           const receded = focusedChoiceIds.length > 0 && !focused;
+          const budgetMeaning = deriveBudgetMeaning(profile?.budget, property);
+          const confirmedWithinBudget = budgetMeaning === '预算内';
           const commuteMode = property.commute_mode === 'WALKING'
             ? '步行'
             : property.commute_mode === 'PUBLIC_TRANSIT'
@@ -495,8 +514,11 @@ export default function HomePage() {
             >
               <button
                 type="button"
-                className={`world-object choice-object pointer-events-auto appearance-none border-0 bg-transparent p-0 text-center focus:outline-none ${focused ? 'choice-object-focused' : ''} ${receded ? 'world-object-receded' : ''}`}
-                aria-label={`聚焦 ${property.title ?? '未命名选择'}`}
+                className={`world-object choice-object pointer-events-auto appearance-none border-0 bg-transparent p-0 text-center focus:outline-none ${focused ? 'choice-object-focused' : ''} ${confirmedWithinBudget ? 'choice-object-confirmed-viable' : ''} ${receded ? 'world-object-receded' : ''}`}
+                aria-label={[
+                  `聚焦 ${property.title ?? '未命名选择'}`,
+                  budgetMeaning,
+                ].filter(Boolean).join('，')}
                 aria-pressed={focused}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -527,8 +549,15 @@ export default function HomePage() {
                       </span>
                     )}
                     {singleFocused && typeof property.rent === 'number' && (
-                      <span className="choice-confirmed-rent mt-2">
-                        ¥{property.rent} / 月
+                      <span className="choice-confirmed-reality mt-2">
+                        <span className="choice-confirmed-rent">
+                          ¥{property.rent} / 月
+                        </span>
+                        {budgetMeaning && (
+                          <span className={`choice-budget-meaning ${budgetMeaning === '超预算' ? 'choice-budget-meaning-over' : ''}`}>
+                            {budgetMeaning}
+                          </span>
+                        )}
                       </span>
                     )}
                   </span>

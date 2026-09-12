@@ -75,6 +75,17 @@ body {
     0 0 12px rgb(255 255 255 / 0.9);
 }
 
+.choice-object-confirmed-viable:not(.choice-object-focused) {
+  color: #172554;
+  text-shadow:
+    0 0 4px rgb(255 255 255 / 0.9),
+    0 0 9px rgb(255 255 255 / 0.72);
+}
+
+.choice-object-confirmed-viable:not(.choice-object-focused) .object-mark {
+  font-weight: 700;
+}
+
 .choice-focus-copy {
   display: flex;
   flex-direction: column;
@@ -120,6 +131,25 @@ body {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+.choice-confirmed-reality {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choice-budget-meaning {
+  color: #365314;
+  font-family: var(--font-mono-system);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.choice-budget-meaning-over {
+  color: #92400e;
 }
 
 .choice-reality-action {
