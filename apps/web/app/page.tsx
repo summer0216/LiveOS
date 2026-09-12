@@ -50,6 +50,7 @@ export default function HomePage() {
   const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
     DecisionGeography | null | undefined
   >(undefined);
+  const [focusedPropertyId, setFocusedPropertyId] = useState<string | null>(null);
 
   useEffect(() => {
     let settled = false;
@@ -142,6 +143,10 @@ export default function HomePage() {
     },
     [],
   );
+
+  const clearChoiceFocus = useCallback(() => {
+    setFocusedPropertyId(null);
+  }, []);
 
   const groundedWork = useMemo(
     () => profile?.geographic_status === 'GROUNDED'
@@ -329,6 +334,7 @@ export default function HomePage() {
           initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
           onProjectionReady={handleProjectionReady}
           onCameraReady={handleCameraReady}
+          onMapClick={clearChoiceFocus}
         />
       )}
       <section
@@ -357,7 +363,7 @@ export default function HomePage() {
             style={{ left: workPosition.x, top: workPosition.y }}
           >
             <div
-              className="world-object work-anchor"
+              className={`world-object work-anchor ${focusedPropertyId ? 'world-object-context' : ''}`}
               aria-label={[
                 '我的工作',
                 groundedWork.displayIdentity,
@@ -391,26 +397,43 @@ export default function HomePage() {
         {groundedChoices.map((property) => {
           const position = choicePositions[property.id];
           if (!position) return null;
+          const focused = focusedPropertyId === property.id;
+          const receded = focusedPropertyId !== null && !focused;
+          const commuteMode = property.commute_mode === 'WALKING'
+            ? '步行'
+            : property.commute_mode === 'PUBLIC_TRANSIT'
+              ? '公共交通'
+              : null;
           return (
             <div
               key={property.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
+              className={`absolute -translate-x-1/2 -translate-y-1/2 text-center ${focused ? 'z-20' : 'z-10'}`}
               style={{ left: position.x, top: position.y }}
             >
-              <div
-                className="world-object choice-object"
-                aria-label={property.title ?? '未命名选择'}
+              <button
+                type="button"
+                className={`world-object choice-object pointer-events-auto appearance-none border-0 bg-transparent p-0 text-center focus:outline-none ${focused ? 'choice-object-focused' : ''} ${receded ? 'world-object-receded' : ''}`}
+                aria-label={`聚焦 ${property.title ?? '未命名选择'}`}
+                aria-pressed={focused}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setFocusedPropertyId(property.id);
+                }}
               >
-                <span className="object-mark">●</span>
+                <span className="object-mark">{focused ? '◉' : '●'}</span>
+                {focused && (
+                  <span className="object-kicker mt-2">可能的家</span>
+                )}
                 <span className="object-name mt-2">
                   {property.title ?? '未命名选择'}
                 </span>
                 {typeof property.commute_minutes === 'number' && (
                   <span className="mt-1 font-mono text-[10px] font-medium tracking-[0.08em] text-slate-700">
-                    {property.commute_minutes} min
+                    {focused ? '到工作地点 ' : ''}{property.commute_minutes} min
+                    {focused && commuteMode ? ` · ${commuteMode}` : ''}
                   </span>
                 )}
-              </div>
+              </button>
             </div>
           );
         })}

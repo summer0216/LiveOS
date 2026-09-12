@@ -9,6 +9,7 @@ type AMapInstance = {
   on: (
     event:
       | 'complete'
+      | 'click'
       | 'dragstart'
       | 'zoomstart'
       | 'zoomchange'
@@ -74,6 +75,7 @@ interface AMapGroundProps {
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
   onZoomChange?: (zoom: number) => void;
+  onMapClick?: () => void;
 }
 
 const CAMERA_PADDING: readonly [number, number, number, number] = [
@@ -112,6 +114,7 @@ export default function AMapGround({
   onReturnToLivingWorldReady,
   onUserExploredCameraChange,
   onZoomChange,
+  onMapClick,
 }: AMapGroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitLocationsRef = useRef(fitLocations);
@@ -241,6 +244,7 @@ export default function AMapGround({
         };
         mapInstance.on('dragstart', markUserExploredCamera);
         mapInstance.on('zoomstart', markUserExploredCamera);
+        if (onMapClick) mapInstance.on('click', onMapClick);
         mapInstance.on('zoomchange', () => {
           refreshProjection();
           refreshZoom();
@@ -291,6 +295,7 @@ export default function AMapGround({
     onReturnToLivingWorldReady,
     onUserExploredCameraChange,
     onZoomChange,
+    onMapClick,
     initialCenter,
     initialZoom,
   ]);

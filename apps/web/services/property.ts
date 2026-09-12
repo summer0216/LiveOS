@@ -10,6 +10,7 @@ export interface Property {
   bedrooms: number | null;
   bathrooms: number | null;
   commute_minutes: number | null;
+  commute_mode: 'WALKING' | 'PUBLIC_TRANSIT' | null;
   pet_friendly: boolean | null;
   decision_state: 'ACTIVE' | 'WEAKENED' | 'REJECTED';
   state_reason: string | null;
@@ -26,6 +27,7 @@ export type PropertyInput = Omit<
   | 'conversation_id'
   | 'decision_state'
   | 'state_reason'
+  | 'commute_mode'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'

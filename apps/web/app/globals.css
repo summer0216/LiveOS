@@ -66,6 +66,17 @@ body {
   gap: 0;
 }
 
+.choice-object-focused {
+  color: #0f172a;
+  text-shadow:
+    0 0 5px rgb(255 255 255 / 0.96),
+    0 0 12px rgb(255 255 255 / 0.9);
+}
+
+.choice-object-focused .object-kicker {
+  margin-top: 1rem;
+}
+
 .choice-object-quiet {
   color: #64748b;
 }
