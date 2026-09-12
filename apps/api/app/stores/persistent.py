@@ -617,9 +617,19 @@ class PropertyStore:
 
     def list(self, conversation_id: str) -> list[Property]:
         owner_id = resolve_owner_id(self._database, conversation_id)
-        if owner_id is None:
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
             return []
-        return self.list_by_owner(owner_id)
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM properties
+                WHERE owner_id = %s AND conversation_id = %s
+                ORDER BY created_at
+                """,
+                (owner_id, conversation_uuid),
+            ).fetchall()
+        return [self._from(row) for row in rows]
 
     def list_by_owner(self, owner_id: str | UUID) -> list[Property]:
         owner_uuid = optional_uuid(owner_id)

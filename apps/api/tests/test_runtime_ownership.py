@@ -26,7 +26,7 @@ def database_url_for_schema(url: str, schema: str) -> str:
     return urlunsplit(parts._replace(query=urlencode(query)))
 
 
-def test_same_owner_shares_runtime_data_but_not_messages() -> None:
+def test_same_owner_shares_owner_runtime_but_properties_stay_conversation_scoped() -> None:
     database = Database(settings.DATABASE_URL)
     owner_id = str(uuid4())
     other_owner_id = str(uuid4())
@@ -75,7 +75,9 @@ def test_same_owner_shares_runtime_data_but_not_messages() -> None:
     )
 
     assert profiles.get(conversation_b) == profiles.get(conversation_a)
-    assert [item.id for item in properties.list(conversation_b)] == [property_.id]
+    assert [item.id for item in properties.list(conversation_a)] == [property_.id]
+    assert properties.list(conversation_b) == []
+    assert [item.id for item in properties.list_by_owner(owner_id)] == [property_.id]
     assert [item.id for item in records.list_by_conversation(conversation_b)] == [
         record.id
     ]
