@@ -18,6 +18,11 @@ import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
 type LocationResolution = 'pending' | 'resolved' | 'unknown';
+type PendingAction = {
+  propertyId: string;
+  type: 'CONFIRM_RENT';
+  status: 'PENDING';
+};
 
 function formatGeographicIdentity(
   identity: string,
@@ -51,6 +56,7 @@ export default function HomePage() {
     DecisionGeography | null | undefined
   >(undefined);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     let settled = false;
@@ -146,9 +152,11 @@ export default function HomePage() {
 
   const clearChoiceFocus = useCallback(() => {
     setFocusedChoiceIds([]);
+    setPendingAction(null);
   }, []);
 
   const focusChoice = useCallback((propertyId: string) => {
+    setPendingAction((current) => current?.propertyId === propertyId ? current : null);
     setFocusedChoiceIds((current) => {
       if (current.includes(propertyId)) return current;
       if (current.length < 2) return [...current, propertyId];
@@ -451,6 +459,10 @@ export default function HomePage() {
           if (!position) return null;
           const focused = focusedChoiceIds.includes(property.id);
           const focusedOrder = focusedChoiceIds.indexOf(property.id);
+          const singleFocused = focused && !dualFocusActive;
+          const rentActionPending = pendingAction?.propertyId === property.id
+            && pendingAction.type === 'CONFIRM_RENT'
+            && pendingAction.status === 'PENDING';
           const receded = focusedChoiceIds.length > 0 && !focused;
           const commuteMode = property.commute_mode === 'WALKING'
             ? '步行'
@@ -490,6 +502,12 @@ export default function HomePage() {
                         {commuteMode ? ` · ${commuteMode}` : ''}
                       </span>
                     )}
+                    {singleFocused && property.rent === null && (
+                      <span className="choice-unknown mt-2">
+                        <span>租金 ?</span>
+                        <span>仍需确认</span>
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <>
@@ -504,6 +522,24 @@ export default function HomePage() {
                   </>
                 )}
               </button>
+              {singleFocused && property.rent === null && (
+                <button
+                  type="button"
+                  className={`choice-reality-action pointer-events-auto ${rentActionPending ? 'choice-reality-action-pending' : ''}`}
+                  aria-label={rentActionPending ? '待确认租金' : '确认租金'}
+                  aria-pressed={rentActionPending}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPendingAction({
+                      propertyId: property.id,
+                      type: 'CONFIRM_RENT',
+                      status: 'PENDING',
+                    });
+                  }}
+                >
+                  {rentActionPending ? '→ 确认租金' : '确认租金 →'}
+                </button>
+              )}
             </div>
           );
         })}

@@ -103,6 +103,40 @@ body {
   transform: translateX(-50%);
 }
 
+.choice-unknown {
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono-system);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+}
+
+.choice-reality-action {
+  background: transparent;
+  border: 0;
+  color: #475569;
+  font-family: var(--font-mono-system);
+  font-size: 11px;
+  font-weight: 600;
+  left: 50%;
+  letter-spacing: 0.08em;
+  position: absolute;
+  text-shadow:
+    0 0 5px rgb(255 255 255 / 0.96),
+    0 0 12px rgb(255 255 255 / 0.9);
+  top: 150px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.choice-reality-action-pending {
+  color: #0f172a;
+  font-weight: 700;
+}
+
 .choice-object-quiet {
   color: #64748b;
 }
