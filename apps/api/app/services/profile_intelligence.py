@@ -80,6 +80,7 @@ class ProfileIntelligence:
         data = self._parse_json(json_text)
 
         patch = self._build_patch(data)
+        patch = self._protect_explicit_work_location(patch, latest_user_message)
         patch = self._protect_explicit_clears(patch, latest_user_message)
         insights = self._build_insights(data)
         decision_feedback = self._build_decision_feedback(data)
@@ -670,6 +671,31 @@ class ProfileIntelligence:
             return patch
 
         return replace(patch, clear_fields=frozenset())
+
+    @staticmethod
+    def _protect_explicit_work_location(
+        patch: LivingProfilePatch,
+        latest_user_message: str,
+    ) -> LivingProfilePatch:
+        if patch.work_location is not None:
+            return patch
+
+        role_first = re.search(
+            r"(?:我的)?(?:公司|工作地点|上班地点|办公地点|工作)"
+            r"(?:在|是|位于)\s*([^，。！？,.!?]{2,40})",
+            latest_user_message,
+        )
+        first_person = re.search(
+            r"(?:^|[，。！？,.!?])我在\s*([^，。！？,.!?]{2,40}?)"
+            r"\s*(?:工作|上班)(?:[，。！？,.!?]|$)",
+            latest_user_message,
+        )
+        match = role_first or first_person
+        if match is None:
+            return patch
+
+        work_location = match.group(1).strip()
+        return replace(patch, work_location=work_location) if work_location else patch
 
     @staticmethod
     def _protect_commute_preference(

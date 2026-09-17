@@ -565,10 +565,70 @@ def test_local_area_fallback_grounds_decision_geography_in_current_city(monkeypa
         current_geographic_reality=(104.0668, 30.5728),
     )
 
-    assert fallback_calls == [("高新南", "成都市")]
+    assert fallback_calls == [("高新南", None), ("高新南", "成都市")]
     assert state is not None
     assert state.status == GeographicStatus.GROUNDED.value
     assert (state.lng, state.lat) == (104.065546, 30.592078)
+
+
+def test_unique_global_local_identity_precedes_current_reality_context(
+    monkeypatch,
+) -> None:
+    local_calls: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve",
+        lambda *_args: GeographicResolutionResult(
+            status="UNRESOLVED",
+            ambiguous=True,
+        ),
+    )
+
+    def resolve_local_area(title: str, context: str | None, _api_key: str):
+        local_calls.append((title, context))
+        assert context is None
+        return GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="北京市中关村",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="LOCAL",
+            lng=116.321669,
+            lat=39.985266,
+        )
+
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_local_area",
+        resolve_local_area,
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Current Reality must not override a unique global identity")
+        ),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "save",
+        lambda _conversation_id, state: state,
+    )
+
+    state = decision_geography_module.decision_geography_service.apply(
+        "conversation-id",
+        intent_established=True,
+        intent_type="work_location",
+        identity="中关村",
+        identity_source="USER",
+        api_key="server-key",
+        current_geographic_reality=(104.0668, 30.5728),
+    )
+
+    assert local_calls == [("中关村", None)]
+    assert state is not None
+    assert state.status == GeographicStatus.GROUNDED.value
+    assert state.identity == "中关村"
+    assert (state.lng, state.lat) == (116.321669, 39.985266)
 
 
 def test_local_relation_suffix_is_removed_before_resolution(monkeypatch) -> None:
@@ -704,7 +764,9 @@ def test_ambiguous_city_scoped_local_identity_stays_unresolved(monkeypatch) -> N
     assert state.status == GeographicStatus.UNRESOLVED.value
 
 
-def test_local_identity_without_current_reality_stays_unresolved(monkeypatch) -> None:
+def test_unique_global_local_identity_without_current_reality_is_grounded(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         decision_geography_module.geographic_resolver,
         "resolve",
@@ -737,7 +799,8 @@ def test_local_identity_without_current_reality_stays_unresolved(monkeypatch) ->
     )
 
     assert state is not None
-    assert state.status == GeographicStatus.UNRESOLVED.value
+    assert state.status == GeographicStatus.GROUNDED.value
+    assert (state.lng, state.lat) == (104.078293, 30.65744)
 
 
 def test_current_city_context_is_reused_for_unchanged_coordinates(monkeypatch) -> None:
@@ -761,12 +824,16 @@ def test_current_city_context_is_reused_for_unchanged_coordinates(monkeypatch) -
     monkeypatch.setattr(
         decision_geography_module.geographic_resolver,
         "resolve_local_area",
-        lambda *_args: GeographicResolutionResult(
-            status="GROUNDED",
-            geographic_identity="成都市春熙路",
-            geographic_precision=GeographicPrecision.STREET,
-            lng=104.078293,
-            lat=30.65744,
+        lambda _title, context, _api_key: (
+            GeographicResolutionResult(status="UNRESOLVED")
+            if context is None
+            else GeographicResolutionResult(
+                status="GROUNDED",
+                geographic_identity="成都市春熙路",
+                geographic_precision=GeographicPrecision.STREET,
+                lng=104.078293,
+                lat=30.65744,
+            )
         ),
     )
     monkeypatch.setattr(

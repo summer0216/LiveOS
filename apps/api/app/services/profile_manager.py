@@ -114,6 +114,12 @@ class ProfileManager:
             context_location,
             api_key,
         )
+        if result.status != "GROUNDED" and context_location:
+            result = geographic_resolver.resolve_local_area(
+                profile.work_location,
+                context_location,
+                api_key,
+            )
         if result.status != "GROUNDED":
             return result
 

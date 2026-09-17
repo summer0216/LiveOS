@@ -65,6 +65,12 @@ class GeographicResolver:
         city = component.get("city")
         if isinstance(city, str) and city.strip():
             return city.strip()
+        province = component.get("province")
+        if (
+            isinstance(province, str)
+            and province.strip().removesuffix("市") in _MUNICIPALITIES
+        ):
+            return province.strip()
         return None
 
     def resolve(
@@ -178,14 +184,29 @@ class GeographicResolver:
         if not candidates:
             return GeographicResolutionResult(status="UNRESOLVED")
 
-        ranked = sorted(
-            ((_poi_match_score(title, candidate), candidate) for candidate in candidates),
-            key=lambda item: item[0],
-            reverse=True,
-        )
-        best_score, best = ranked[0]
-        if len(ranked) > 1 and ranked[1][0] == best_score:
+        normalized_title = _normalize_location_text(title)
+        exact_name_matches = [
+            candidate
+            for candidate in candidates
+            if _normalize_location_text(str(candidate.get("name") or ""))
+            == normalized_title
+        ]
+        if len(exact_name_matches) > 1:
             return GeographicResolutionResult(status="UNRESOLVED", ambiguous=True)
+        if exact_name_matches:
+            best = exact_name_matches[0]
+        else:
+            ranked = sorted(
+                (
+                    (_poi_match_score(title, candidate), candidate)
+                    for candidate in candidates
+                ),
+                key=lambda item: item[0],
+                reverse=True,
+            )
+            best_score, best = ranked[0]
+            if len(ranked) > 1 and ranked[1][0] == best_score:
+                return GeographicResolutionResult(status="UNRESOLVED", ambiguous=True)
 
         location = str(best.get("location") or "").split(",")
         if len(location) != 2:

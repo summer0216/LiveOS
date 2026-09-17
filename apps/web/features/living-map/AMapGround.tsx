@@ -153,6 +153,8 @@ export default function AMapGround({
     let map: AMapInstance | null = null;
     let refitOnResize: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let groundReadyFrame: number | null = null;
+    let groundPaintFrame: number | null = null;
     let userExploredCamera = false;
     let programmaticCameraUpdateUntil = 0;
     const mapInitialCenter = initialCenterRef.current;
@@ -281,7 +283,11 @@ export default function AMapGround({
             refreshProjection();
             refreshZoom();
             setStatus('ready');
-            onGroundReadyChange?.(true);
+            groundReadyFrame = window.requestAnimationFrame(() => {
+              groundPaintFrame = window.requestAnimationFrame(() => {
+                if (active) onGroundReadyChange?.(true);
+              });
+            });
             return;
           }
           refreshProjection();
@@ -304,6 +310,8 @@ export default function AMapGround({
     return () => {
       active = false;
       if (refitOnResize) window.removeEventListener('resize', refitOnResize);
+      if (groundReadyFrame !== null) window.cancelAnimationFrame(groundReadyFrame);
+      if (groundPaintFrame !== null) window.cancelAnimationFrame(groundPaintFrame);
       resizeObserver?.disconnect();
       refitForLocationsChangeRef.current = null;
       onReturnToLivingWorldReady?.(null);

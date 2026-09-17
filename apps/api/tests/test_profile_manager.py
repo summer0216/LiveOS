@@ -174,3 +174,42 @@ def test_verified_non_legacy_work_grounding_does_not_need_resolution() -> None:
     )
 
     assert profile_manager.needs_work_geographic_resolution(profile) is False
+
+
+def test_work_grounding_uses_existing_local_area_resolution(
+    monkeypatch,
+) -> None:
+    conversation_id = uuid_for("profile-manager-local-work-grounding")
+    profile_manager.get_or_create(conversation_id)
+    profile_store.save(
+        conversation_id,
+        LivingProfile(work_location="中关村"),
+    )
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve",
+        lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve_local_area",
+        lambda *_args: GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="北京市中关村",
+            geographic_precision=GeographicPrecision.AREA,
+            lng=116.321669,
+            lat=39.985266,
+        ),
+    )
+
+    result = profile_manager.resolve_work_geographic_grounding(
+        conversation_id,
+        context_location="北京市",
+        api_key="server-key",
+    )
+    profile = profile_manager.get(conversation_id)
+
+    assert result.status == "GROUNDED"
+    assert profile is not None
+    assert profile.work_location == "中关村"
+    assert profile.geographic_identity == "北京市中关村"
+    assert profile.geographic_status == GeographicStatus.GROUNDED
+    assert (profile.lng, profile.lat) == (116.321669, 39.985266)

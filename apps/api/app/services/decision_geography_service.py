@@ -96,26 +96,31 @@ class DecisionGeographyService:
         ):
             result = direct_result
         else:
-            active_geography = self.get(conversation_id)
-            active_location = (
-                (active_geography.lng, active_geography.lat)
-                if active_geography is not None
-                and active_geography.status == GeographicStatus.GROUNDED.value
-                and active_geography.lng is not None
-                and active_geography.lat is not None
-                else None
+            active_geography: DecisionGeography | None = None
+            context_source: tuple[float, float] | None = None
+            global_local_result = geographic_resolver.resolve_local_area(
+                normalized_identity,
+                None,
+                api_key,
             )
-            context_source = active_location or current_geographic_reality
-            if context_source is None:
-                result = direct_result
-                direct_local_result = geographic_resolver.resolve_local_area(
-                    normalized_identity, None, api_key
-                )
-                if identity_explicitly_names_city(
-                    normalized_identity, direct_local_result
-                ):
-                    result = direct_local_result
+            if global_local_result.status == GeographicStatus.GROUNDED.value:
+                result = global_local_result
             else:
+                result = direct_result
+                active_geography = self.get(conversation_id)
+                active_location = (
+                    (active_geography.lng, active_geography.lat)
+                    if active_geography is not None
+                    and active_geography.status == GeographicStatus.GROUNDED.value
+                    and active_geography.lng is not None
+                    and active_geography.lat is not None
+                    else None
+                )
+                context_source = active_location or current_geographic_reality
+            if (
+                global_local_result.status != GeographicStatus.GROUNDED.value
+                and context_source is not None
+            ):
                 context_location = self._current_city_context(
                     context_source,
                     api_key,
@@ -146,7 +151,8 @@ class DecisionGeographyService:
                     )
             if (
                 result.status != GeographicStatus.GROUNDED.value
-                and active_location is not None
+                and context_source is not None
+                and active_geography is not None
             ):
                 logger.info(
                     "Decision geography unresolved conversation_id=%s "

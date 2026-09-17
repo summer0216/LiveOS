@@ -356,6 +356,35 @@ def test_local_area_rejects_fragment_only_identity_match(monkeypatch) -> None:
     assert result.status == "UNRESOLVED"
 
 
+def test_city_context_uses_municipality_province_when_city_is_empty(
+    monkeypatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "regeocode": {
+                    "addressComponent": {
+                        "province": "北京市",
+                        "city": [],
+                    }
+                },
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve_city_context(
+        116.407387,
+        39.904179,
+        "server-key",
+    )
+
+    assert result == "北京市"
+
+
 @pytest.mark.parametrize(
     ("identity", "formatted_address", "location"),
     [
@@ -492,6 +521,47 @@ def test_local_area_fallback_resolves_one_canonical_city_scoped_candidate(
     assert result.geographic_identity == "成都市成都高新技术产业开发区(南区)"
     assert result.geographic_precision == GeographicPrecision.AREA
     assert (result.lng, result.lat) == (104.065546, 30.592078)
+
+
+def test_local_area_prefers_one_exact_identity_over_related_roads(
+    monkeypatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "pois": [
+                    {
+                        "name": "中关村",
+                        "type": "地名地址信息;热点地名;热点地名",
+                        "cityname": "北京市",
+                        "location": "116.321669,39.985266",
+                    },
+                    {
+                        "name": "中关村大街",
+                        "type": "地名地址信息;交通地名;道路名",
+                        "cityname": "北京市",
+                        "location": "116.316549,39.982501",
+                    },
+                    {
+                        "name": "中关村南路",
+                        "type": "地名地址信息;交通地名;道路名",
+                        "cityname": "北京市",
+                        "location": "116.324460,39.981050",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve_local_area("中关村", "北京市", "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "北京市中关村"
+    assert (result.lng, result.lat) == (116.321669, 39.985266)
 
 
 def test_local_area_fallback_rejects_ambiguous_local_identity(monkeypatch) -> None:

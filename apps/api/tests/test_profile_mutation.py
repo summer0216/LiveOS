@@ -61,6 +61,36 @@ def test_profile_intelligence_extracts_set_and_correction() -> None:
     assert correction.patch.clear_fields == frozenset()
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("工作在中关村", "中关村"),
+        ("公司在中关村", "中关村"),
+        ("工作地点是中关村", "中关村"),
+        ("我在中关村上班", "中关村"),
+    ],
+)
+def test_explicit_work_role_recovers_omitted_work_location(
+    message: str,
+    expected: str,
+) -> None:
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(),
+        message,
+    )
+
+    assert analysis.patch.work_location == expected
+
+
+def test_future_work_intent_does_not_become_work_reality() -> None:
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(),
+        "我想去北京工作",
+    )
+
+    assert analysis.patch.work_location is None
+
+
 def test_profile_intelligence_distinguishes_clear_from_no_change() -> None:
     cleared = profile_intelligence._build_analysis(
         analysis_json(clear_fields=["budget"]),

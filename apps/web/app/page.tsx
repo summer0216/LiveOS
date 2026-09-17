@@ -66,6 +66,14 @@ function decisionGeographyZoom(
   return 10.5;
 }
 
+function isGroundedWorkReality(
+  geography: DecisionGeography | null | undefined,
+): geography is DecisionGeography & { lng: number; lat: number } {
+  return isGroundedDecisionGeography(geography)
+    && geography.identity_source === 'USER'
+    && geography.intent_type === 'work_location';
+}
+
 export default function HomePage() {
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState(
@@ -86,6 +94,9 @@ export default function HomePage() {
   const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
     DecisionGeography | null | undefined
   >(undefined);
+  const [observedWorkReality, setObservedWorkReality] = useState<
+    DecisionGeography | null
+  >(null);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const latestSubmitIdRef = useRef(0);
@@ -199,6 +210,9 @@ export default function HomePage() {
 
     setRestoredDecisionGeography(geography);
     setDecisionWorldActive(true);
+    if (isGroundedWorkReality(geography)) {
+      setObservedWorkReality(geography);
+    }
     reorient?.(
       { lng: geography.lng, lat: geography.lat },
       decisionGeographyZoom(geography),
@@ -215,8 +229,17 @@ export default function HomePage() {
     });
   }, []);
 
-  const groundedWork = useMemo(
-    () => profile?.geographic_status === 'GROUNDED'
+  const groundedWork = useMemo(() => {
+    if (isGroundedWorkReality(observedWorkReality)) {
+      return {
+        lng: observedWorkReality.lng,
+        lat: observedWorkReality.lat,
+        identity: observedWorkReality.identity,
+        displayIdentity: observedWorkReality.identity,
+      };
+    }
+
+    return profile?.geographic_status === 'GROUNDED'
       && typeof profile.lng === 'number'
       && typeof profile.lat === 'number'
       ? {
@@ -229,9 +252,14 @@ export default function HomePage() {
               profile.geographic_precision,
             ),
         }
-      : null,
-    [profile],
-  );
+      : null;
+  }, [observedWorkReality, profile]);
+
+  useEffect(() => {
+    if (!groundedWork || !geographicGroundReady) return;
+    const frame = requestAnimationFrame(() => setWorkVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, [geographicGroundReady, groundedWork]);
   const groundedChoices = useMemo(
     () => properties.filter(
       (property): property is Property & { lng: number; lat: number } =>
@@ -241,6 +269,7 @@ export default function HomePage() {
     ),
     [properties],
   );
+  const standaloneWorkReality = groundedChoices.length === 0;
   const housingFitLocations = useMemo(
     () => groundedWork && groundedChoices.length > 0
       ? [
@@ -312,6 +341,7 @@ export default function HomePage() {
 
     setPhase('forming');
     setWorkVisible(false);
+    setObservedWorkReality(null);
     try {
       let markWorldStateReady: (() => void) | undefined;
       const worldStateReady = new Promise<void>((resolve) => {
@@ -397,6 +427,9 @@ export default function HomePage() {
       if (latestSubmitIdRef.current !== submitId) return;
       if (completedProfile) {
         setProfile(completedProfile);
+        if (completedProfile.geographic_status === 'GROUNDED') {
+          setObservedWorkReality(null);
+        }
         setPhase(completedProfile.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
         if (completedProfile.geographic_status === 'GROUNDED') {
           requestAnimationFrame(() => setWorkVisible(true));
@@ -410,7 +443,28 @@ export default function HomePage() {
       });
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
-      if (latestSubmitIdRef.current === submitId) setPhase('empty');
+      if (latestSubmitIdRef.current === submitId) {
+        try {
+          const [persistedProfile, persistedProperties] = await Promise.all([
+            getLivingProfile(currentConversationId),
+            getProperties(currentConversationId),
+          ]);
+          if (latestSubmitIdRef.current !== submitId) return;
+          setProfile(persistedProfile);
+          setProperties(persistedProperties);
+          setPhase(
+            persistedProfile?.geographic_status === 'GROUNDED'
+              ? 'formed'
+              : 'empty',
+          );
+          if (persistedProfile?.geographic_status === 'GROUNDED') {
+            requestAnimationFrame(() => setWorkVisible(true));
+          }
+        } catch (restoreError: unknown) {
+          console.error('Failed to restore persisted World State:', restoreError);
+          setPhase('empty');
+        }
+      }
     } finally {
       stopObservingDecisionGeography = true;
     }
@@ -509,31 +563,41 @@ export default function HomePage() {
           >
             <div
               className={`world-object work-anchor ${focusedChoiceIds.length > 0 ? 'world-object-context' : ''}`}
-              aria-label={[
-                '我的工作',
-                groundedWork.displayIdentity,
-                typeof profile?.commute_minutes === 'number'
-                  ? `通勤不超过 ${profile.commute_minutes} 分钟`
-                  : null,
-                typeof profile?.budget === 'number'
-                  ? `预算约 ${profile.budget} 元`
-                  : null,
-              ].filter(Boolean).join('，')}
+              aria-label={standaloneWorkReality
+                ? `${groundedWork.displayIdentity}，工作`
+                : [
+                    '我的工作',
+                    groundedWork.displayIdentity,
+                    typeof profile?.commute_minutes === 'number'
+                      ? `通勤不超过 ${profile.commute_minutes} 分钟`
+                      : null,
+                    typeof profile?.budget === 'number'
+                      ? `预算约 ${profile.budget} 元`
+                      : null,
+                  ].filter(Boolean).join('，')}
             >
-              <span className="object-mark">◎</span>
-              <span className="object-kicker mt-2">我的工作</span>
+              <span className="object-mark">{standaloneWorkReality ? '●' : '◎'}</span>
+              {!standaloneWorkReality && (
+                <span className="object-kicker mt-2">我的工作</span>
+              )}
               <span className="object-name mt-2">
                 {groundedWork.displayIdentity}
               </span>
-              {typeof profile?.commute_minutes === 'number' && (
-                <span className="mt-2 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
-                  ≤ {profile.commute_minutes}min 通勤
-                </span>
-              )}
-              {typeof profile?.budget === 'number' && (
-                <span className="mt-1 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
-                  ≈ ¥{profile.budget} 预算
-                </span>
+              {standaloneWorkReality ? (
+                <span className="object-kicker mt-1">工作</span>
+              ) : (
+                <>
+                  {typeof profile?.commute_minutes === 'number' && (
+                    <span className="mt-2 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
+                      ≤ {profile.commute_minutes}min 通勤
+                    </span>
+                  )}
+                  {typeof profile?.budget === 'number' && (
+                    <span className="mt-1 font-mono text-[11px] font-medium tracking-[0.04em] text-slate-700">
+                      ≈ ¥{profile.budget} 预算
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>
