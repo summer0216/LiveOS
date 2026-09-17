@@ -108,7 +108,9 @@ export default function LivingMap() {
     ? 'COMPARE_BD'
     : focusedChoice
       ? (`FOCUS_${focusedChoice}` as ExperienceState)
-      : 'FIRST_OPEN';
+      : properties.length > 0
+        ? 'SEE_AGAIN'
+        : 'FIRST_OPEN';
   const livingChoices = useMemo<readonly LivingChoice[]>(() => properties.map((property, index) => {
     const lng = property?.lng;
     const lat = property?.lat;
@@ -212,7 +214,7 @@ export default function LivingMap() {
             </div>
           </div>}
 
-          {livingChoices.map((choice) => {
+          {currentExperienceState !== 'FIRST_OPEN' && livingChoices.map((choice) => {
             const position = projectedPositions[choice.id];
             if (!position) return null;
             const isB = choice.id === 'B';
@@ -290,7 +292,7 @@ export default function LivingMap() {
 
         <div className="absolute inset-x-0 bottom-0 z-20 px-5 pb-6 sm:px-10 sm:pb-8">
           <div className="mx-auto max-w-3xl">
-            {unresolvedChoices.length > 0 && (
+            {currentExperienceState !== 'FIRST_OPEN' && unresolvedChoices.length > 0 && (
               <p className="mb-3 max-w-lg rounded-xl border border-slate-400/35 bg-white/82 px-4 py-3 text-sm font-semibold leading-5 tracking-[0.01em] text-slate-800 shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md sm:px-5">
                 没有找到「{unresolvedChoices.map((choice) => choice.name).join('」和「')}」对应的可靠地理位置，请提供更详细的地址、小区名称或附近地点。
               </p>

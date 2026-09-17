@@ -465,7 +465,6 @@ export default function HomePage() {
       y: (positions[0].y + positions[1].y) / 2 + 88,
     };
   }, [choicePositions, dualFocusActive, focusedChoices]);
-  const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
   const restoredDecisionCenter = useMemo(
     () => restoredDecisionGeography?.conversation_id === conversationId
       && isGroundedDecisionGeography(restoredDecisionGeography)
@@ -497,22 +496,9 @@ export default function HomePage() {
         />
       )}
       <section
-        aria-label={worldHasFormed ? 'First Reality' : 'Empty Living World'}
+        aria-label="Living World"
         className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}
       >
-        <h1
-          className={
-            'absolute left-1/2 top-1/2 max-w-xl -translate-x-1/2 -translate-y-[62%] text-center text-[clamp(1.85rem,4vw,3.4rem)] font-normal leading-[1.15] tracking-[-0.025em] text-slate-900/90 transition-opacity duration-500 ease-out motion-reduce:transition-none ' +
-            (phase === 'empty' && !decisionWorldActive
-              ? 'opacity-100'
-              : 'pointer-events-none opacity-0')
-          }
-        >
-          你的生活，
-          <br />
-          从哪里开始？
-        </h1>
-
         {geographicGroundReady && groundedWork && workPosition && (
           <div
             className={
