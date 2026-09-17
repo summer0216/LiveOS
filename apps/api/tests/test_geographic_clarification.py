@@ -247,6 +247,50 @@ def test_geographic_resolver_keeps_multiple_complete_matches_ambiguous(
     assert result.ambiguous is True
 
 
+def test_geographic_resolver_prefers_exact_city_over_same_named_districts(
+    monkeypatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": "陕西省西安市",
+                        "city": "西安市",
+                        "level": "市",
+                        "location": "108.939645,34.343207",
+                    },
+                    {
+                        "formatted_address": "黑龙江省牡丹江市西安区",
+                        "city": "牡丹江市",
+                        "district": "西安区",
+                        "level": "区县",
+                        "location": "129.616021,44.577611",
+                    },
+                    {
+                        "formatted_address": "吉林省辽源市西安区",
+                        "city": "辽源市",
+                        "district": "西安区",
+                        "level": "区县",
+                        "location": "125.149488,42.927252",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve("西安", None, "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == "陕西省西安市"
+    assert result.geographic_scope == "CITY"
+    assert (result.lng, result.lat) == (108.939645, 34.343207)
+
+
 def test_full_explicit_address_grounds_one_matching_candidate(monkeypatch) -> None:
     class Response:
         def raise_for_status(self) -> None:
@@ -348,6 +392,46 @@ def test_geographic_resolver_accepts_municipality_province_level(
     assert result.status == "GROUNDED"
     assert result.geographic_identity == formatted_address
     assert result.geographic_precision == GeographicPrecision.AREA
+    assert result.geographic_scope == "CITY"
+
+
+@pytest.mark.parametrize(
+    ("identity", "formatted_address", "location"),
+    [
+        ("宁夏", "宁夏回族自治区", "106.258889,38.472273"),
+        ("浙江", "浙江省", "120.153576,30.287459"),
+        ("内蒙古", "内蒙古自治区", "111.670801,40.818311"),
+    ],
+)
+def test_geographic_resolver_accepts_province_or_autonomous_region(
+    monkeypatch, identity: str, formatted_address: str, location: str
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "1",
+                "geocodes": [
+                    {
+                        "formatted_address": formatted_address,
+                        "province": formatted_address,
+                        "city": [],
+                        "level": "省",
+                        "location": location,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+
+    result = geographic_resolver.resolve(identity, None, "server-key")
+
+    assert result.status == "GROUNDED"
+    assert result.geographic_identity == formatted_address
+    assert result.geographic_precision == GeographicPrecision.AREA
+    assert result.geographic_scope == "REGION"
 
 
 def test_geographic_resolver_rejects_shortened_identity(monkeypatch) -> None:

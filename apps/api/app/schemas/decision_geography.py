@@ -6,6 +6,8 @@ class DecisionGeographyResponse(BaseModel):
     intent_established: bool
     intent_type: str | None = None
     identity: str
+    identity_source: str | None = None
+    geographic_scope: str | None = None
     status: str
     lng: float | None = None
     lat: float | None = None

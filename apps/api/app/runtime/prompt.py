@@ -13,6 +13,12 @@ Return exactly one JSON object:
 Rules:
 - Use only the current user turn as established truth.
 - Establish intent only for a concrete living decision oriented toward a place.
+- A direct first-person destination statement such as "我想去北京", "我想去新疆",
+  or "我想去洛阳" establishes a new decision geography in the Living World,
+  even when the user has not yet supplied work, housing, or other constraints.
+- An explicit statement that the user works, lives, or will live/work in a named
+  place is world-changing geographic truth, including a local refinement such
+  as "在雁塔区上班".
 - A factual, weather, or incidental location mention is not a decision intent.
 - identity is only a place explicitly stated by the user.
 - Never infer coordinates, profile facts, choices, or recommendations.

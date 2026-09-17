@@ -5,6 +5,7 @@ from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.geographic_resolution import GeographicResolutionResult
 from app.services.housing_candidate_discovery import HousingDiscoveryResult
 from app.stores.runtime import profile_store
 from tests.ids import uuid_for
@@ -138,3 +139,96 @@ def test_stream_path_schedules_discovery_without_blocking_profile_update(
     task()
 
     assert len(discovery_calls) == 1
+
+
+def test_active_decision_city_owns_work_grounding_context(monkeypatch) -> None:
+    conversation_id = uuid_for("active-decision-city-work-context")
+    conversation_manager.get_or_create(conversation_id)
+    profile_store.save(
+        conversation_id,
+        LivingProfile(
+            work_location="浦东新区",
+            budget=3000,
+            commute_minutes=None,
+            preferred_city="杭州",
+        ),
+    )
+    decision_geography = DecisionGeography(
+        intent_established=True,
+        intent_type="housing",
+        identity="浦东新区",
+        identity_source="USER",
+        status="GROUNDED",
+        lng=121.5447,
+        lat=31.2215,
+    )
+    contexts: list[str | None] = []
+    monkeypatch.setattr(
+        "app.services.chat_service.decision_geography_service.city_context",
+        lambda state, _api_key: "上海市" if state == decision_geography else None,
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.profile_manager.resolve_work_geographic_grounding",
+        lambda _conversation_id, *, context_location, api_key: (
+            contexts.append(context_location)
+            or GeographicResolutionResult(status="UNRESOLVED")
+        ),
+    )
+
+    chat_service._update_profile(
+        conversation_id,
+        [],
+        analysis=ProfileAnalysis(patch=LivingProfilePatch()),
+        apply_decision_geography=False,
+        current_decision_geography=decision_geography,
+    )
+
+    assert contexts == ["上海市"]
+
+
+def test_active_decision_region_does_not_fall_back_to_stale_profile_city(
+    monkeypatch,
+) -> None:
+    conversation_id = uuid_for("active-decision-region-work-context")
+    conversation_manager.get_or_create(conversation_id)
+    profile_store.save(
+        conversation_id,
+        LivingProfile(
+            work_location="福建",
+            budget=3000,
+            commute_minutes=None,
+            preferred_city="成都",
+        ),
+    )
+    decision_geography = DecisionGeography(
+        intent_established=True,
+        intent_type="relocate_for_work",
+        identity="福建省",
+        identity_source="USER",
+        geographic_scope="REGION",
+        status="GROUNDED",
+        lng=119.295144,
+        lat=26.100779,
+    )
+    contexts: list[str | None] = []
+    monkeypatch.setattr(
+        "app.services.chat_service.decision_geography_service.city_context",
+        lambda state, _api_key: None if state == decision_geography else "成都",
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.profile_manager.resolve_work_geographic_grounding",
+        lambda _conversation_id, *, context_location, api_key: (
+            contexts.append(context_location)
+            or GeographicResolutionResult(status="UNRESOLVED")
+        ),
+    )
+
+    chat_service._update_profile(
+        conversation_id,
+        [],
+        analysis=ProfileAnalysis(patch=LivingProfilePatch()),
+        apply_decision_geography=False,
+        current_decision_geography=decision_geography,
+    )
+
+    assert contexts == [None]

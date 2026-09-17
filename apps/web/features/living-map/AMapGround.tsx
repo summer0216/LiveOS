@@ -121,6 +121,8 @@ export default function AMapGround({
   onMapClick,
 }: AMapGroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const initialCenterRef = useRef(initialCenter);
+  const initialZoomRef = useRef(initialZoom);
   const fitLocationsRef = useRef(fitLocations);
   const refitForLocationsChangeRef = useRef<((force?: boolean) => void) | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing-config' | 'error'>(
@@ -153,6 +155,8 @@ export default function AMapGround({
     let resizeObserver: ResizeObserver | null = null;
     let userExploredCamera = false;
     let programmaticCameraUpdateUntil = 0;
+    const mapInitialCenter = initialCenterRef.current;
+    const mapInitialZoom = initialZoomRef.current;
 
     void loadAMap(key, securityJsCode)
       .then(() => {
@@ -160,10 +164,10 @@ export default function AMapGround({
 
         const mapInstance = new window.AMap.Map(containerRef.current, {
           viewMode: '2D',
-          ...(initialCenter
-            ? { center: [initialCenter.lng, initialCenter.lat] }
+          ...(mapInitialCenter
+            ? { center: [mapInitialCenter.lng, mapInitialCenter.lat] }
             : {}),
-          ...(initialZoom !== undefined ? { zoom: initialZoom } : {}),
+          ...(mapInitialZoom !== undefined ? { zoom: mapInitialZoom } : {}),
           showLabel: true,
           dragEnable: true,
           zoomEnable: true,
@@ -176,10 +180,10 @@ export default function AMapGround({
 
         // Keep prototype/world entry views anchored to their explicit current reality.
         // AMap may otherwise retain its default camera while the instance is settling.
-        if (initialCenter && initialZoom !== undefined) {
+        if (mapInitialCenter && mapInitialZoom !== undefined) {
           mapInstance.setZoomAndCenter(
-            initialZoom,
-            new window.AMap!.LngLat(initialCenter.lng, initialCenter.lat),
+            mapInitialZoom,
+            new window.AMap!.LngLat(mapInitialCenter.lng, mapInitialCenter.lat),
             true,
           );
         }
@@ -314,8 +318,6 @@ export default function AMapGround({
     onUserExploredCameraChange,
     onZoomChange,
     onMapClick,
-    initialCenter,
-    initialZoom,
   ]);
 
   return (

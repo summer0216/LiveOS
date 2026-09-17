@@ -5,6 +5,8 @@ export interface DecisionGeography {
   intent_established: boolean;
   intent_type: string | null;
   identity: string;
+  identity_source: 'USER' | 'INFERRED' | null;
+  geographic_scope: 'REGION' | 'CITY' | 'LOCAL' | null;
   status: 'UNRESOLVED' | 'GROUNDED';
   lng: number | null;
   lat: number | null;

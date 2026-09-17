@@ -9,11 +9,16 @@ from app.main import app
 from app.models.decision_challenge import DecisionChallenge
 from app.models.decision_change import ChallengeCause
 from app.models.decision_feedback import DecisionRelevantFeedback
+from app.models.decision_geography import DecisionGeography
+from app.models.profile_analysis import ProfileAnalysis
+from app.models.profile_patch import LivingProfilePatch
+from app.models.property import GeographicPrecision
 from app.services.chat_service import WORLD_STATE_READY
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
 from app.services.decision_feedback_context import decision_feedback_context
+from app.services.geographic_resolution import GeographicResolutionResult
 from app.services.property_manager import property_manager
 from tests.ids import uuid_for
 
@@ -153,6 +158,168 @@ def test_stream_events_exposes_persisted_world_state_before_reply() -> None:
         "event: world-state-ready\ndata: true\n\n",
         'data: "reply"\n\n',
     ]
+
+
+def test_stream_api_persists_one_world_across_nationwide_turns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = uuid_for("browser-stream-nationwide-world")
+    control_id = uuid_for("browser-stream-current-reality-control")
+    conversation_manager.delete(conversation_id)
+    conversation_manager.delete(control_id)
+
+    signals = {
+        "我想去西安工作": DecisionGeography(
+            intent_established=True,
+            intent_type="work",
+            identity="西安",
+            identity_source="USER",
+        ),
+        "在雁塔区上班": DecisionGeography(
+            intent_established=True,
+            intent_type="work",
+            identity="雁塔区",
+            identity_source="USER",
+        ),
+        "我想去福建工作": DecisionGeography(
+            intent_established=True,
+            intent_type="work",
+            identity="福建",
+            identity_source="USER",
+        ),
+        "我想去广州工作": DecisionGeography(
+            intent_established=True,
+            intent_type="work",
+            identity="广州",
+            identity_source="USER",
+        ),
+    }
+    direct_results = {
+        "西安": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="陕西省西安市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
+            lng=108.939645,
+            lat=34.343207,
+        ),
+        "福建": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="福建省",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="REGION",
+            lng=119.296194,
+            lat=26.101082,
+        ),
+        "广州": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="广东省广州市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
+            lng=113.264499,
+            lat=23.130061,
+        ),
+    }
+
+    monkeypatch.setattr(
+        "app.services.chat_service.decision_signal_intelligence.analyze",
+        lambda message: signals.get(message, DecisionGeography()),
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.profile_intelligence.analyze",
+        lambda *_args, **_kwargs: ProfileAnalysis(patch=LivingProfilePatch()),
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.ai_runtime.chat_stream",
+        lambda *_args, **_kwargs: iter(("ok",)),
+    )
+    monkeypatch.setattr(
+        "app.services.decision_geography_service.geographic_resolver.resolve",
+        lambda identity, context, _api_key: (
+            GeographicResolutionResult(
+                status="GROUNDED",
+                geographic_identity="陕西省西安市雁塔区",
+                geographic_precision=GeographicPrecision.AREA,
+                geographic_scope="LOCAL",
+                lng=108.948592,
+                lat=34.222517,
+            )
+            if (identity, context) == ("雁塔区", "西安市")
+            else direct_results.get(
+                identity,
+                GeographicResolutionResult(status="UNRESOLVED"),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.decision_geography_service.geographic_resolver.resolve_local_area",
+        lambda *_args, **_kwargs: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+    monkeypatch.setattr(
+        "app.services.decision_geography_service.geographic_resolver.resolve_city_context",
+        lambda lng, lat, _api_key: (
+            "西安市" if (lng, lat) == (108.939645, 34.343207) else None
+        ),
+    )
+
+    client = TestClient(app)
+    turns = (
+        ("我想去西安工作", "西安", "CITY"),
+        ("在雁塔区上班", "雁塔区", "LOCAL"),
+        ("我想去福建工作", "福建", "REGION"),
+        ("预算3000，通勤30分钟", "福建", "REGION"),
+        ("我想去福建工作", "福建", "REGION"),
+        ("我想去广州工作", "广州", "CITY"),
+    )
+    for message, expected_identity, expected_scope in turns:
+        response = client.post(
+            "/api/chat/stream",
+            json={
+                "conversation_id": conversation_id,
+                "message": message,
+                "current_geographic_reality": {
+                    "lng": 104.0668,
+                    "lat": 30.5728,
+                },
+            },
+        )
+        state_response = client.get(
+            "/api/decision-geography",
+            params={"conversation_id": conversation_id},
+        )
+
+        assert response.status_code == 200
+        assert "event: world-state-ready\ndata: true" in response.text
+        assert state_response.status_code == 200
+        state = state_response.json()
+        assert state["identity"] == expected_identity
+        assert state["identity_source"] == "USER"
+        assert state["geographic_scope"] == expected_scope
+        assert state["status"] == "GROUNDED"
+
+    control_response = client.post(
+        "/api/chat/stream",
+        json={
+            "conversation_id": control_id,
+            "message": "预算3000，通勤30分钟",
+            "current_geographic_reality": {
+                "lng": 104.0668,
+                "lat": 30.5728,
+            },
+        },
+    )
+    control_state = client.get(
+        "/api/decision-geography",
+        params={"conversation_id": control_id},
+    )
+
+    assert control_response.status_code == 200
+    assert "event: world-state-ready" not in control_response.text
+    assert control_state.status_code == 200
+    assert control_state.json() is None
+
+    conversation_manager.delete(conversation_id)
+    conversation_manager.delete(control_id)
 
 
 def test_stream_events_turns_a_first_token_timeout_into_a_terminal_error_event(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import ConversationComposer from '@/features/conversation/components/ConversationComposer';
@@ -8,6 +8,11 @@ import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
+import {
+  decisionGeographyFingerprint,
+  isGroundedDecisionGeography,
+  shouldApplyObservedDecisionGeography,
+} from '@/lib/decisionGeographyState';
 import { streamMessage } from '@/services/chat';
 import {
   getDecisionGeography,
@@ -53,6 +58,14 @@ function formatGeographicIdentity(
   return administrativeAreas?.at(-1) ?? identity;
 }
 
+function decisionGeographyZoom(
+  geography: Pick<DecisionGeography, 'geographic_scope'>,
+) {
+  if (geography.geographic_scope === 'REGION') return 6.5;
+  if (geography.geographic_scope === 'LOCAL') return 12.5;
+  return 10.5;
+}
+
 export default function HomePage() {
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState(
@@ -75,6 +88,7 @@ export default function HomePage() {
   >(undefined);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const latestSubmitIdRef = useRef(0);
 
   useEffect(() => {
     let settled = false;
@@ -131,12 +145,7 @@ export default function HomePage() {
       if (!active) return;
       setProperties(nextProperties);
       setRestoredDecisionGeography(decisionGeography);
-      if (
-        decisionGeography?.intent_established
-        && decisionGeography.status === 'GROUNDED'
-        && typeof decisionGeography.lng === 'number'
-        && typeof decisionGeography.lat === 'number'
-      ) {
+      if (isGroundedDecisionGeography(decisionGeography)) {
         setDecisionWorldActive(true);
       }
       if (!nextProfile) return;
@@ -176,6 +185,26 @@ export default function HomePage() {
     setFocusedChoiceIds([]);
     setPendingAction(null);
   }, []);
+
+  const applyObservedDecisionGeography = useCallback((
+    geography: DecisionGeography | null | undefined,
+    submitId: number,
+  ) => {
+    if (
+      latestSubmitIdRef.current !== submitId
+      || !isGroundedDecisionGeography(geography)
+    ) {
+      return false;
+    }
+
+    setRestoredDecisionGeography(geography);
+    setDecisionWorldActive(true);
+    reorient?.(
+      { lng: geography.lng, lat: geography.lat },
+      decisionGeographyZoom(geography),
+    );
+    return true;
+  }, [reorient]);
 
   const focusChoice = useCallback((propertyId: string) => {
     setPendingAction((current) => current?.propertyId === propertyId ? current : null);
@@ -263,7 +292,7 @@ export default function HomePage() {
         lng: restoredDecisionGeography.lng,
         lat: restoredDecisionGeography.lat,
       },
-      10.5,
+      decisionGeographyZoom(restoredDecisionGeography),
     );
   }, [
     conversationId,
@@ -274,10 +303,15 @@ export default function HomePage() {
 
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
+    const submitId = latestSubmitIdRef.current + 1;
+    latestSubmitIdRef.current = submitId;
+    const baselineDecisionGeography = decisionGeographyFingerprint(
+      restoredDecisionGeography,
+    );
+    let stopObservingDecisionGeography = false;
 
     setPhase('forming');
     setWorkVisible(false);
-    setDecisionWorldActive(false);
     try {
       let markWorldStateReady: (() => void) | undefined;
       const worldStateReady = new Promise<void>((resolve) => {
@@ -291,18 +325,42 @@ export default function HomePage() {
         onWorldStateReady: () => markWorldStateReady?.(),
       });
 
+      const observePersistedDecisionGeography = async () => {
+        while (
+          !stopObservingDecisionGeography
+          && latestSubmitIdRef.current === submitId
+        ) {
+          try {
+            const geography = await getDecisionGeography(currentConversationId);
+            if (shouldApplyObservedDecisionGeography({
+              candidate: geography,
+              baselineFingerprint: baselineDecisionGeography,
+              observationId: submitId,
+              latestObservationId: latestSubmitIdRef.current,
+            })) {
+              applyObservedDecisionGeography(geography, submitId);
+              return geography;
+            }
+          } catch {
+            // SSE remains authoritative; this observer only closes a missed-event gap.
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 750));
+        }
+        return null;
+      };
+      const observedDecisionGeography = observePersistedDecisionGeography();
+
       await Promise.race([
         worldStateReady,
+        observedDecisionGeography.then(() => undefined),
         chatCompletion.then(() => undefined),
       ]);
+      stopObservingDecisionGeography = true;
       const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
         getDecisionGeography(currentConversationId),
       ]);
-      if (!nextProfile) {
-        throw new Error('First Reality profile was not persisted.');
-      }
       if (!conversationId) {
         setConversationId(currentConversationId);
         window.history.replaceState(
@@ -311,7 +369,8 @@ export default function HomePage() {
           '/?conversation_id=' + encodeURIComponent(currentConversationId),
         );
       }
-      setProfile(nextProfile);
+      if (latestSubmitIdRef.current !== submitId) return;
+      if (nextProfile) setProfile(nextProfile);
       setProperties(nextProperties);
       setPendingAction((current) => {
         if (!current) return null;
@@ -322,28 +381,12 @@ export default function HomePage() {
       if (nextProfile?.geographic_status === 'GROUNDED') {
         requestAnimationFrame(() => setWorkVisible(true));
       }
-      if (
-        decisionGeography?.intent_established
-        && decisionGeography.status === 'GROUNDED'
-        && typeof decisionGeography.lng === 'number'
-        && typeof decisionGeography.lat === 'number'
+      if (isGroundedDecisionGeography(decisionGeography)) {
+        applyObservedDecisionGeography(decisionGeography, submitId);
+      } else if (
+        !isGroundedDecisionGeography(restoredDecisionGeography)
+        && currentLocation
       ) {
-        setDecisionWorldActive(true);
-        const hasGroundedWork = nextProfile.geographic_status === 'GROUNDED'
-          && typeof nextProfile.lng === 'number'
-          && typeof nextProfile.lat === 'number';
-        const hasGroundedChoices = nextProperties.some(
-          (property) => property.geographic_status === 'GROUNDED'
-            && typeof property.lng === 'number'
-            && typeof property.lat === 'number',
-        );
-        if (!hasGroundedWork || !hasGroundedChoices) {
-          reorient?.(
-            { lng: decisionGeography.lng, lat: decisionGeography.lat },
-            10.5,
-          );
-        }
-      } else if (currentLocation) {
         reorient?.(currentLocation, 12.5);
       }
       await chatCompletion;
@@ -351,6 +394,7 @@ export default function HomePage() {
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
       ]);
+      if (latestSubmitIdRef.current !== submitId) return;
       if (completedProfile) {
         setProfile(completedProfile);
         setPhase(completedProfile.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
@@ -366,9 +410,17 @@ export default function HomePage() {
       });
     } catch (error: unknown) {
       console.error('Failed to form First Reality:', error);
-      setPhase('empty');
+      if (latestSubmitIdRef.current === submitId) setPhase('empty');
+    } finally {
+      stopObservingDecisionGeography = true;
     }
-  }, [conversationId, currentLocation, reorient]);
+  }, [
+    applyObservedDecisionGeography,
+    conversationId,
+    currentLocation,
+    reorient,
+    restoredDecisionGeography,
+  ]);
 
   const workPosition = useMemo(
     () => groundedWork && projection ? projection(groundedWork) : null,
@@ -416,10 +468,7 @@ export default function HomePage() {
   const worldHasFormed = phase === 'formed' && Boolean(groundedWork);
   const restoredDecisionCenter = useMemo(
     () => restoredDecisionGeography?.conversation_id === conversationId
-      && restoredDecisionGeography.intent_established
-      && restoredDecisionGeography.status === 'GROUNDED'
-      && typeof restoredDecisionGeography.lng === 'number'
-      && typeof restoredDecisionGeography.lat === 'number'
+      && isGroundedDecisionGeography(restoredDecisionGeography)
       ? {
           lng: restoredDecisionGeography.lng,
           lat: restoredDecisionGeography.lat,
@@ -436,7 +485,11 @@ export default function HomePage() {
           fitLocations={worldFitLocations}
           fitRequestKey={dualFocusFitKey}
           initialCenter={initialMapCenter}
-          initialZoom={restoredDecisionCenter ? 10.5 : 12.5}
+          initialZoom={
+            restoredDecisionCenter && restoredDecisionGeography
+              ? decisionGeographyZoom(restoredDecisionGeography)
+              : 12.5
+          }
           onProjectionReady={handleProjectionReady}
           onGroundReadyChange={handleGroundReadyChange}
           onCameraReady={handleCameraReady}

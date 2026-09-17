@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.models.decision_geography import DecisionGeographyScope
 from app.models.property import GeographicPrecision
 
 
@@ -11,6 +12,7 @@ class GeographicResolutionResult:
     status: str
     geographic_identity: str | None = None
     geographic_precision: GeographicPrecision | None = None
+    geographic_scope: DecisionGeographyScope | None = None
     lng: float | None = None
     lat: float | None = None
     ambiguous: bool = False
@@ -93,6 +95,12 @@ class GeographicResolver:
                 if isinstance(geocode, dict)
                 and _geocode_matches_identity(title, geocode)
             ]
+            preferred_administrative_match = _prefer_exact_city_identity(
+                title,
+                identity_matches,
+            )
+            if preferred_administrative_match is not None:
+                identity_matches = [preferred_administrative_match]
             geocodes = identity_matches
         if payload.get("status") != "1" or len(geocodes) != 1:
             return GeographicResolutionResult(
@@ -123,6 +131,11 @@ class GeographicResolver:
             status="GROUNDED",
             geographic_identity=formatted_address,
             geographic_precision=precision,
+            geographic_scope=_scope_for_level(
+                geocode.get("level"),
+                title=title,
+                formatted_address=formatted_address,
+            ),
             lng=lng,
             lat=lat,
         )
@@ -192,6 +205,7 @@ class GeographicResolver:
             status="GROUNDED",
             geographic_identity=geographic_identity,
             geographic_precision=_poi_precision(str(best.get("type") or "")),
+            geographic_scope="LOCAL",
             lng=lng,
             lat=lat,
         )
@@ -213,12 +227,30 @@ def _precision_for_level(
         title, formatted_address
     ):
         return GeographicPrecision.AREA
-    if level == "省" and formatted_address:
+    if level == "省" and formatted_address and _matches_title(title, formatted_address):
         normalized_title = _normalize_administrative_text(title)
         normalized_address = _normalize_administrative_text(formatted_address)
         if normalized_title in _MUNICIPALITIES and normalized_address == normalized_title:
             return GeographicPrecision.AREA
+        return GeographicPrecision.AREA
     return None
+
+
+def _scope_for_level(
+    level: str | None,
+    *,
+    title: str,
+    formatted_address: str | None,
+) -> DecisionGeographyScope:
+    if level == "省":
+        normalized_title = _normalize_administrative_text(title)
+        normalized_address = _normalize_administrative_text(formatted_address or "")
+        if normalized_title in _MUNICIPALITIES and normalized_address == normalized_title:
+            return "CITY"
+        return "REGION"
+    if level == "市":
+        return "CITY"
+    return "LOCAL"
 
 
 def _matches_title(title: str, *identities: str | None) -> bool:
@@ -255,6 +287,22 @@ def _geocode_matches_identity(title: str, geocode: dict) -> bool:
         for identity in (formatted_address, name)
         if isinstance(identity, str)
     )
+
+
+def _prefer_exact_city_identity(title: str, geocodes: list[dict]) -> dict | None:
+    """Prefer one exact city over lower-level places sharing its bare name."""
+    normalized_title = "".join(title.split())
+    if normalized_title.endswith(("区", "县")):
+        return None
+    title_city_name = normalized_title.removesuffix("市")
+    exact_city_matches = [
+        geocode
+        for geocode in geocodes
+        if geocode.get("level") == "市"
+        and isinstance(geocode.get("city"), str)
+        and "".join(geocode["city"].split()).removesuffix("市") == title_city_name
+    ]
+    return exact_city_matches[0] if len(exact_city_matches) == 1 else None
 
 
 def _normalize_administrative_text(value: str) -> str:

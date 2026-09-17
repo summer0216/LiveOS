@@ -22,6 +22,21 @@ class DecisionGeographyService:
     def get(self, conversation_id: str) -> DecisionGeography | None:
         return decision_geography_store.get(conversation_id)
 
+    def city_context(
+        self,
+        state: DecisionGeography | None,
+        api_key: str | None,
+    ) -> str | None:
+        if (
+            state is None
+            or state.status != GeographicStatus.GROUNDED.value
+            or state.geographic_scope == "REGION"
+            or state.lng is None
+            or state.lat is None
+        ):
+            return None
+        return self._current_city_context((state.lng, state.lat), api_key)
+
     def _current_city_context(
         self,
         current_geographic_reality: tuple[float, float],
@@ -80,9 +95,19 @@ class DecisionGeographyService:
             or identity_explicitly_names_city(normalized_identity, direct_result)
         ):
             result = direct_result
-        elif current_geographic_reality is None:
-            result = direct_result
-            if result.status != GeographicStatus.GROUNDED.value:
+        else:
+            active_geography = self.get(conversation_id)
+            active_location = (
+                (active_geography.lng, active_geography.lat)
+                if active_geography is not None
+                and active_geography.status == GeographicStatus.GROUNDED.value
+                and active_geography.lng is not None
+                and active_geography.lat is not None
+                else None
+            )
+            context_source = active_location or current_geographic_reality
+            if context_source is None:
+                result = direct_result
                 direct_local_result = geographic_resolver.resolve_local_area(
                     normalized_identity, None, api_key
                 )
@@ -90,34 +115,47 @@ class DecisionGeographyService:
                     normalized_identity, direct_local_result
                 ):
                     result = direct_local_result
-        else:
-            context_location = self._current_city_context(
-                current_geographic_reality, api_key
-            )
-            if context_location is None:
-                result = GeographicResolutionResult(status="UNRESOLVED")
             else:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    contextual_future = executor.submit(
-                        geographic_resolver.resolve,
-                        normalized_identity,
-                        context_location,
-                        api_key,
-                    )
-                    local_future = executor.submit(
-                        geographic_resolver.resolve_local_area,
-                        normalized_identity,
-                        context_location,
-                        api_key,
-                    )
-                    contextual_result = contextual_future.result()
-                    local_result = local_future.result()
-                result = _select_contextual_result(
-                    normalized_identity,
-                    context_location,
-                    contextual_result,
-                    local_result,
+                context_location = self._current_city_context(
+                    context_source,
+                    api_key,
                 )
+                if context_location is None:
+                    result = GeographicResolutionResult(status="UNRESOLVED")
+                else:
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        contextual_future = executor.submit(
+                            geographic_resolver.resolve,
+                            normalized_identity,
+                            context_location,
+                            api_key,
+                        )
+                        local_future = executor.submit(
+                            geographic_resolver.resolve_local_area,
+                            normalized_identity,
+                            context_location,
+                            api_key,
+                        )
+                        contextual_result = contextual_future.result()
+                        local_result = local_future.result()
+                    result = _select_contextual_result(
+                        normalized_identity,
+                        context_location,
+                        contextual_result,
+                        local_result,
+                    )
+            if (
+                result.status != GeographicStatus.GROUNDED.value
+                and active_location is not None
+            ):
+                logger.info(
+                    "Decision geography unresolved conversation_id=%s "
+                    "normalized_identity=%r; retaining active grounded world=%r",
+                    conversation_id,
+                    normalized_identity,
+                    active_geography.identity if active_geography else None,
+                )
+                return active_geography
         logger.info(
             "Decision geography resolved conversation_id=%s "
             "identity_source=%s geographic_context=%r normalized_identity=%r "
@@ -139,6 +177,11 @@ class DecisionGeographyService:
             intent_type=intent_type,
             identity=normalized_identity,
             identity_source="USER",
+            geographic_scope=(
+                getattr(result, "geographic_scope", None)
+                if status == GeographicStatus.GROUNDED.value
+                else None
+            ),
             status=status,
             lng=result.lng if status == GeographicStatus.GROUNDED.value else None,
             lat=result.lat if status == GeographicStatus.GROUNDED.value else None,

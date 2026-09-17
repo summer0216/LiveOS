@@ -349,6 +349,8 @@ class DecisionGeographyStore:
             intent_established=row["intent_established"],
             intent_type=row["intent_type"],
             identity=row["identity"],
+            identity_source=row.get("identity_source"),
+            geographic_scope=row.get("geographic_scope"),
             status=row["status"],
             lng=row["lng"],
             lat=row["lat"],
@@ -379,12 +381,15 @@ class DecisionGeographyStore:
                 """
                 INSERT INTO decision_geographies(
                     owner_id, conversation_id, intent_established, intent_type,
-                    identity, status, lng, lat, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    identity, identity_source, geographic_scope, status, lng, lat,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
                     intent_established = EXCLUDED.intent_established,
                     intent_type = EXCLUDED.intent_type,
                     identity = EXCLUDED.identity,
+                    identity_source = EXCLUDED.identity_source,
+                    geographic_scope = EXCLUDED.geographic_scope,
                     status = EXCLUDED.status,
                     lng = EXCLUDED.lng,
                     lat = EXCLUDED.lat,
@@ -397,6 +402,8 @@ class DecisionGeographyStore:
                     state.intent_established,
                     state.intent_type,
                     state.identity,
+                    state.identity_source,
+                    state.geographic_scope,
                     state.status,
                     state.lng,
                     state.lat,

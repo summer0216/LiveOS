@@ -53,6 +53,12 @@ SCHEMA_STATEMENTS = (
         intent_established BOOLEAN NOT NULL,
         intent_type TEXT,
         identity TEXT NOT NULL,
+        identity_source TEXT CHECK (
+            identity_source IS NULL OR identity_source IN ('USER', 'INFERRED')
+        ),
+        geographic_scope TEXT CHECK (
+            geographic_scope IS NULL OR geographic_scope IN ('REGION', 'CITY', 'LOCAL')
+        ),
         status TEXT NOT NULL CHECK (status IN ('UNRESOLVED', 'GROUNDED')),
         lng DOUBLE PRECISION,
         lat DOUBLE PRECISION,
@@ -230,6 +236,12 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_id TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS commute_mode TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_source TEXT",
+    "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS identity_source TEXT",
+    "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS geographic_scope TEXT",
+    "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_identity_source_check",
+    "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_identity_source_check CHECK (identity_source IS NULL OR identity_source IN ('USER', 'INFERRED'))",
+    "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_geographic_scope_check",
+    "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_geographic_scope_check CHECK (geographic_scope IS NULL OR geographic_scope IN ('REGION', 'CITY', 'LOCAL'))",
     "ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_rent_source_check",
     "ALTER TABLE properties ADD CONSTRAINT properties_rent_source_check CHECK (rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY'))",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_conversation_provenance_external_id ON properties(conversation_id, provenance, external_id) WHERE external_id IS NOT NULL",

@@ -174,20 +174,35 @@ class ChatService:
                 latest_insights=analysis.insights,
             )
             merged_profile = getattr(merge_result, "profile", None)
+            decision_city_context = decision_geography_service.city_context(
+                current_decision_geography,
+                settings.AMAP_WEB_SERVICE_KEY,
+            )
+            has_grounded_decision_geography = (
+                current_decision_geography is not None
+                and current_decision_geography.status == "GROUNDED"
+                and current_decision_geography.lng is not None
+                and current_decision_geography.lat is not None
+            )
+            geographic_context = (
+                decision_city_context
+                if has_grounded_decision_geography
+                else (
+                    merged_profile.preferred_city
+                    if merged_profile is not None
+                    else None
+                )
+                or analysis.patch.preferred_city
+            )
             if (
                 merged_profile is not None
                 and profile_manager.needs_work_geographic_resolution(merged_profile)
             ):
                 profile_manager.resolve_work_geographic_grounding(
                     conversation_id,
-                    context_location=merged_profile.preferred_city or "深圳市",
+                    context_location=geographic_context,
                     api_key=settings.AMAP_WEB_SERVICE_KEY,
                 )
-            geographic_context = (
-                merged_profile.preferred_city
-                if merged_profile is not None
-                else None
-            ) or analysis.patch.preferred_city or "深圳市"
             for property_ in materialized_choices:
                 if property_.geographic_status == GeographicStatus.UNRESOLVED:
                     property_manager.resolve_geographic_grounding(

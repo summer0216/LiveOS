@@ -22,6 +22,8 @@ def get_decision_geography(
         intent_established=state.intent_established,
         intent_type=state.intent_type,
         identity=state.identity or "",
+        identity_source=state.identity_source,
+        geographic_scope=state.geographic_scope,
         status=state.status,
         lng=state.lng,
         lat=state.lat,

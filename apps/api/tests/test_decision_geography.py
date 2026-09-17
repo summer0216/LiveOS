@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from app.core.config import settings
 from app.models.decision_geography import DecisionGeography
 from app.models.property import GeographicPrecision, GeographicStatus
+from app.runtime.prompt import build_decision_signal_prompt
 from app.services import decision_geography_service as decision_geography_module
 from app.services import decision_signal_intelligence as decision_signal_module
 from app.services.geographic_resolution import (
@@ -45,6 +46,21 @@ def test_early_decision_signal_accepts_explicit_user_geography(monkeypatch) -> N
         "model": settings.DECISION_SIGNAL_MODEL,
         "max_output_tokens": 256,
     }
+
+
+def test_early_signal_prompt_treats_explicit_workplace_as_world_truth() -> None:
+    prompt = build_decision_signal_prompt("在雁塔区上班")
+
+    assert "works, lives, or will live/work" in prompt
+    assert "在雁塔区上班" in prompt
+
+
+def test_early_signal_prompt_treats_direct_destination_as_world_truth() -> None:
+    prompt = build_decision_signal_prompt("我想去新疆")
+
+    assert 'A direct first-person destination statement' in prompt
+    assert '"我想去新疆"' in prompt
+    assert "我想去新疆" in prompt
 
 
 def test_early_decision_signal_rejects_inferred_geography(monkeypatch) -> None:
@@ -266,6 +282,87 @@ def test_local_decision_geography_uses_current_city_context(monkeypatch) -> None
     assert state == saved[0]
     assert state.status == GeographicStatus.GROUNDED.value
     assert (state.lng, state.lat) == (104.0657, 30.5436)
+
+
+def test_local_geography_inherits_active_decision_city_before_current_reality(
+    monkeypatch,
+) -> None:
+    cases = [
+        ("杭州", (120.1551, 30.2741), "杭州市", "西湖区", (120.130396, 30.259242)),
+        ("深圳", (114.0579, 22.5431), "深圳市", "南山区", (113.93041, 22.53332)),
+        ("广州", (113.2644, 23.1291), "广州市", "天河区", (113.36199, 23.12463)),
+    ]
+    active: dict[str, DecisionGeography] = {}
+    calls: list[tuple[str, str | None]] = []
+    city_context_calls: list[tuple[float, float]] = []
+
+    def resolve(title: str, context: str | None, _api_key: str):
+        calls.append((title, context))
+        for _, _, expected_context, local_identity, resolved in cases:
+            if title == local_identity and context == expected_context:
+                return GeographicResolutionResult(
+                    status="GROUNDED",
+                    geographic_identity=f"{expected_context}{local_identity}",
+                    lng=resolved[0],
+                    lat=resolved[1],
+                )
+        return GeographicResolutionResult(status="UNRESOLVED")
+
+    def resolve_city_context(lng: float, lat: float, _api_key: str):
+        city_context_calls.append((lng, lat))
+        return next(
+            context
+            for _, coordinates, context, _, _ in cases
+            if coordinates == (lng, lat)
+        )
+
+    monkeypatch.setattr(decision_geography_module.geographic_resolver, "resolve", resolve)
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        resolve_city_context,
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_local_area",
+        lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "get",
+        lambda _conversation_id: active["state"],
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "save",
+        lambda _conversation_id, state: state,
+    )
+
+    for city, coordinates, context, local_identity, resolved in cases:
+        active["state"] = DecisionGeography(
+            intent_established=True,
+            intent_type="RELOCATE_FOR_WORK",
+            identity=city,
+            identity_source="USER",
+            status="GROUNDED",
+            lng=coordinates[0],
+            lat=coordinates[1],
+        )
+        state = decision_geography_module.decision_geography_service.apply(
+            "conversation-id",
+            intent_established=True,
+            intent_type="housing_search",
+            identity=local_identity,
+            identity_source="USER",
+            api_key="server-key",
+            current_geographic_reality=(104.0668, 30.5728),
+        )
+
+        assert calls[-2:] == [(local_identity, None), (local_identity, context)]
+        assert city_context_calls[-1] == coordinates
+        assert state is not None
+        assert state.status == GeographicStatus.GROUNDED.value
+        assert (state.lng, state.lat) == resolved
 
 
 def test_explicit_city_overrides_current_city_context(monkeypatch) -> None:
@@ -734,6 +831,59 @@ def test_failed_contextual_resolution_replaces_prior_decision_geography(monkeypa
     assert state.lat is None
 
 
+def test_failed_local_detail_keeps_existing_grounded_decision_world(monkeypatch) -> None:
+    previous = DecisionGeography(
+        intent_established=True,
+        intent_type="RELOCATE_FOR_WORK",
+        identity="上海",
+        identity_source="USER",
+        status="GROUNDED",
+        lng=121.4737,
+        lat=31.2304,
+    )
+    saved: list[DecisionGeography] = []
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve",
+        lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        lambda lng, lat, _api_key: (
+            "上海市" if (lng, lat) == (121.4737, 31.2304) else "成都市"
+        ),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_local_area",
+        lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "get",
+        lambda _conversation_id: previous,
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "save",
+        lambda _conversation_id, state: saved.append(state) or state,
+    )
+
+    state = decision_geography_module.decision_geography_service.apply(
+        "conversation-id",
+        intent_established=True,
+        intent_type="housing",
+        identity="无法唯一确认的本地区域",
+        identity_source="USER",
+        api_key="server-key",
+        current_geographic_reality=(104.0668, 30.5728),
+    )
+
+    assert state == previous
+    assert saved == []
+
+
 def test_decision_geography_survives_database_reconnect() -> None:
     database = Database(settings.DATABASE_URL)
     database.initialize()
@@ -758,3 +908,138 @@ def test_decision_geography_survives_database_reconnect() -> None:
 
     reconnected_store = DecisionGeographyStore(Database(settings.DATABASE_URL))
     assert reconnected_store.get(conversation_id) == state
+
+
+def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
+    monkeypatch,
+) -> None:
+    conversation_id = uuid_for("decision-geography-nationwide-sequence")
+    owner_id = uuid_for("decision-geography-nationwide-owner")
+    conversations = ConversationStore(Database(settings.DATABASE_URL))
+    conversations.delete(conversation_id)
+    conversations.get_or_create(conversation_id, owner_id)
+
+    direct = {
+        "西安": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="陕西省西安市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
+            lng=108.9398,
+            lat=34.3416,
+        ),
+        "福建": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="福建省",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="REGION",
+            lng=119.2965,
+            lat=26.0998,
+        ),
+        "福州": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="福建省福州市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
+            lng=119.2965,
+            lat=26.0745,
+        ),
+        "广州": GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="广东省广州市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
+            lng=113.2644,
+            lat=23.1291,
+        ),
+    }
+    contextual = {
+        ("雁塔区", "西安市"): GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="陕西省西安市雁塔区",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="LOCAL",
+            lng=108.9487,
+            lat=34.2225,
+        ),
+        ("鼓楼区", "福州市"): GeographicResolutionResult(
+            status="GROUNDED",
+            geographic_identity="福建省福州市鼓楼区",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="LOCAL",
+            lng=119.3038,
+            lat=26.0820,
+        ),
+    }
+
+    def resolve(identity: str, context: str | None, _api_key: str):
+        if context is None:
+            return direct.get(identity, GeographicResolutionResult(status="UNRESOLVED"))
+        return contextual.get(
+            (identity, context),
+            GeographicResolutionResult(status="UNRESOLVED"),
+        )
+
+    contexts = {
+        (108.9398, 34.3416): "西安市",
+        (119.2965, 26.0745): "福州市",
+    }
+    monkeypatch.setattr(decision_geography_module.geographic_resolver, "resolve", resolve)
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        lambda lng, lat, _api_key: contexts.get((lng, lat)),
+    )
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_local_area",
+        lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
+    )
+
+    expected = [
+        ("西安", "CITY"),
+        ("雁塔区", "LOCAL"),
+        ("福建", "REGION"),
+        ("福州", "CITY"),
+        ("鼓楼区", "LOCAL"),
+    ]
+    for identity, scope in expected:
+        state = decision_geography_module.decision_geography_service.apply(
+            conversation_id,
+            intent_established=True,
+            intent_type="RELOCATE_FOR_WORK",
+            identity=identity,
+            identity_source="USER",
+            api_key="server-key",
+            current_geographic_reality=(104.0668, 30.5728),
+        )
+        assert state is not None
+        assert state.identity == identity
+        assert state.identity_source == "USER"
+        assert state.geographic_scope == scope
+        assert state.status == GeographicStatus.GROUNDED.value
+
+    unchanged = decision_geography_module.decision_geography_service.apply(
+        conversation_id,
+        intent_established=False,
+        intent_type=None,
+        identity=None,
+        identity_source=None,
+        api_key="server-key",
+        current_geographic_reality=(104.0668, 30.5728),
+    )
+    assert unchanged is not None
+    assert unchanged.identity == "鼓楼区"
+
+    changed = decision_geography_module.decision_geography_service.apply(
+        conversation_id,
+        intent_established=True,
+        intent_type="RELOCATE_FOR_WORK",
+        identity="广州",
+        identity_source="USER",
+        api_key="server-key",
+        current_geographic_reality=(104.0668, 30.5728),
+    )
+    assert changed is not None
+    assert changed.identity == "广州"
+    assert changed.geographic_scope == "CITY"
