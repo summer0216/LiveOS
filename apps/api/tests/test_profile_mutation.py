@@ -82,6 +82,17 @@ def test_explicit_work_role_recovers_omitted_work_location(
     assert analysis.patch.work_location == expected
 
 
+def test_explicit_housing_request_recovers_omitted_housing_intent() -> None:
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(),
+        "我想找房，在中关村工作，通勤最好30分钟，预算6000左右",
+    )
+
+    assert analysis.decision_geography.intent_established is True
+    assert analysis.decision_geography.intent_type == "housing_search"
+    assert analysis.decision_geography.identity is None
+
+
 def test_future_work_intent_does_not_become_work_reality() -> None:
     analysis = profile_intelligence._build_analysis(
         analysis_json(),

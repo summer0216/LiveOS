@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import httpx
@@ -63,6 +64,7 @@ class HousingCandidateDiscovery:
         pages: int = 2,
         page_size: int = 20,
         max_route_candidates: int = 16,
+        max_concurrent_routes: int = 4,
         max_results: int = 4,
     ) -> HousingDiscoveryResult:
         if not api_key or commute_limit_minutes < 1:
@@ -97,9 +99,10 @@ class HousingCandidateDiscovery:
                 break
 
         residential = self._validated_residential_pois(raw)
-        qualified: list[tuple[LivingTimeResult, ResidentialPoi]] = []
-        for poi in residential[:max_route_candidates]:
-            living_time = self._transit.calculate_living_time(
+        route_candidates = residential[:max_route_candidates]
+
+        def calculate_living_time(poi: ResidentialPoi) -> LivingTimeResult | None:
+            return self._transit.calculate_living_time(
                 origin_lng=poi.lng,
                 origin_lat=poi.lat,
                 destination_lng=work_lng,
@@ -108,6 +111,12 @@ class HousingCandidateDiscovery:
                 origin_city_code=poi.city_code,
                 destination_city_code=poi.city_code,
             )
+
+        with ThreadPoolExecutor(max_workers=max_concurrent_routes) as executor:
+            living_times = executor.map(calculate_living_time, route_candidates)
+
+        qualified: list[tuple[LivingTimeResult, ResidentialPoi]] = []
+        for poi, living_time in zip(route_candidates, living_times, strict=True):
             if (
                 living_time is not None
                 and living_time.minutes <= commute_limit_minutes

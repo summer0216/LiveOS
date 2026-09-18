@@ -3,6 +3,8 @@ import { apiRequest } from '@/services/api';
 export interface Property {
   id: string;
   conversation_id: string;
+  provenance?: 'USER_PROVIDED' | 'AMAP_RESIDENTIAL_POI';
+  external_id?: string | null;
   title: string | null;
   district: string | null;
   rent: number | null;

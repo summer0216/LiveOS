@@ -13,7 +13,11 @@ from app.models.decision_geography import DecisionGeography
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision
-from app.services.chat_service import WORLD_STATE_READY
+from app.services.chat_service import (
+    STREAM_KEEP_ALIVE,
+    WORLD_CONSEQUENCE_READY,
+    WORLD_STATE_READY,
+)
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import decision_change_context
@@ -153,9 +157,22 @@ def test_stream_events_turn_model_exception_into_a_terminal_error_event() -> Non
 
 
 def test_stream_events_exposes_persisted_world_state_before_reply() -> None:
-    assert list(_stream_events(iter((WORLD_STATE_READY, "reply")))) == [
+    assert list(
+        _stream_events(
+            iter(
+                (
+                    WORLD_STATE_READY,
+                    STREAM_KEEP_ALIVE,
+                    WORLD_CONSEQUENCE_READY,
+                    "reply",
+                )
+            )
+        )
+    ) == [
         ": connected\n\n",
         "event: world-state-ready\ndata: true\n\n",
+        ": keep-alive\n\n",
+        "event: world-consequence-ready\ndata: true\n\n",
         'data: "reply"\n\n',
     ]
 

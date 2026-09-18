@@ -1,4 +1,6 @@
 from dataclasses import replace
+from threading import Lock
+from time import sleep
 
 from app.models.property import CommuteMode, Property, PropertyProvenance
 from app.services.housing_candidate_discovery import HousingCandidateDiscovery
@@ -61,6 +63,25 @@ class FakeTransit:
             if minutes is not None
             else None
         )
+
+
+class ConcurrentTransit:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self.active = 0
+        self.max_active = 0
+
+    def calculate_living_time(self, **kwargs) -> LivingTimeResult:
+        with self._lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            sleep(0.02)
+            minutes = round((kwargs["origin_lng"] - 113.0) * 100)
+            return LivingTimeResult(minutes, CommuteMode.WALKING)
+        finally:
+            with self._lock:
+                self.active -= 1
 
 
 def residential_poi(
@@ -155,3 +176,33 @@ def test_discovery_is_idempotent_by_amap_poi_identity(monkeypatch) -> None:
 
     assert first.properties[0].id == second.properties[0].id
     assert len(properties.items) == 1
+
+
+def test_routes_candidates_with_bounded_concurrency_and_keeps_deterministic_sort(
+    monkeypatch,
+) -> None:
+    raw = [
+        residential_poi(f"poi-{index}", f"真实小区{index}", f"{113 + index / 100:.6f},22.540000")
+        for index in range(1, 7)
+    ]
+    monkeypatch.setattr(
+        "httpx.get",
+        lambda *_args, **_kwargs: Response({"status": "1", "pois": raw}),
+    )
+    properties = FakeProperties()
+    transit = ConcurrentTransit()
+    discovery = HousingCandidateDiscovery(properties=properties, transit=transit)
+
+    result = discovery.discover(
+        conversation_id="conversation-1",
+        work_lng=113.0,
+        work_lat=22.541,
+        commute_limit_minutes=30,
+        api_key="test-key",
+        pages=1,
+        max_concurrent_routes=3,
+        max_results=4,
+    )
+
+    assert 1 < transit.max_active <= 3
+    assert [property_.commute_minutes for property_ in result.properties] == [1, 2, 3, 4]

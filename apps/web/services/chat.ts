@@ -24,6 +24,7 @@ interface StreamMessageOptions {
   currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
   onWorldStateReady?: () => void;
+  onWorldConsequenceReady?: () => void;
   onDecisionRelevantFeedback?: () => void;
   onDecisionChange?: (change: DecisionChange) => void;
 }
@@ -73,6 +74,7 @@ export async function streamMessage({
   currentGeographicReality,
   onChunk,
   onWorldStateReady,
+  onWorldConsequenceReady,
   onDecisionRelevantFeedback,
   onDecisionChange,
 }: StreamMessageOptions): Promise<void> {
@@ -126,6 +128,13 @@ export async function streamMessage({
           continue;
         }
         throw new Error('Streaming API returned an invalid world state event.');
+      }
+      if (eventType === 'event: world-consequence-ready') {
+        if (chunk === true) {
+          onWorldConsequenceReady?.();
+          continue;
+        }
+        throw new Error('Streaming API returned an invalid world consequence event.');
       }
       if (eventType === 'event: decision-change') {
         if (isDecisionChange(chunk)) {

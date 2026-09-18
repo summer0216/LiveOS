@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from time import perf_counter
 
 from app.core.config import settings
@@ -61,6 +61,21 @@ class WorldStateReady:
 
 
 WORLD_STATE_READY = WorldStateReady()
+
+
+class WorldConsequenceReady:
+    pass
+
+
+WORLD_CONSEQUENCE_READY = WorldConsequenceReady()
+
+
+class StreamKeepAlive:
+    pass
+
+
+STREAM_KEEP_ALIVE = StreamKeepAlive()
+DISCOVERY_KEEP_ALIVE_SECONDS = 15.0
 
 
 class ChatService:
@@ -230,10 +245,20 @@ class ChatService:
                 and grounded_profile.lat is not None
             ):
                 if (
-                    current_decision_geography is not None
-                    and current_decision_geography.intent_established
-                    and _is_housing_intent(
-                        current_decision_geography.intent_type
+                    (
+                        (
+                            current_decision_geography is not None
+                            and current_decision_geography.intent_established
+                            and _is_housing_intent(
+                                current_decision_geography.intent_type
+                            )
+                        )
+                        or (
+                            analysis.decision_geography.intent_established
+                            and _is_housing_intent(
+                                analysis.decision_geography.intent_type
+                            )
+                        )
                     )
                     and grounded_profile.commute_minutes is not None
                 ):
@@ -412,7 +437,7 @@ class ChatService:
         conversation_id: str,
         message: str,
         current_geographic_reality: tuple[float, float] | None = None,
-    ) -> Iterator[str | WorldStateReady]:
+    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
@@ -467,11 +492,18 @@ class ChatService:
         executor: ThreadPoolExecutor,
         world_state_ready: bool,
         current_decision_geography: DecisionGeography | None,
-    ) -> Iterator[str | WorldStateReady]:
+    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         try:
             if world_state_ready:
                 yield WORLD_STATE_READY
             analysis = profile_future.result()
+            discovery_futures: list[Future[object]] = []
+
+            def schedule_discovery(task: Callable[[], None]) -> Future[object]:
+                future = executor.submit(task)
+                discovery_futures.append(future)
+                return future
+
             change_causes = self._update_profile(
                 conversation_id=conversation_id,
                 history=history,
@@ -479,9 +511,18 @@ class ChatService:
                 analysis=analysis,
                 apply_decision_geography=False,
                 current_decision_geography=current_decision_geography,
-                schedule_housing_discovery=executor.submit,
+                schedule_housing_discovery=schedule_discovery,
             )
             decision_change_context.set(conversation_id, change_causes)
+
+            for discovery_future in discovery_futures:
+                while True:
+                    try:
+                        discovery_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)
+                        break
+                    except TimeoutError:
+                        yield STREAM_KEEP_ALIVE
+            yield WORLD_CONSEQUENCE_READY
 
             yield from self._stream_assistant_reply(conversation_id, history)
         finally:

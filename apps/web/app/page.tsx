@@ -264,12 +264,21 @@ export default function HomePage() {
     () => properties.filter(
       (property): property is Property & { lng: number; lat: number } =>
         property.geographic_status === 'GROUNDED'
+        && property.conversation_id === conversationId
+        && property.provenance === 'AMAP_RESIDENTIAL_POI'
+        && Boolean(property.external_id && property.title?.trim())
+        && typeof property.commute_minutes === 'number'
+        && Number.isFinite(property.commute_minutes)
+        && property.commute_minutes > 0
+        && (property.commute_mode === 'WALKING' || property.commute_mode === 'PUBLIC_TRANSIT')
         && typeof property.lng === 'number'
-        && typeof property.lat === 'number',
-    ),
-    [properties],
+        && Number.isFinite(property.lng) && Math.abs(property.lng) <= 180
+        && typeof property.lat === 'number'
+        && Number.isFinite(property.lat) && Math.abs(property.lat) <= 90,
+    ).slice(0, groundedWork ? 1 : 0),
+    [conversationId, groundedWork, properties],
   );
-  const standaloneWorkReality = groundedChoices.length === 0;
+  const standaloneWorkReality = true;
   const housingFitLocations = useMemo(
     () => groundedWork && groundedChoices.length > 0
       ? [
@@ -347,12 +356,33 @@ export default function HomePage() {
       const worldStateReady = new Promise<void>((resolve) => {
         markWorldStateReady = resolve;
       });
+      const reconcileWorldConsequences = async () => {
+        const [durableProfile, durableProperties] = await Promise.all([
+          getLivingProfile(currentConversationId),
+          getProperties(currentConversationId),
+        ]);
+        if (latestSubmitIdRef.current !== submitId) return;
+        setProfile(durableProfile);
+        setProperties(durableProperties);
+        setPhase(
+          durableProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty',
+        );
+        if (durableProfile?.geographic_status === 'GROUNDED') {
+          setObservedWorkReality(null);
+          requestAnimationFrame(() => setWorkVisible(true));
+        }
+      };
       const chatCompletion = streamMessage({
         conversationId: currentConversationId,
         message,
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
+        onWorldConsequenceReady: () => {
+          void reconcileWorldConsequences().catch((error: unknown) => {
+            console.error('Failed to reconcile persisted World consequence:', error);
+          });
+        },
       });
 
       const observePersistedDecisionGeography = async () => {
@@ -553,6 +583,19 @@ export default function HomePage() {
         aria-label="Living World"
         className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}
       >
+        {geographicGroundReady && workVisible && workPosition && groundedChoices.map((home) => {
+          const position = choicePositions[home.id];
+          if (!position) return null;
+          const meaning = `${home.commute_minutes}min · ${home.commute_mode === 'WALKING' ? '步行' : '公共交通'}`;
+          return (
+            <div key={`relationship-${home.id}`} className="pointer-events-none absolute inset-0" aria-label={`${home.title}到${groundedWork?.displayIdentity}：${meaning}`}>
+              <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
+                <line x1={workPosition.x} y1={workPosition.y} x2={position.x} y2={position.y} stroke="currentColor" strokeWidth="1" strokeDasharray="4 5" className="text-slate-500/60" />
+              </svg>
+              <span className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-xs text-slate-700" style={{ left: (workPosition.x + position.x) / 2, top: (workPosition.y + position.y) / 2 - 12 }}>{meaning}</span>
+            </div>
+          );
+        })}
         {geographicGroundReady && groundedWork && workPosition && (
           <div
             className={
@@ -606,6 +649,17 @@ export default function HomePage() {
         {geographicGroundReady && groundedChoices.map((property) => {
           const position = choicePositions[property.id];
           if (!position) return null;
+          if (property.provenance === 'AMAP_RESIDENTIAL_POI') {
+            return (
+              <div key={property.id} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: position.x, top: position.y }}>
+                <div className="world-object" aria-label={`${property.title}，可能住这里`}>
+                  <span className="object-mark">●</span>
+                  <span className="object-name mt-2">{property.title}</span>
+                  <span className="object-kicker mt-1">可能住这里</span>
+                </div>
+              </div>
+            );
+          }
           const focused = focusedChoiceIds.includes(property.id);
           const focusedOrder = focusedChoiceIds.indexOf(property.id);
           const singleFocused = focused && !dualFocusActive;

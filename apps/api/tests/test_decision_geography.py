@@ -63,6 +63,34 @@ def test_early_signal_prompt_treats_direct_destination_as_world_truth() -> None:
     assert "我想去新疆" in prompt
 
 
+def test_grounded_city_identity_is_its_own_resolution_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        decision_geography_module.geographic_resolver,
+        "resolve_city_context",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Grounded city must not require reverse geocoding")
+        ),
+    )
+    state = DecisionGeography(
+        intent_established=True,
+        intent_type="housing_search",
+        identity="北京",
+        identity_source="USER",
+        geographic_scope="CITY",
+        status="GROUNDED",
+        lng=116.407387,
+        lat=39.904179,
+    )
+
+    assert (
+        decision_geography_module.decision_geography_service.city_context(
+            state,
+            "server-key",
+        )
+        == "北京"
+    )
+
+
 def test_early_decision_signal_rejects_inferred_geography(monkeypatch) -> None:
     monkeypatch.setattr(
         decision_signal_module.ai_client,

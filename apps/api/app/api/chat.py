@@ -9,7 +9,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.ownership import COOKIE_NAME, anonymous_user_id, set_anonymous_cookie
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.chat_service import WORLD_STATE_READY, WorldStateReady, chat_service
+from app.services.chat_service import (
+    STREAM_KEEP_ALIVE,
+    WORLD_CONSEQUENCE_READY,
+    WORLD_STATE_READY,
+    StreamKeepAlive,
+    WorldConsequenceReady,
+    WorldStateReady,
+    chat_service,
+)
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_challenge_context import decision_challenge_context
 from app.services.decision_change import (
@@ -31,7 +39,9 @@ STREAM_ERROR_MESSAGE = "抱歉，LiveOS 暂时无法完成回复，请稍后重�
 
 
 def _stream_events(
-    chunks: Iterator[str | WorldStateReady],
+    chunks: Iterator[
+        str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive
+    ],
     conversation_id: str | None = None,
 ) -> Iterator[str]:
     executor = ThreadPoolExecutor(max_workers=1)
@@ -73,6 +83,12 @@ def _stream_events(
                 break
             if chunk is WORLD_STATE_READY:
                 yield "event: world-state-ready\ndata: true\n\n"
+                continue
+            if chunk is WORLD_CONSEQUENCE_READY:
+                yield "event: world-consequence-ready\ndata: true\n\n"
+                continue
+            if chunk is STREAM_KEEP_ALIVE:
+                yield ": keep-alive\n\n"
                 continue
             if conversation_id is not None and not controls_flushed:
                 controls_flushed = True

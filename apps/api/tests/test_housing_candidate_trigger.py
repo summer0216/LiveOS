@@ -141,6 +141,31 @@ def test_stream_path_schedules_discovery_without_blocking_profile_update(
     assert len(discovery_calls) == 1
 
 
+def test_full_housing_analysis_triggers_discovery_without_early_geography(
+    monkeypatch,
+) -> None:
+    conversation_id = uuid_for("housing-candidate-trigger-full-analysis")
+    conversation_manager.get_or_create(conversation_id)
+    profile_store.save(conversation_id, grounded_housing_profile())
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.chat_service.housing_candidate_discovery.discover",
+        lambda **kwargs: calls.append(kwargs)
+        or HousingDiscoveryResult(20, 16, 4, ()),
+    )
+
+    chat_service._update_profile(
+        conversation_id,
+        [],
+        analysis=housing_analysis(),
+        apply_decision_geography=False,
+        current_decision_geography=None,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["conversation_id"] == conversation_id
+
+
 def test_active_decision_city_owns_work_grounding_context(monkeypatch) -> None:
     conversation_id = uuid_for("active-decision-city-work-context")
     conversation_manager.get_or_create(conversation_id)

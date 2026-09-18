@@ -30,6 +30,17 @@ from app.runtime.prompt import build_profile_extraction_prompt
 from app.services.geographic_resolution import normalize_local_geographic_identity
 
 
+def _is_housing_intent_type(intent_type: str | None) -> bool:
+    if intent_type is None:
+        return False
+    return intent_type.strip().casefold().replace("-", "_").replace(" ", "_") in {
+        "housing",
+        "housing_search",
+        "find_housing",
+        "rental_search",
+    }
+
+
 class ProfileIntelligence:
     def extract_json(
         self,
@@ -99,6 +110,10 @@ class ProfileIntelligence:
         geographic_clarification = self._build_geographic_clarification(data)
         decision_geography = self._build_decision_geography(
             data,
+            latest_user_message,
+        )
+        decision_geography = self._protect_explicit_housing_intent(
+            decision_geography,
             latest_user_message,
         )
         choices = self._build_choices(data)
@@ -696,6 +711,23 @@ class ProfileIntelligence:
 
         work_location = match.group(1).strip()
         return replace(patch, work_location=work_location) if work_location else patch
+
+    @staticmethod
+    def _protect_explicit_housing_intent(
+        geography: DecisionGeography,
+        latest_user_message: str,
+    ) -> DecisionGeography:
+        if geography.intent_established and _is_housing_intent_type(
+            geography.intent_type
+        ):
+            return geography
+        if re.search(r"(?:想|要|准备|计划)?(?:找房|租房|找住处)", latest_user_message):
+            return replace(
+                geography,
+                intent_established=True,
+                intent_type="housing_search",
+            )
+        return geography
 
     @staticmethod
     def _protect_commute_preference(

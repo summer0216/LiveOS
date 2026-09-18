@@ -1,3 +1,4 @@
+import re
 from dataclasses import replace
 
 from app.models.decision_change import ProfileMergeResult, profile_mutation_causes
@@ -8,6 +9,7 @@ from app.services.conversation_manager import conversation_manager
 from app.services.geographic_resolution import (
     GeographicResolutionResult,
     geographic_resolver,
+    identity_explicitly_names_city,
 )
 from app.stores.runtime import profile_store
 
@@ -18,6 +20,16 @@ _LEGACY_NANSHAN_WORK_GROUNDING = (
     113.947,
     22.541,
 )
+
+
+def _work_identity_within_context(identity: str, context: str | None) -> str:
+    if not context:
+        return identity
+    compact_identity = "".join(identity.split())
+    compact_context = "".join(context.split())
+    city = compact_context.removesuffix("市")
+    match = re.match(rf"^(?:{re.escape(compact_context)}|{re.escape(city)})(?:的)?(.+)$", compact_identity)
+    return match.group(1) if match is not None else identity
 
 
 class ProfileManager:
@@ -111,12 +123,29 @@ class ProfileManager:
 
         result = geographic_resolver.resolve(
             profile.work_location,
-            context_location,
+            None,
             api_key,
         )
-        if result.status != "GROUNDED" and context_location:
+        explicit_city = identity_explicitly_names_city(profile.work_location, result)
+        if result.status != "GROUNDED" and not explicit_city:
             result = geographic_resolver.resolve_local_area(
                 profile.work_location,
+                None,
+                api_key,
+            )
+        if result.status != "GROUNDED" and context_location and not explicit_city:
+            contextual_identity = _work_identity_within_context(
+                profile.work_location,
+                context_location,
+            )
+            result = geographic_resolver.resolve(
+                contextual_identity,
+                context_location,
+                api_key,
+            )
+        if result.status != "GROUNDED" and context_location and not explicit_city:
+            result = geographic_resolver.resolve_local_area(
+                contextual_identity,
                 context_location,
                 api_key,
             )

@@ -1,3 +1,5 @@
+import pytest
+
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus
@@ -176,8 +178,38 @@ def test_verified_non_legacy_work_grounding_does_not_need_resolution() -> None:
     assert profile_manager.needs_work_geographic_resolution(profile) is False
 
 
+def test_unresolved_explicit_city_work_does_not_use_unrelated_context(monkeypatch):
+    conversation_id = uuid_for("profile-manager-explicit-city-guard")
+    profile_manager.get_or_create(conversation_id)
+    profile_store.save(conversation_id, LivingProfile(work_location="北京市中关村"))
+    calls = []
+
+    def resolve(title, context, key):
+        calls.append((title, context))
+        return GeographicResolutionResult(
+            status="UNRESOLVED", geographic_identity="北京市中关村",
+        )
+
+    def unexpected_local(*args):
+        pytest.fail("Explicit city must not fall through to unrelated city context")
+
+    monkeypatch.setattr("app.services.profile_manager.geographic_resolver.resolve", resolve)
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve_local_area",
+        unexpected_local,
+    )
+    result = profile_manager.resolve_work_geographic_grounding(
+        conversation_id, context_location="成都市", api_key="server-key",
+    )
+    assert result.status == "UNRESOLVED"
+    assert calls == [("北京市中关村", None)]
+    profile = profile_manager.get(conversation_id)
+    assert profile.lng is None and profile.lat is None
+
+
+@pytest.mark.parametrize("context", [None, "北京市", "成都市"])
 def test_work_grounding_uses_existing_local_area_resolution(
-    monkeypatch,
+    monkeypatch, context,
 ) -> None:
     conversation_id = uuid_for("profile-manager-local-work-grounding")
     profile_manager.get_or_create(conversation_id)
@@ -189,20 +221,26 @@ def test_work_grounding_uses_existing_local_area_resolution(
         "app.services.profile_manager.geographic_resolver.resolve",
         lambda *_args: GeographicResolutionResult(status="UNRESOLVED"),
     )
-    monkeypatch.setattr(
-        "app.services.profile_manager.geographic_resolver.resolve_local_area",
-        lambda *_args: GeographicResolutionResult(
+    calls = []
+
+    def resolve_local(title, city, key):
+        calls.append((title, city))
+        return GeographicResolutionResult(
             status="GROUNDED",
             geographic_identity="北京市中关村",
             geographic_precision=GeographicPrecision.AREA,
             lng=116.321669,
             lat=39.985266,
-        ),
+        )
+
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve_local_area",
+        resolve_local,
     )
 
     result = profile_manager.resolve_work_geographic_grounding(
         conversation_id,
-        context_location="北京市",
+        context_location=context,
         api_key="server-key",
     )
     profile = profile_manager.get(conversation_id)
@@ -212,4 +250,57 @@ def test_work_grounding_uses_existing_local_area_resolution(
     assert profile.work_location == "中关村"
     assert profile.geographic_identity == "北京市中关村"
     assert profile.geographic_status == GeographicStatus.GROUNDED
+    assert (profile.lng, profile.lat) == (116.321669, 39.985266)
+    assert calls == [("中关村", None)]
+
+
+def test_work_grounding_removes_matching_city_only_for_contextual_lookup(
+    monkeypatch,
+) -> None:
+    conversation_id = uuid_for("profile-manager-city-qualified-local-work")
+    profile_manager.get_or_create(conversation_id)
+    profile_store.save(
+        conversation_id,
+        LivingProfile(work_location="北京的中关村"),
+    )
+    resolve_calls = []
+    local_calls = []
+
+    def resolve(title, context, key):
+        resolve_calls.append((title, context))
+        return GeographicResolutionResult(status="UNRESOLVED")
+
+    def resolve_local(title, context, key):
+        local_calls.append((title, context))
+        if context == "北京市" and title == "中关村":
+            return GeographicResolutionResult(
+                status="GROUNDED",
+                geographic_identity="北京市中关村",
+                geographic_precision=GeographicPrecision.AREA,
+                lng=116.321669,
+                lat=39.985266,
+            )
+        return GeographicResolutionResult(status="UNRESOLVED")
+
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve", resolve,
+    )
+    monkeypatch.setattr(
+        "app.services.profile_manager.geographic_resolver.resolve_local_area",
+        resolve_local,
+    )
+
+    result = profile_manager.resolve_work_geographic_grounding(
+        conversation_id,
+        context_location="北京市",
+        api_key="server-key",
+    )
+
+    assert result.status == "GROUNDED"
+    assert resolve_calls == [("北京的中关村", None), ("中关村", "北京市")]
+    assert local_calls == [("北京的中关村", None), ("中关村", "北京市")]
+    profile = profile_manager.get(conversation_id)
+    assert profile is not None
+    assert profile.work_location == "北京的中关村"
+    assert profile.geographic_identity == "北京市中关村"
     assert (profile.lng, profile.lat) == (116.321669, 39.985266)

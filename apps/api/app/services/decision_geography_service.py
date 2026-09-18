@@ -35,6 +35,8 @@ class DecisionGeographyService:
             or state.lat is None
         ):
             return None
+        if state.geographic_scope == "CITY" and state.identity:
+            return state.identity
         return self._current_city_context((state.lng, state.lat), api_key)
 
     def _current_city_context(
