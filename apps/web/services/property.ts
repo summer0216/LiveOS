@@ -8,7 +8,7 @@ export interface Property {
   title: string | null;
   district: string | null;
   rent: number | null;
-  rent_source: 'USER_CONFIRMED_REALITY' | null;
+  rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;

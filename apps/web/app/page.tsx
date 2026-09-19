@@ -10,9 +10,7 @@ import AMapGround, {
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
 import {
-  decisionGeographyFingerprint,
   isGroundedDecisionGeography,
-  shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
 import { streamMessage } from '@/services/chat';
 import {
@@ -107,6 +105,8 @@ export default function HomePage() {
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
+  const [rentAnswerPropertyId, setRentAnswerPropertyId] = useState<string | null>(null);
+  const [rentFocusRequest, setRentFocusRequest] = useState(0);
   const latestSubmitIdRef = useRef(0);
 
   useEffect(() => {
@@ -201,6 +201,7 @@ export default function HomePage() {
   );
 
   const clearChoiceFocus = useCallback(() => {
+    setRentAnswerPropertyId(null);
     setFocusedChoiceIds([]);
     setPendingAction(null);
   }, []);
@@ -238,6 +239,7 @@ export default function HomePage() {
   }, []);
 
   const togglePossibleLifeFocus = useCallback((propertyId: string) => {
+    setRentAnswerPropertyId(null);
     setPendingAction(null);
     setFocusedChoiceIds((current) => (
       current.length === 1 && current[0] === propertyId ? [] : [propertyId]
@@ -363,10 +365,6 @@ export default function HomePage() {
     const currentConversationId = conversationId || createClientId();
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
-    const baselineDecisionGeography = decisionGeographyFingerprint(
-      restoredDecisionGeography,
-    );
-    let stopObservingDecisionGeography = false;
     let consequenceRevision = 0;
 
     setPhase('forming');
@@ -397,6 +395,9 @@ export default function HomePage() {
       const chatCompletion = streamMessage({
         conversationId: currentConversationId,
         message,
+        rentPropertyId: focusedChoiceIds.length === 1
+          && focusedChoiceIds[0] === rentAnswerPropertyId
+          ? rentAnswerPropertyId : undefined,
         clarificationTarget: workPrecisionUnknown && workPrecisionActionRequest > 0
           ? 'WORK_LOCATION' : undefined,
         currentGeographicReality: currentLocation,
@@ -410,38 +411,14 @@ export default function HomePage() {
       });
       // The selected clarification belongs to this answer, not subsequent turns.
       setWorkPrecisionActionRequest(0);
+      setRentAnswerPropertyId(null);
 
-      const observePersistedDecisionGeography = async () => {
-        while (
-          !stopObservingDecisionGeography
-          && latestSubmitIdRef.current === submitId
-        ) {
-          try {
-            const geography = await getDecisionGeography(currentConversationId);
-            if (shouldApplyObservedDecisionGeography({
-              candidate: geography,
-              baselineFingerprint: baselineDecisionGeography,
-              observationId: submitId,
-              latestObservationId: latestSubmitIdRef.current,
-            })) {
-              applyObservedDecisionGeography(geography, submitId);
-              return geography;
-            }
-          } catch {
-            // SSE remains authoritative; this observer only closes a missed-event gap.
-          }
-          await new Promise((resolve) => window.setTimeout(resolve, 750));
-        }
-        return null;
-      };
-      const observedDecisionGeography = observePersistedDecisionGeography();
-
+      // The stream establishes the conversation and owner cookie before reads.
+      // Missing geography is valid (200 null); do not poll an unowned cold start.
       await Promise.race([
         worldStateReady,
-        observedDecisionGeography.then(() => undefined),
         chatCompletion.then(() => undefined),
       ]);
-      stopObservingDecisionGeography = true;
       const earlyRevision = consequenceRevision;
       const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
@@ -524,8 +501,6 @@ export default function HomePage() {
           setPhase('empty');
         }
       }
-    } finally {
-      stopObservingDecisionGeography = true;
     }
   }, [
     applyObservedDecisionGeography,
@@ -535,6 +510,8 @@ export default function HomePage() {
     restoredDecisionGeography,
     workPrecisionUnknown,
     workPrecisionActionRequest,
+    rentAnswerPropertyId,
+    focusedChoiceIds,
   ]);
 
   const workPosition = useMemo(
@@ -626,6 +603,14 @@ export default function HomePage() {
               home={{ ...position, name: home.title ?? '' }}
               meaning={meaning}
               focused={focused}
+              rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY'
+                ? home.rent : null}
+              budget={profile?.budget ?? null}
+              onAskRent={() => {
+                setRentAnswerPropertyId(home.id);
+                setWorkPrecisionActionRequest(0);
+                setRentFocusRequest(current => current + 1);
+              }}
               onToggle={() => togglePossibleLifeFocus(home.id)}
             />
           );
@@ -826,10 +811,12 @@ export default function HomePage() {
           <ConversationComposer
             disabled={phase === 'forming'}
             variant="ambient"
-            placeholder={workPrecisionUnknown && workPrecisionActionRequest > 0
+            placeholder={rentAnswerPropertyId && focusedChoiceIds.includes(rentAnswerPropertyId)
+              ? '这套房实际租金是多少？'
+              : workPrecisionUnknown && workPrecisionActionRequest > 0
               ? `你在${groundedWork?.displayIdentity ?? '这个区域'}具体哪里工作？`
               : '告诉 LiveOS，你现在最想解决的生活问题……'}
-            focusRequestKey={workPrecisionActionRequest}
+            focusRequestKey={workPrecisionActionRequest + rentFocusRequest}
             onSubmit={(message) => {
               void handleSubmit(message);
             }}

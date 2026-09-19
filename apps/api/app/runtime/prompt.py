@@ -7,7 +7,7 @@ Extract only the current user's explicit world-changing decision signal.
 Return exactly one JSON object:
 {
   "decision_intent": {"established": boolean, "type": string | null},
-  "decision_geography": {"identity": string | null, "source": "USER" | "INFERRED" | null}
+  "decision_geography": {"identity": string | null, "city": string | null, "locality": string | null, "source": "USER" | "INFERRED" | null}
 }
 
 Rules:
@@ -21,6 +21,12 @@ Rules:
   as "在雁塔区上班".
 - A factual, weather, or incidental location mention is not a decision intent.
 - identity is only a place explicitly stated by the user.
+- For a city-qualified local place, return its explicit city and locality
+  separately, including when concatenated without 的. Both must be verbatim
+  parts of identity. Do not infer a missing city or split an integral
+  institution/building name. Return null city/locality when not explicit.
+- "打算去 X 工作" and "我要去 X 工作" express the same explicit work intent;
+  looking for a job does not establish a workplace.
 - Never infer coordinates, profile facts, choices, or recommendations.
 - Return JSON only.
 """.strip()
@@ -112,6 +118,9 @@ Extraction rules:
 26. decision_geography.identity must be the explicitly stated target place.
     Never put it into work_location, and never invent coordinates. Return null
     coordinates; the application resolves them with Geographic Resolver.
+    For a city-qualified local place, extract its explicit city and locality
+    separately, even if concatenated without 的. Both must be verbatim parts
+    of identity. Never infer a missing city or split an integral building name.
 27. For decision_intent and decision_geography, the latest user turn is the
     only source of established truth. Assistant statements and earlier runtime
     inferences may provide context, but must never establish or replace the
@@ -191,6 +200,8 @@ Return exactly this JSON structure:
   },
   "decision_geography": {
     "identity": string | null,
+    "city": string | null,
+    "locality": string | null,
     "source": "USER" | "INFERRED" | null,
     "status": "UNRESOLVED" | "GROUNDED",
     "lng": null,

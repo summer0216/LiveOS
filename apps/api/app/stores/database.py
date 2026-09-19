@@ -104,7 +104,7 @@ SCHEMA_STATEMENTS = (
         district TEXT,
         rent INTEGER,
         rent_source TEXT CHECK (
-            rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY')
+            rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY', 'USER_PROVIDED')
         ),
         area INTEGER,
         bedrooms INTEGER,
@@ -243,7 +243,7 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_geographic_scope_check",
     "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_geographic_scope_check CHECK (geographic_scope IS NULL OR geographic_scope IN ('REGION', 'CITY', 'LOCAL'))",
     "ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_rent_source_check",
-    "ALTER TABLE properties ADD CONSTRAINT properties_rent_source_check CHECK (rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY'))",
+    "ALTER TABLE properties ADD CONSTRAINT properties_rent_source_check CHECK (rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY', 'USER_PROVIDED'))",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_conversation_provenance_external_id ON properties(conversation_id, provenance, external_id) WHERE external_id IS NOT NULL",
     "ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS recommendation_invalidated BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE decision_action_states ADD COLUMN IF NOT EXISTS unknown_id UUID",

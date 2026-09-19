@@ -41,6 +41,32 @@ class PropertyRealityService:
     def __init__(self, properties: PropertyManager = property_manager) -> None:
         self._properties = properties
 
+    def apply_rent_answer(
+        self, conversation_id: str, property_id: str, user_text: str,
+    ) -> RentRealityResult:
+        # The selected Possible Life supplies the target, never the amount.
+        match = re.fullmatch(
+            r"\s*(?:(?:实际租金|租金|房租|月租)(?:是|为)?\s*)?"
+            r"[¥￥]?\s*([1-9]\d{0,7}|[1-9]\d{0,2}(?:,\d{3})+)"
+            r"\s*(?:元)?\s*(?:/\s*月|每月|一个月)?\s*[。.]?\s*",
+            user_text,
+        )
+        if match is None:
+            return RentRealityResult(status="NO_EXPLICIT_RENT")
+        rent = int(match.group(1).replace(",", ""))
+        target = next((p for p in self._properties.list(conversation_id)
+                       if p.id == property_id and p.conversation_id == conversation_id), None)
+        if target is None:
+            return RentRealityResult(status="UNMATCHED")
+        if target.rent == rent and target.rent_source == PropertyRentSource.USER_PROVIDED:
+            return RentRealityResult(status="IDEMPOTENT", property=target, rent=rent)
+        updated = self._properties.update_confirmed_rent(
+            property_id, conversation_id, rent, PropertyRentSource.USER_PROVIDED,
+        )
+        return RentRealityResult(
+            status="UPDATED" if updated else "UNMATCHED", property=updated, rent=rent,
+        )
+
     def apply_explicit_rent(
         self,
         conversation_id: str,

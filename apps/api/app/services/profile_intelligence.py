@@ -131,6 +131,14 @@ class ProfileIntelligence:
             data,
             latest_user_message,
         )
+        if (
+            patch.work_location
+            and decision_geography.identity_source == "USER"
+            and decision_geography.identity
+            and patch.work_location.replace("的", "", 1)
+            == decision_geography.identity.replace("的", "", 1)
+        ):
+            patch = replace(patch, work_location=decision_geography.identity)
         decision_geography = self._protect_explicit_housing_intent(
             decision_geography,
             latest_user_message,
@@ -204,15 +212,32 @@ class ProfileIntelligence:
         if not isinstance(identity, str) or not identity.strip():
             return DecisionGeography()
         normalized_identity = normalize_local_geographic_identity(identity)
+        city = raw_geography.get("city")
+        locality = raw_geography.get("locality")
+        if (
+            isinstance(city, str) and city.strip()
+            and isinstance(locality, str) and locality.strip()
+            and normalized_identity in (
+                city.strip() + locality.strip(),
+                city.strip() + "的" + locality.strip(),
+            )
+        ):
+            normalized_identity = city.strip() + "的" + locality.strip()
         compact_user_message = re.sub(r"[\s，。！？,.!?]", "", latest_user_message)
         compact_identity = re.sub(r"[\s，。！？,.!?]", "", normalized_identity)
+        # An optional connective can express an explicit city/local relation;
+        # every geographic character must still occur in the current user turn.
+        user_stated_identity = compact_identity in compact_user_message or (
+            "的" in compact_identity
+            and compact_identity.replace("的", "", 1) in compact_user_message
+        )
         intent_type = raw_intent.get("type")
         normalized_intent_type = intent_type if isinstance(intent_type, str) else None
         if (
             not established
             or source != "USER"
             or not compact_identity
-            or compact_identity not in compact_user_message
+            or not user_stated_identity
         ):
             return DecisionGeography(
                 intent_type=normalized_intent_type,
@@ -722,7 +747,7 @@ class ProfileIntelligence:
             latest_user_message,
         )
         committed_destination = re.search(
-            r"(?:^|[，。！？,.!?])我要去\s*([^，。！？,.!?]{2,40}?)"
+            r"(?:^|[，。！？,.!?])(?:我要去|(?:我)?打算去)\s*([^，。！？,.!?]{2,40}?)"
             r"\s*(?:工作|上班)(?:[，。！？,.!?]|$)",
             latest_user_message,
         )

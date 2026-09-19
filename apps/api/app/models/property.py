@@ -20,6 +20,7 @@ class PropertyProvenance(str, Enum):
 
 
 class PropertyRentSource(str, Enum):
+    USER_PROVIDED = "USER_PROVIDED"
     USER_CONFIRMED_REALITY = "USER_CONFIRMED_REALITY"
 
 

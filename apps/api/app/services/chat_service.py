@@ -83,6 +83,7 @@ class ChatService:
         self,
         conversation_id: str,
         message: str,
+        rent_property_id: str | None = None,
     ) -> tuple[Conversation, list[ConversationMessage]]:
         started_at = perf_counter()
         conversation = conversation_manager.get_or_create(
@@ -91,9 +92,10 @@ class ChatService:
 
         conversation_manager.append_user_message(conversation_id, message)
         logger.info("Chat user message persisted conversation_id=%s", conversation_id)
-        rent_reality = property_reality_service.apply_explicit_rent(
-            conversation_id,
-            message,
+        rent_reality = (
+            property_reality_service.apply_rent_answer(conversation_id, rent_property_id, message)
+            if rent_property_id else
+            property_reality_service.apply_explicit_rent(conversation_id, message)
         )
         logger.info(
             "Property rent reality conversation_id=%s status=%s property_id=%s rent=%s",
@@ -443,11 +445,21 @@ class ChatService:
         message: str,
         current_geographic_reality: tuple[float, float] | None = None,
         clarification_target: str | None = None,
+        rent_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
+            **({"rent_property_id": rent_property_id} if rent_property_id else {}),
         )
+
+        if rent_property_id:
+            # Rent is already durable. Do not reinterpret this bounded answer
+            # as a new budget, workplace, or discovery request.
+            def rent_consequence():
+                yield WORLD_CONSEQUENCE_READY
+                yield from self._stream_assistant_reply(conversation_id, history)
+            return rent_consequence()
 
         properties = property_manager.list(conversation_id)
         profile = profile_manager.get(conversation_id)

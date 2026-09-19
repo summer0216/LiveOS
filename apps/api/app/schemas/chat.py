@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     current_geographic_reality: CurrentGeographicReality | None = None
     clarification_target: Literal["WORK_LOCATION"] | None = None
+    rent_property_id: str | None = Field(default=None, min_length=1)
 
 
 class ChatResponse(BaseModel):

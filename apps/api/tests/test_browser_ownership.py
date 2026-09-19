@@ -27,6 +27,28 @@ from app.services.property_manager import property_manager
 from tests.ids import uuid_for
 
 
+def test_cold_stream_establishes_owner_before_reading_absent_geography(monkeypatch):
+    cid = uuid_for("cold-stream-geography-empty")
+    conversation_manager.delete(cid)
+    monkeypatch.setattr(chat_api.chat_service, "chat_stream", lambda **kwargs: iter([WORLD_STATE_READY]))
+    owner = TestClient(app)
+    response = owner.post("/api/chat/stream", json={
+        "conversation_id": cid,
+        "message": "打算去北京中关村工作，预算6000，通勤30分钟",
+    })
+    assert response.status_code == 200
+    assert COOKIE_NAME in response.cookies
+    initial = owner.get("/api/decision-geography", params={"conversation_id": cid})
+    assert initial.status_code == 200
+    assert initial.json() is None
+    assert TestClient(app).get(
+        "/api/decision-geography", params={"conversation_id": cid},
+    ).status_code == 404
+    assert owner.get(
+        "/api/decision-geography", params={"conversation_id": uuid_for("not-created-cold")},
+    ).status_code == 404
+
+
 def test_cors_allows_explicit_development_origins_with_credentials() -> None:
     client = TestClient(app)
 

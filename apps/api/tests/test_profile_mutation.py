@@ -68,6 +68,8 @@ def test_profile_intelligence_extracts_set_and_correction() -> None:
         ("公司在中关村", "中关村"),
         ("工作地点是中关村", "中关村"),
         ("我在中关村上班", "中关村"),
+        ("打算去北京中关村工作，预算6000，通勤30分钟", "北京中关村"),
+        ("我打算去北京中关村工作，预算6000，通勤30分钟", "北京中关村"),
     ],
 )
 def test_explicit_work_role_recovers_omitted_work_location(

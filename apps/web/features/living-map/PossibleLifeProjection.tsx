@@ -1,6 +1,7 @@
 'use client';
 
 import { useLayoutEffect, useRef, useState } from 'react';
+import { rentBudgetMeaning } from '@/lib/rentBudgetMeaning';
 
 type Point = { x: number; y: number };
 type Size = { width: number; height: number };
@@ -20,15 +21,18 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, meaning, focused, onToggle }: {
+export default function PossibleLifeProjection({ work, home, meaning, focused, onToggle, rent, budget, onAskRent }: {
   work: Point & { name: string };
   home: Point & { name: string };
   meaning: string;
   focused: boolean;
   onToggle: () => void;
+  rent: number | null;
+  budget: number | null;
+  onAskRent: () => void;
 }) {
   const workRef = useRef<HTMLDivElement>(null);
-  const homeRef = useRef<HTMLButtonElement>(null);
+  const homeRef = useRef<HTMLDivElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const [sizes, setSizes] = useState<Size[] | null>(null);
   useLayoutEffect(() => {
@@ -41,7 +45,7 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
     const observer = new ResizeObserver(measure);
     elements.forEach(el => { if (el) observer.observe(el); });
     return () => observer.disconnect();
-  }, [work.name, home.name, meaning, focused]);
+  }, [work.name, home.name, meaning, focused, rent, budget]);
 
   const midpoint = { x: (work.x + home.x) / 2, y: (work.y + home.y) / 2 };
   const measured = sizes ?? [{ width: 160, height: 44 }, { width: 160, height: 44 }, { width: 110, height: 18 }];
@@ -78,9 +82,17 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
       <div ref={workRef} data-world-label="work" className={`world-object absolute w-max whitespace-nowrap ${focused ? 'world-object-context' : ''}`} style={{ left: workBox.x, top: workBox.y }} aria-label={`${work.name}，工作`}>
         <span className="object-name">{work.name}</span><span className="object-kicker mt-1">工作</span>
       </div>
-      <button ref={homeRef} data-world-label="home" type="button" className={`world-object pointer-events-auto absolute w-max whitespace-nowrap border-0 bg-transparent p-0 ${focused ? 'font-semibold' : ''}`} style={{ left: homeBox.x, top: homeBox.y }} aria-label={`${focused ? '退出聚焦' : '聚焦'} ${home.name}`} aria-pressed={focused} onClick={event => { event.stopPropagation(); onToggle(); }}>
-        <span className="object-name">{home.name}</span><span className="object-kicker mt-1">{focused ? '如果住这里' : '可能住这里'}</span>
-      </button>
+      <div ref={homeRef} data-world-label="home" className={`world-object pointer-events-auto absolute w-max whitespace-nowrap ${focused ? 'font-semibold' : ''}`} style={{ left: homeBox.x, top: homeBox.y }}>
+        <button type="button" className="world-object border-0 bg-transparent p-0" aria-label={`${focused ? '退出聚焦' : '聚焦'} ${home.name}`} aria-pressed={focused} onClick={event => { event.stopPropagation(); onToggle(); }}>
+          <span className="object-name">{home.name}</span><span className="object-kicker mt-1">{focused ? '如果住这里' : '可能住这里'}</span>
+        </button>
+        {focused && rent === null && <button type="button" className="mt-2 border-0 bg-transparent p-0 text-xs text-slate-600 underline underline-offset-4" onClick={event => { event.stopPropagation(); onAskRent(); }}>实际租金？</button>}
+        {rent !== null && <span className="mt-2 text-xs text-slate-800">¥{rent.toLocaleString('en-US')} / 月</span>}
+        {focused && rent !== null && budget !== null && <>
+          <span className="mt-1 text-xs text-slate-500">预算 ¥{budget.toLocaleString('en-US')}</span>
+          <span className="mt-1 text-xs text-slate-800">{rentBudgetMeaning(rent, budget)}</span>
+        </>}
+      </div>
       <span ref={timeRef} data-world-label="time" className={`absolute w-max whitespace-nowrap text-xs text-slate-700 ${focused ? 'font-semibold' : 'opacity-70'}`} style={{ left: timeBox.x, top: timeBox.y }} aria-label={`${home.name}到${work.name}：${meaning}`}>{meaning}</span>
     </div>
   );

@@ -8,6 +8,7 @@ from app.models.property import (
     GeographicPrecision,
     GeographicStatus,
     Property,
+    PropertyRentSource,
 )
 from app.services.conversation_manager import conversation_manager
 from app.services.geographic_resolution import (
@@ -105,11 +106,13 @@ class PropertyManager:
         property_id: str,
         conversation_id: str,
         rent: int,
+        source: PropertyRentSource = PropertyRentSource.USER_CONFIRMED_REALITY,
     ) -> Property | None:
         return property_store.update_confirmed_rent(
             property_id,
             conversation_id,
             rent,
+            source,
         )
 
     def resolve_geographic_grounding(

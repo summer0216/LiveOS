@@ -566,6 +566,7 @@ class PropertyStore:
         property_id: str,
         conversation_id: str,
         rent: int,
+        source: PropertyRentSource = PropertyRentSource.USER_CONFIRMED_REALITY,
     ) -> Property | None:
         owner_id = resolve_owner_id(self._database, conversation_id)
         property_uuid = optional_uuid(property_id)
@@ -582,7 +583,7 @@ class PropertyStore:
                 """,
                 (
                     rent,
-                    PropertyRentSource.USER_CONFIRMED_REALITY.value,
+                    source.value,
                     now(),
                     property_uuid,
                     owner_id,
