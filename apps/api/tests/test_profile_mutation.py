@@ -102,6 +102,22 @@ def test_future_work_intent_does_not_become_work_reality() -> None:
     assert analysis.patch.work_location is None
 
 
+@pytest.mark.parametrize("extracted", [None, "融科资讯中心"])
+def test_latest_committed_work_replaces_omitted_or_stale_model_value(extracted):
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(work_location=extracted, budget=6000, commute_minutes=30),
+        "我要去北京的中关村工作，预算6000，通勤30分钟",
+    )
+    assert analysis.patch.work_location == "北京的中关村"
+
+
+def test_looking_for_work_does_not_establish_workplace():
+    analysis = profile_intelligence._build_analysis(
+        analysis_json(), "我要去北京找工作",
+    )
+    assert analysis.patch.work_location is None
+
+
 def test_profile_intelligence_distinguishes_clear_from_no_change() -> None:
     cleared = profile_intelligence._build_analysis(
         analysis_json(clear_fields=["budget"]),

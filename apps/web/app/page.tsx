@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import ConversationComposer from '@/features/conversation/components/ConversationComposer';
+import PossibleLifeProjection from '@/features/living-map/PossibleLifeProjection';
 import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
@@ -58,6 +59,12 @@ function formatGeographicIdentity(
   return administrativeAreas?.at(-1) ?? identity;
 }
 
+function formatAreaWorkIdentity(userValue: string, groundedIdentity: string) {
+  const city = groundedIdentity.match(/^(?:[^省]+省)?([^市]+)市/)?.[1];
+  if (!city || !userValue.startsWith(city)) return userValue;
+  return userValue.slice(city.length).replace(/^的/, '') || userValue;
+}
+
 function decisionGeographyZoom(
   geography: Pick<DecisionGeography, 'geographic_scope'>,
 ) {
@@ -94,11 +101,12 @@ export default function HomePage() {
   const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
     DecisionGeography | null | undefined
   >(undefined);
-  const [observedWorkReality, setObservedWorkReality] = useState<
+  const [, setObservedWorkReality] = useState<
     DecisionGeography | null
   >(null);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
   const latestSubmitIdRef = useRef(0);
 
   useEffect(() => {
@@ -229,16 +237,14 @@ export default function HomePage() {
     });
   }, []);
 
-  const groundedWork = useMemo(() => {
-    if (isGroundedWorkReality(observedWorkReality)) {
-      return {
-        lng: observedWorkReality.lng,
-        lat: observedWorkReality.lat,
-        identity: observedWorkReality.identity,
-        displayIdentity: observedWorkReality.identity,
-      };
-    }
+  const togglePossibleLifeFocus = useCallback((propertyId: string) => {
+    setPendingAction(null);
+    setFocusedChoiceIds((current) => (
+      current.length === 1 && current[0] === propertyId ? [] : [propertyId]
+    ));
+  }, []);
 
+  const groundedWork = useMemo(() => {
     return profile?.geographic_status === 'GROUNDED'
       && typeof profile.lng === 'number'
       && typeof profile.lat === 'number'
@@ -247,13 +253,24 @@ export default function HomePage() {
           lat: profile.lat,
           identity: profile.geographic_identity ?? profile.work_location ?? '',
           displayIdentity: profile.work_location?.trim()
-            || formatGeographicIdentity(
-              profile.geographic_identity ?? '',
-              profile.geographic_precision,
-            ),
+            ? profile.geographic_precision === 'AREA'
+              ? formatAreaWorkIdentity(
+                profile.work_location.trim(),
+                profile.geographic_identity ?? '',
+              )
+              : profile.work_location.trim()
+            : formatGeographicIdentity(
+                profile.geographic_identity ?? '',
+                profile.geographic_precision,
+              ),
         }
       : null;
-  }, [observedWorkReality, profile]);
+  }, [profile]);
+  const workPrecisionUnknown = Boolean(
+    groundedWork
+    && profile?.geographic_precision === 'AREA'
+    && typeof profile.commute_minutes === 'number',
+  );
 
   useEffect(() => {
     if (!groundedWork || !geographicGroundReady) return;
@@ -275,8 +292,11 @@ export default function HomePage() {
         && Number.isFinite(property.lng) && Math.abs(property.lng) <= 180
         && typeof property.lat === 'number'
         && Number.isFinite(property.lat) && Math.abs(property.lat) <= 90,
-    ).slice(0, groundedWork ? 1 : 0),
-    [conversationId, groundedWork, properties],
+    ).slice(
+      0,
+      groundedWork && profile?.geographic_precision === 'PLACE' ? 1 : 0,
+    ),
+    [conversationId, groundedWork, profile?.geographic_precision, properties],
   );
   const standaloneWorkReality = true;
   const housingFitLocations = useMemo(
@@ -347,6 +367,7 @@ export default function HomePage() {
       restoredDecisionGeography,
     );
     let stopObservingDecisionGeography = false;
+    let consequenceRevision = 0;
 
     setPhase('forming');
     setWorkVisible(false);
@@ -357,11 +378,12 @@ export default function HomePage() {
         markWorldStateReady = resolve;
       });
       const reconcileWorldConsequences = async () => {
+        const revision = ++consequenceRevision;
         const [durableProfile, durableProperties] = await Promise.all([
           getLivingProfile(currentConversationId),
           getProperties(currentConversationId),
         ]);
-        if (latestSubmitIdRef.current !== submitId) return;
+        if (latestSubmitIdRef.current !== submitId || revision !== consequenceRevision) return;
         setProfile(durableProfile);
         setProperties(durableProperties);
         setPhase(
@@ -375,6 +397,8 @@ export default function HomePage() {
       const chatCompletion = streamMessage({
         conversationId: currentConversationId,
         message,
+        clarificationTarget: workPrecisionUnknown && workPrecisionActionRequest > 0
+          ? 'WORK_LOCATION' : undefined,
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
@@ -384,6 +408,8 @@ export default function HomePage() {
           });
         },
       });
+      // The selected clarification belongs to this answer, not subsequent turns.
+      setWorkPrecisionActionRequest(0);
 
       const observePersistedDecisionGeography = async () => {
         while (
@@ -416,6 +442,7 @@ export default function HomePage() {
         chatCompletion.then(() => undefined),
       ]);
       stopObservingDecisionGeography = true;
+      const earlyRevision = consequenceRevision;
       const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
@@ -430,16 +457,18 @@ export default function HomePage() {
         );
       }
       if (latestSubmitIdRef.current !== submitId) return;
-      if (nextProfile) setProfile(nextProfile);
-      setProperties(nextProperties);
-      setPendingAction((current) => {
-        if (!current) return null;
-        const target = nextProperties.find(({ id }) => id === current.propertyId);
-        return target && typeof target.rent === 'number' ? null : current;
-      });
-      setPhase(nextProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
-      if (nextProfile?.geographic_status === 'GROUNDED') {
-        requestAnimationFrame(() => setWorkVisible(true));
+      if (earlyRevision === consequenceRevision) {
+        if (nextProfile) setProfile(nextProfile);
+        setProperties(nextProperties);
+        setPendingAction((current) => {
+          if (!current) return null;
+          const target = nextProperties.find(({ id }) => id === current.propertyId);
+          return target && typeof target.rent === 'number' ? null : current;
+        });
+        setPhase(nextProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty');
+        if (nextProfile?.geographic_status === 'GROUNDED') {
+          requestAnimationFrame(() => setWorkVisible(true));
+        }
       }
       if (isGroundedDecisionGeography(decisionGeography)) {
         applyObservedDecisionGeography(decisionGeography, submitId);
@@ -504,6 +533,8 @@ export default function HomePage() {
     currentLocation,
     reorient,
     restoredDecisionGeography,
+    workPrecisionUnknown,
+    workPrecisionActionRequest,
   ]);
 
   const workPosition = useMemo(
@@ -586,17 +617,20 @@ export default function HomePage() {
         {geographicGroundReady && workVisible && workPosition && groundedChoices.map((home) => {
           const position = choicePositions[home.id];
           if (!position) return null;
+          const focused = focusedChoiceIds.includes(home.id);
           const meaning = `${home.commute_minutes}min · ${home.commute_mode === 'WALKING' ? '步行' : '公共交通'}`;
           return (
-            <div key={`relationship-${home.id}`} className="pointer-events-none absolute inset-0" aria-label={`${home.title}到${groundedWork?.displayIdentity}：${meaning}`}>
-              <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
-                <line x1={workPosition.x} y1={workPosition.y} x2={position.x} y2={position.y} stroke="currentColor" strokeWidth="1" strokeDasharray="4 5" className="text-slate-500/60" />
-              </svg>
-              <span className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-xs text-slate-700" style={{ left: (workPosition.x + position.x) / 2, top: (workPosition.y + position.y) / 2 - 12 }}>{meaning}</span>
-            </div>
+            <PossibleLifeProjection
+              key={home.id}
+              work={{ ...workPosition, name: groundedWork?.displayIdentity ?? '' }}
+              home={{ ...position, name: home.title ?? '' }}
+              meaning={meaning}
+              focused={focused}
+              onToggle={() => togglePossibleLifeFocus(home.id)}
+            />
           );
         })}
-        {geographicGroundReady && groundedWork && workPosition && (
+        {geographicGroundReady && groundedWork && workPosition && groundedChoices.length === 0 && (
           <div
             className={
               'absolute -translate-x-1/2 -translate-y-1/2 text-center transition-opacity delay-300 duration-700 ease-out motion-reduce:delay-0 motion-reduce:transition-none ' +
@@ -607,7 +641,7 @@ export default function HomePage() {
             <div
               className={`world-object work-anchor ${focusedChoiceIds.length > 0 ? 'world-object-context' : ''}`}
               aria-label={standaloneWorkReality
-                ? `${groundedWork.displayIdentity}，工作`
+                ? `${groundedWork.displayIdentity}，${workPrecisionUnknown ? '工作区域' : '工作'}`
                 : [
                     '我的工作',
                     groundedWork.displayIdentity,
@@ -619,7 +653,9 @@ export default function HomePage() {
                       : null,
                   ].filter(Boolean).join('，')}
             >
-              <span className="object-mark">{standaloneWorkReality ? '●' : '◎'}</span>
+              {!workPrecisionUnknown && (
+                <span className="object-mark">{standaloneWorkReality ? '●' : '◎'}</span>
+              )}
               {!standaloneWorkReality && (
                 <span className="object-kicker mt-2">我的工作</span>
               )}
@@ -627,7 +663,23 @@ export default function HomePage() {
                 {groundedWork.displayIdentity}
               </span>
               {standaloneWorkReality ? (
-                <span className="object-kicker mt-1">工作</span>
+                <>
+                  <span className="object-kicker mt-1">
+                    {workPrecisionUnknown ? '工作区域' : '工作'}
+                  </span>
+                  {workPrecisionUnknown && (
+                    <button
+                      type="button"
+                      className="pointer-events-auto mt-3 border-0 bg-transparent p-0 font-mono text-[11px] font-medium tracking-[0.08em] text-slate-700 underline decoration-slate-400/70 underline-offset-4 transition-colors hover:text-slate-950"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setWorkPrecisionActionRequest((current) => current + 1);
+                      }}
+                    >
+                      具体工作地点？
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   {typeof profile?.commute_minutes === 'number' && (
@@ -647,19 +699,9 @@ export default function HomePage() {
         )}
 
         {geographicGroundReady && groundedChoices.map((property) => {
+          if (property.provenance === 'AMAP_RESIDENTIAL_POI') return null;
           const position = choicePositions[property.id];
           if (!position) return null;
-          if (property.provenance === 'AMAP_RESIDENTIAL_POI') {
-            return (
-              <div key={property.id} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: position.x, top: position.y }}>
-                <div className="world-object" aria-label={`${property.title}，可能住这里`}>
-                  <span className="object-mark">●</span>
-                  <span className="object-name mt-2">{property.title}</span>
-                  <span className="object-kicker mt-1">可能住这里</span>
-                </div>
-              </div>
-            );
-          }
           const focused = focusedChoiceIds.includes(property.id);
           const focusedOrder = focusedChoiceIds.indexOf(property.id);
           const singleFocused = focused && !dualFocusActive;
@@ -784,7 +826,10 @@ export default function HomePage() {
           <ConversationComposer
             disabled={phase === 'forming'}
             variant="ambient"
-            placeholder="告诉 LiveOS，你现在最想解决的生活问题……"
+            placeholder={workPrecisionUnknown && workPrecisionActionRequest > 0
+              ? `你在${groundedWork?.displayIdentity ?? '这个区域'}具体哪里工作？`
+              : '告诉 LiveOS，你现在最想解决的生活问题……'}
+            focusRequestKey={workPrecisionActionRequest}
             onSubmit={(message) => {
               void handleSubmit(message);
             }}

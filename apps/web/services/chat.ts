@@ -21,6 +21,7 @@ export async function sendMessage(
 interface StreamMessageOptions {
   conversationId: string;
   message: string;
+  clarificationTarget?: 'WORK_LOCATION';
   currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
   onWorldStateReady?: () => void;
@@ -71,6 +72,7 @@ const STREAM_READ_TIMEOUT_MS = 90_000;
 export async function streamMessage({
   conversationId,
   message,
+  clarificationTarget,
   currentGeographicReality,
   onChunk,
   onWorldStateReady,
@@ -81,6 +83,7 @@ export async function streamMessage({
   const request: ChatRequest = {
     conversation_id: conversationId,
     message,
+    ...(clarificationTarget ? { clarification_target: clarificationTarget } : {}),
     ...(currentGeographicReality ? { current_geographic_reality: currentGeographicReality } : {}),
   };
 

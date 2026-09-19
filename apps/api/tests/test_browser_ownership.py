@@ -104,7 +104,9 @@ def test_streaming_response_sets_cookie_and_preserves_owner_isolation(
         conversation_id: str,
         message: str,
         current_geographic_reality=None,
+        clarification_target=None,
     ):
+        assert clarification_target is None
         del conversation_id, message, current_geographic_reality
         yield "first"
         yield "second"
@@ -369,7 +371,9 @@ def test_pre_stream_work_and_first_token_have_separate_timeout_boundaries(
         conversation_id: str,
         message: str,
         current_geographic_reality=None,
+        clarification_target=None,
     ):
+        assert clarification_target is None
         del conversation_id, message, current_geographic_reality
         time.sleep(0.02)
 

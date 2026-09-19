@@ -4,9 +4,42 @@ from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus
 from app.services.geographic_resolution import GeographicResolutionResult
+from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.stores.runtime import profile_store
 from tests.ids import uuid_for
+
+
+def test_latest_work_area_replaces_previous_place(monkeypatch):
+    cid = uuid_for("latest-explicit-area-replaces-place")
+    profile_manager.get_or_create(cid)
+    profile_store.save(cid, LivingProfile(
+        work_location="融科资讯中心", geographic_identity="北京市海淀区融科资讯中心",
+        geographic_status=GeographicStatus.GROUNDED,
+        geographic_precision=GeographicPrecision.PLACE,
+        lng=116.326178, lat=39.984098,
+    ))
+    patch = profile_intelligence._protect_explicit_work_location(
+        LivingProfilePatch(work_location="融科资讯中心"),
+        "我要去北京的中关村工作，预算6000，通勤30分钟",
+    )
+    merged = profile_manager.merge(cid, patch, []).profile
+    assert merged.work_location == "北京的中关村"
+    assert merged.geographic_status == GeographicStatus.UNRESOLVED
+    assert merged.lng is None and merged.lat is None
+    assert merged.geographic_precision is None
+    monkeypatch.setattr("app.services.profile_manager.geographic_resolver.resolve",
+                        lambda *args: GeographicResolutionResult(
+                            status="GROUNDED", geographic_identity="北京市中关村",
+                            geographic_precision=GeographicPrecision.AREA,
+                            lng=116.321669, lat=39.985266,
+                        ))
+    profile_manager.resolve_work_geographic_grounding(
+        cid, context_location="北京市", api_key="key",
+    )
+    restored = profile_manager.get(cid)
+    assert restored.geographic_precision == GeographicPrecision.AREA
+    assert (restored.lng, restored.lat) == (116.321669, 39.985266)
 
 
 def test_profile_merge_and_tag_update() -> None:

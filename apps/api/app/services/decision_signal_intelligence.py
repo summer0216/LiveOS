@@ -8,10 +8,14 @@ from app.services.profile_intelligence import profile_intelligence
 
 
 class DecisionSignalIntelligence:
-    def analyze(self, user_message: str) -> DecisionGeography:
+    def analyze(
+        self, user_message: str, *, work_location_answer: bool = False,
+    ) -> DecisionGeography:
         payload = json.loads(
             ai_client.generate_json(
-                build_decision_signal_prompt(user_message),
+                build_decision_signal_prompt(
+                    user_message, work_location_answer=work_location_answer,
+                ),
                 model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
                 max_output_tokens=256,
             )

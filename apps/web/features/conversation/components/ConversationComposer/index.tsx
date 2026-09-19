@@ -1,13 +1,14 @@
 'use client';
 
 import type { KeyboardEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 
 interface ConversationComposerProps {
     disabled?: boolean;
     variant?: 'default' | 'ambient';
     placeholder?: string;
+    focusRequestKey?: number;
     onSubmit: (message: string) => void;
     onListeningChange: (isListening: boolean) => void;
 }
@@ -16,11 +17,17 @@ export default function ConversationComposer({
     disabled = false,
     variant = 'default',
     placeholder = '告诉 LiveOS 新情况……',
+    focusRequestKey = 0,
     onSubmit,
     onListeningChange,
 }: ConversationComposerProps) {
     const [message, setMessage] = useState('');
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const isAmbient = variant === 'ambient';
+
+    useEffect(() => {
+        if (focusRequestKey > 0) inputRef.current?.focus();
+    }, [focusRequestKey]);
 
     const submit = () => {
         const value = message.trim();
@@ -59,6 +66,7 @@ export default function ConversationComposer({
                 }
             >
                 <textarea
+                    ref={inputRef}
                     rows={1}
                     value={message}
                     disabled={disabled}

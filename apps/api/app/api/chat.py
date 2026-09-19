@@ -152,6 +152,7 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
         chat_service.chat_stream,
         conversation_id=request.conversation_id,
         message=request.message,
+        clarification_target=request.clarification_target,
         current_geographic_reality=(
             (request.current_geographic_reality.lng, request.current_geographic_reality.lat)
             if request.current_geographic_reality is not None

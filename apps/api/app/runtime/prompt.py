@@ -26,8 +26,21 @@ Rules:
 """.strip()
 
 
-def build_decision_signal_prompt(user_message: str) -> str:
-    return f"{DECISION_SIGNAL_PROMPT}\n\nCurrent user turn:\n{user_message}"
+WORK_LOCATION_ANSWER_CONTEXT = """
+The user explicitly selected the Work area's 'specific workplace?' action.
+The current turn is their answer about their own workplace. A bare place name
+can therefore supply work_location and a work_location decision intent.
+Extract the place only from this answer, never from prior suggestions. If the
+answer supplies no identifiable place (e.g. unknown or cancellation), leave it
+unset. The action supplies the role, not a location or grounding evidence.
+""".strip()
+
+
+def build_decision_signal_prompt(
+    user_message: str, *, work_location_answer: bool = False,
+) -> str:
+    context = WORK_LOCATION_ANSWER_CONTEXT if work_location_answer else ""
+    return f"{DECISION_SIGNAL_PROMPT}\n{context}\n\nCurrent user turn:\n{user_message}"
 
 PROFILE_EXTRACTION_SYSTEM_PROMPT = """
 You are the Profile Intelligence module inside LiveOS.

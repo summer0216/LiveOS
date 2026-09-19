@@ -11,13 +11,18 @@ from app.stores.runtime import profile_store
 from tests.ids import uuid_for
 
 
-def grounded_housing_profile(*, commute_minutes: int | None = 30) -> LivingProfile:
+def grounded_housing_profile(
+    *,
+    budget: int | None = 6000,
+    commute_minutes: int | None = 30,
+    geographic_precision: GeographicPrecision = GeographicPrecision.PLACE,
+) -> LivingProfile:
     return LivingProfile(
         work_location="南山科技园",
-        budget=6000,
+        budget=budget,
         commute_minutes=commute_minutes,
         geographic_identity="广东省深圳市南山区科技园",
-        geographic_precision=GeographicPrecision.AREA,
+        geographic_precision=geographic_precision,
         geographic_status=GeographicStatus.GROUNDED,
         lng=113.94604,
         lat=22.54461,
@@ -70,7 +75,7 @@ def test_grounded_housing_context_triggers_candidate_discovery(monkeypatch) -> N
     ]
 
 
-def test_non_housing_or_missing_commute_does_not_trigger_discovery(
+def test_non_housing_without_budget_or_missing_commute_does_not_trigger_discovery(
     monkeypatch,
 ) -> None:
     conversation_id = uuid_for("housing-candidate-trigger-guard")
@@ -81,7 +86,7 @@ def test_non_housing_or_missing_commute_does_not_trigger_discovery(
         lambda **kwargs: calls.append(kwargs),
     )
 
-    profile_store.save(conversation_id, grounded_housing_profile())
+    profile_store.save(conversation_id, grounded_housing_profile(budget=None))
     chat_service._update_profile(
         conversation_id,
         [],
@@ -105,6 +110,48 @@ def test_non_housing_or_missing_commute_does_not_trigger_discovery(
     )
 
     assert calls == []
+
+
+def test_area_work_does_not_trigger_point_to_point_discovery(monkeypatch) -> None:
+    conversation_id = uuid_for("housing-candidate-area-work-guard")
+    conversation_manager.get_or_create(conversation_id)
+    profile_store.save(
+        conversation_id,
+        grounded_housing_profile(geographic_precision=GeographicPrecision.AREA),
+    )
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.chat_service.housing_candidate_discovery.discover",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    chat_service._update_profile(
+        conversation_id,
+        [],
+        analysis=housing_analysis(),
+        apply_decision_geography=False,
+        current_decision_geography=housing_analysis().decision_geography,
+    )
+
+    assert calls == []
+
+
+def test_place_refinement_with_persisted_housing_constraints_triggers(monkeypatch):
+    conversation_id = uuid_for("housing-work-refinement-constraints")
+    conversation_manager.get_or_create(conversation_id)
+    profile_store.save(conversation_id, grounded_housing_profile())
+    calls = []
+    monkeypatch.setattr(
+        "app.services.chat_service.housing_candidate_discovery.discover",
+        lambda **kwargs: calls.append(kwargs) or HousingDiscoveryResult(0, 0, 0, ()),
+    )
+    chat_service._update_profile(
+        conversation_id, [], analysis=housing_analysis("work_location"),
+        apply_decision_geography=False,
+        current_decision_geography=housing_analysis("work_location").decision_geography,
+    )
+    assert len(calls) == 1
+    assert calls[0]["commute_limit_minutes"] == 30
 
 
 def test_stream_path_schedules_discovery_without_blocking_profile_update(

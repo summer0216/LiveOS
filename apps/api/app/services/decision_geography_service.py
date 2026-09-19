@@ -92,8 +92,30 @@ class DecisionGeographyService:
 
         direct_result = geographic_resolver.resolve(normalized_identity, None, api_key)
         context_location = None
+        # A city-qualified expression may contain a relational particle, rather
+        # than a literal address. Prove the explicit city before applying the
+        # existing contextual Work lookup shape: local identity + city.
+        explicit_city_context = False
+        city_identity, separator, local_identity = normalized_identity.partition("的")
+        if direct_result.status != "GROUNDED" and separator and local_identity:
+            city_result = geographic_resolver.resolve(city_identity, None, api_key)
+            if (
+                city_result.status == "GROUNDED"
+                and city_result.geographic_scope == "CITY"
+                and city_result.geographic_identity
+            ):
+                explicit_city_context = True
+                context_location = city_result.geographic_identity
+                direct_result = geographic_resolver.resolve(
+                    local_identity, context_location, api_key,
+                )
+                if direct_result.status != "GROUNDED":
+                    direct_result = geographic_resolver.resolve_local_area(
+                        local_identity, context_location, api_key,
+                    )
         if (
             direct_result.status == GeographicStatus.GROUNDED.value
+            or explicit_city_context
             or identity_explicitly_names_city(normalized_identity, direct_result)
         ):
             result = direct_result

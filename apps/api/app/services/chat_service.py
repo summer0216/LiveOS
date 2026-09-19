@@ -17,7 +17,7 @@ from app.models.decision_change import (
 )
 from app.models.decision_geography import DecisionGeography
 from app.models.profile_analysis import ProfileAnalysis
-from app.models.property import GeographicStatus, Property
+from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_action_progress import decision_action_progress_service
@@ -241,6 +241,7 @@ class ChatService:
             if (
                 grounded_profile is not None
                 and grounded_profile.geographic_status == GeographicStatus.GROUNDED
+                and grounded_profile.geographic_precision == GeographicPrecision.PLACE
                 and grounded_profile.lng is not None
                 and grounded_profile.lat is not None
             ):
@@ -259,6 +260,10 @@ class ChatService:
                                 analysis.decision_geography.intent_type
                             )
                         )
+                        # A workplace refinement can have work_location intent
+                        # while the persisted housing constraints are complete.
+                        # Budget establishes eligibility only, never rent fit.
+                        or grounded_profile.budget is not None
                     )
                     and grounded_profile.commute_minutes is not None
                 ):
@@ -437,6 +442,7 @@ class ChatService:
         conversation_id: str,
         message: str,
         current_geographic_reality: tuple[float, float] | None = None,
+        clarification_target: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
@@ -444,11 +450,27 @@ class ChatService:
         )
 
         properties = property_manager.list(conversation_id)
+        profile = profile_manager.get(conversation_id)
+        work_location_answer = (
+            clarification_target == "WORK_LOCATION"
+            and profile is not None
+            and profile.geographic_status == GeographicStatus.GROUNDED
+            and profile.geographic_precision == GeographicPrecision.AREA
+            and profile.commute_minutes is not None
+        )
         executor = ThreadPoolExecutor(max_workers=2)
         def analyze_profile() -> ProfileAnalysis:
+            if work_location_answer:
+                return profile_intelligence.analyze(
+                    history, properties or None, work_location_answer=True,
+                )
             return profile_intelligence.analyze(history, properties or None)
 
         def extract_signal():
+            if work_location_answer:
+                return decision_signal_intelligence.analyze(
+                    message, work_location_answer=True,
+                )
             return decision_signal_intelligence.analyze(message)
 
         profile_future: Future[ProfileAnalysis] = executor.submit(analyze_profile)
@@ -496,7 +518,14 @@ class ChatService:
         try:
             if world_state_ready:
                 yield WORLD_STATE_READY
-            analysis = profile_future.result()
+            while True:
+                try:
+                    analysis = profile_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)
+                    break
+                except TimeoutError:
+                    if profile_future.done():
+                        raise
+                    yield STREAM_KEEP_ALIVE
             discovery_futures: list[Future[object]] = []
 
             def schedule_discovery(task: Callable[[], None]) -> Future[object]:
@@ -504,7 +533,8 @@ class ChatService:
                 discovery_futures.append(future)
                 return future
 
-            change_causes = self._update_profile(
+            update_future = executor.submit(
+                self._update_profile,
                 conversation_id=conversation_id,
                 history=history,
                 current_geographic_reality=current_geographic_reality,
@@ -513,7 +543,18 @@ class ChatService:
                 current_decision_geography=current_decision_geography,
                 schedule_housing_discovery=schedule_discovery,
             )
+            while True:
+                try:
+                    change_causes = update_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)
+                    break
+                except TimeoutError:
+                    if update_future.done():
+                        raise
+                    yield STREAM_KEEP_ALIVE
             decision_change_context.set(conversation_id, change_causes)
+
+            # The durable Work update is observable before residential routing finishes.
+            yield WORLD_CONSEQUENCE_READY
 
             for discovery_future in discovery_futures:
                 while True:
@@ -521,8 +562,11 @@ class ChatService:
                         discovery_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)
                         break
                     except TimeoutError:
+                        if discovery_future.done():
+                            raise
                         yield STREAM_KEEP_ALIVE
-            yield WORLD_CONSEQUENCE_READY
+            if discovery_futures:
+                yield WORLD_CONSEQUENCE_READY
 
             yield from self._stream_assistant_reply(conversation_id, history)
         finally:

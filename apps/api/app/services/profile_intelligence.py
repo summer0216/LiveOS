@@ -26,7 +26,10 @@ from app.models.geographic_clarification import GeographicClarification
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import PROFILE_FIELDS, LivingProfilePatch, ProfileField
 from app.models.property import Property
-from app.runtime.prompt import build_profile_extraction_prompt
+from app.runtime.prompt import (
+    WORK_LOCATION_ANSWER_CONTEXT,
+    build_profile_extraction_prompt,
+)
 from app.services.geographic_resolution import normalize_local_geographic_identity
 
 
@@ -46,6 +49,8 @@ class ProfileIntelligence:
         self,
         history: list[ConversationMessage],
         properties: list[Property] | None = None,
+        *,
+        work_location_answer: bool = False,
     ) -> str:
         """
         根据 Conversation History 调用 LLM,
@@ -53,6 +58,8 @@ class ProfileIntelligence:
         """
 
         prompt = build_profile_extraction_prompt(history, properties)
+        if work_location_answer:
+            prompt += "\n\n" + WORK_LOCATION_ANSWER_CONTEXT
 
         return ai_client.generate_json(prompt)
 
@@ -60,13 +67,18 @@ class ProfileIntelligence:
         self,
         history: list[ConversationMessage],
         properties: list[Property] | None = None,
+        *,
+        work_location_answer: bool = False,
     ) -> ProfileAnalysis:
         """
         根据 Conversation History,
         生成 ProfileAnalysis。
         """
 
-        json_text = self.extract_json(history, properties)
+        json_text = (
+            self.extract_json(history, properties, work_location_answer=True)
+            if work_location_answer else self.extract_json(history, properties)
+        )
 
         latest_user_message = next(
             (
@@ -76,7 +88,14 @@ class ProfileIntelligence:
             ),
             "",
         )
-        return self._build_analysis(json_text, latest_user_message)
+        analysis = self._build_analysis(json_text, latest_user_message)
+        if work_location_answer and analysis.patch.work_location:
+            identity = re.sub(r"\s", "", analysis.patch.work_location)
+            if identity not in re.sub(r"\s", "", latest_user_message):
+                analysis = analysis.model_copy(update={
+                    "patch": replace(analysis.patch, work_location=None),
+                })
+        return analysis
 
     def _build_analysis(
         self,
@@ -692,9 +711,6 @@ class ProfileIntelligence:
         patch: LivingProfilePatch,
         latest_user_message: str,
     ) -> LivingProfilePatch:
-        if patch.work_location is not None:
-            return patch
-
         role_first = re.search(
             r"(?:我的)?(?:公司|工作地点|上班地点|办公地点|工作)"
             r"(?:在|是|位于)\s*([^，。！？,.!?]{2,40})",
@@ -705,7 +721,17 @@ class ProfileIntelligence:
             r"\s*(?:工作|上班)(?:[，。！？,.!?]|$)",
             latest_user_message,
         )
-        match = role_first or first_person
+        committed_destination = re.search(
+            r"(?:^|[，。！？,.!?])我要去\s*([^，。！？,.!?]{2,40}?)"
+            r"\s*(?:工作|上班)(?:[，。！？,.!?]|$)",
+            latest_user_message,
+        )
+        # Going to look for a job does not establish a workplace.
+        if committed_destination and committed_destination.group(1).rstrip().endswith(
+            ("找", "寻找", "找份", "找一份")
+        ):
+            committed_destination = None
+        match = role_first or first_person or committed_destination
         if match is None:
             return patch
 
