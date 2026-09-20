@@ -155,6 +155,21 @@ class PropertyManager:
             walking_minutes=walking_minutes,
         )
 
+    def update_living_meaning(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        meaning: str,
+        reality_hash: str,
+    ) -> Property | None:
+        return property_store.update_living_meaning(
+            property_id,
+            conversation_id,
+            meaning=meaning,
+            reality_hash=reality_hash,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

@@ -46,6 +46,8 @@ class Property:
     grocery_lng: float | None = None
     grocery_lat: float | None = None
     grocery_walking_minutes: int | None = None
+    living_meaning: str | None = None
+    living_meaning_reality_hash: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

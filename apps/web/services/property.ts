@@ -17,6 +17,7 @@ export interface Property {
   grocery_lng: number | null;
   grocery_lat: number | null;
   grocery_walking_minutes: number | null;
+  living_meaning: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -48,6 +49,7 @@ export type PropertyInput = Omit<
   | 'grocery_lng'
   | 'grocery_lat'
   | 'grocery_walking_minutes'
+  | 'living_meaning'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'
@@ -121,6 +123,24 @@ export async function establishDailyGrocery(
   );
   if (!response.ok) {
     throw new Error(`Failed to establish daily grocery: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function formLivingMeaning(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: string; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/living-meaning`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to form Living Meaning: ${response.status}`);
   }
   return response.json();
 }

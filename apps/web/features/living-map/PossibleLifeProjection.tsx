@@ -21,11 +21,12 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
   meaning: string;
+  livingMeaning?: string | null;
   focused: boolean;
   onToggle: () => void;
   rent: number | null;
@@ -103,6 +104,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, f
           <span className="mt-1 text-xs text-slate-500">预算 ¥{budget.toLocaleString('en-US')}</span>
           <span className="mt-1 text-xs text-slate-800">{rentBudgetMeaning(rent, budget)}</span>
         </>}
+        {focused && livingMeaning && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">{livingMeaning}</span>}
       </div>
       <span ref={timeRef} data-world-label="time" className={`absolute w-max whitespace-nowrap text-xs text-slate-700 ${focused ? 'font-semibold' : 'opacity-70'}`} style={{ left: timeBox.x, top: timeBox.y }} aria-label={`${home.name}到${work.name}：${meaning}`}>{meaning}</span>
       {focused && grocery && groceryMidpoint && <span className="absolute w-max -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-xs text-emerald-900" style={{ left: groceryMidpoint.x, top: groceryMidpoint.y }} aria-label={`日常采购，步行 ${grocery.walkingMinutes} 分钟`}><span className="block font-medium">日常采购</span><span className="mt-1 block opacity-75">步行 {grocery.walkingMinutes}min</span></span>}

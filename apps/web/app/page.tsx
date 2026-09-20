@@ -20,6 +20,7 @@ import {
 import {
   acquireExternalRent,
   establishDailyGrocery,
+  formLivingMeaning,
   getProperties,
   type Property,
 } from '@/services/property';
@@ -280,19 +281,45 @@ export default function HomePage() {
     }
   }, [conversationId]);
 
-  const handleDailyGrocery = useCallback(async (propertyId: string) => {
-    if (!conversationId) return;
+  const handleDailyGrocery = useCallback(async (propertyId: string): Promise<Property | null> => {
+    if (!conversationId) return null;
     try {
       const result = await establishDailyGrocery(conversationId, propertyId);
+      if (!result.property) return null;
+      const updatedProperty = result.property;
+      setProperties(current => current.map(property => (
+        property.id === updatedProperty.id ? updatedProperty : property
+      )));
+      return updatedProperty;
+    } catch (error: unknown) {
+      console.error('Failed to establish Daily Grocery Reality:', error);
+      return null;
+    }
+  }, [conversationId]);
+
+  const handleLivingMeaning = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    try {
+      const result = await formLivingMeaning(conversationId, propertyId);
       if (!result.property) return;
       const updatedProperty = result.property;
       setProperties(current => current.map(property => (
         property.id === updatedProperty.id ? updatedProperty : property
       )));
     } catch (error: unknown) {
-      console.error('Failed to establish Daily Grocery Reality:', error);
+      console.error('Failed to form Living Meaning:', error);
     }
   }, [conversationId]);
+
+  const enterPossibleLifeFocus = useCallback(async (home: Property) => {
+    let reality = home;
+    if (!reality.grocery_external_id) {
+      const grounded = await handleDailyGrocery(home.id);
+      if (!grounded) return;
+      reality = grounded;
+    }
+    await handleLivingMeaning(reality.id);
+  }, [handleDailyGrocery, handleLivingMeaning]);
 
   const groundedWork = useMemo(() => {
     return profile?.geographic_status === 'GROUNDED'
@@ -660,6 +687,7 @@ export default function HomePage() {
               home={{ ...position, name: home.title ?? '' }}
               grocery={groceryPosition}
               meaning={meaning}
+              livingMeaning={home.living_meaning}
               focused={focused}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}
@@ -673,8 +701,8 @@ export default function HomePage() {
               }}
               onToggle={() => {
                 togglePossibleLifeFocus(home.id);
-                if (!focused && !home.grocery_external_id) {
-                  void handleDailyGrocery(home.id);
+                if (!focused) {
+                  void enterPossibleLifeFocus(home);
                 }
               }}
             />

@@ -18,6 +18,7 @@ from app.services.daily_grocery_reality import daily_grocery_reality_service
 from app.services.decision_unknown_service import decision_unknown_service
 from app.services.external_rent_reality_service import external_rent_reality_service
 from app.services.housing_candidate_discovery import housing_candidate_discovery
+from app.services.living_meaning_service import living_meaning_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 
@@ -65,6 +66,15 @@ class DailyGroceryRealityRequest(BaseModel):
 
 
 class DailyGroceryRealityResponse(BaseModel):
+    status: str
+    property: PropertyResponse | None = None
+
+
+class LivingMeaningRequest(BaseModel):
+    conversation_id: str = Field(min_length=1)
+
+
+class LivingMeaningResponse(BaseModel):
     status: str
     property: PropertyResponse | None = None
 
@@ -170,6 +180,31 @@ def establish_daily_grocery(
         settings.AMAP_WEB_SERVICE_KEY,
     )
     return DailyGroceryRealityResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None
+            else None
+        ),
+    )
+
+
+@router.post(
+    "/{property_id}/living-meaning",
+    response_model=LivingMeaningResponse,
+)
+def form_living_meaning(
+    property_id: str,
+    request: LivingMeaningRequest,
+    raw_request: Request,
+    response: Response,
+) -> LivingMeaningResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    result = living_meaning_service.form(request.conversation_id, property_id)
+    return LivingMeaningResponse(
         status=result.status,
         property=(
             PropertyResponse.model_validate(result.property)
