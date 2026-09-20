@@ -8,7 +8,9 @@ export interface Property {
   title: string | null;
   district: string | null;
   rent: number | null;
-  rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | null;
+  rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | 'EXTERNAL_SOURCE' | null;
+  rent_source_reference: string | null;
+  rent_observed_at: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -32,6 +34,8 @@ export type PropertyInput = Omit<
   | 'state_reason'
   | 'commute_mode'
   | 'rent_source'
+  | 'rent_source_reference'
+  | 'rent_observed_at'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'
@@ -71,6 +75,24 @@ export async function getProperty(
   const properties = await getProperties(conversationId);
 
   return properties[properties.length - 1] ?? null;
+}
+
+export async function acquireExternalRent(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: 'UPDATED' | 'NO_RELIABLE_EVIDENCE' | 'NOT_FOUND'; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/external-rent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to acquire external rent: ${response.status}`);
+  }
+  return response.json();
 }
 
 export async function createProperty(

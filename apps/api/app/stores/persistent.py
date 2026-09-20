@@ -436,6 +436,8 @@ class PropertyStore:
                 if row.get("rent_source") is not None
                 else None
             ),
+            rent_source_reference=row.get("rent_source_reference"),
+            rent_observed_at=row.get("rent_observed_at"),
             area=row["area"],
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
@@ -481,13 +483,14 @@ class PropertyStore:
                 """
                 INSERT INTO properties(
                     id, owner_id, conversation_id, title, district, rent, rent_source,
+                    rent_source_reference, rent_observed_at,
                     area, bedrooms,
                     bathrooms, commute_minutes, commute_mode, pet_friendly,
                     geographic_identity,
                     geographic_precision, geographic_status, lng, lat, provenance,
                     external_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -497,6 +500,8 @@ class PropertyStore:
                     property_.district,
                     property_.rent,
                     property_.rent_source.value if property_.rent_source else None,
+                    property_.rent_source_reference,
+                    property_.rent_observed_at,
                     property_.area,
                     property_.bedrooms,
                     property_.bathrooms,
@@ -584,6 +589,42 @@ class PropertyStore:
                 (
                     rent,
                     source.value,
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_external_rent(
+        self,
+        property_id: str,
+        conversation_id: str,
+        rent: int,
+        *,
+        source_reference: str,
+        observed_at: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET rent = %s, rent_source = %s, rent_source_reference = %s,
+                    rent_observed_at = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    rent,
+                    PropertyRentSource.EXTERNAL_SOURCE.value,
+                    source_reference,
+                    observed_at,
                     now(),
                     property_uuid,
                     owner_id,

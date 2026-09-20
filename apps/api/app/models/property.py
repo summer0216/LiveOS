@@ -22,6 +22,7 @@ class PropertyProvenance(str, Enum):
 class PropertyRentSource(str, Enum):
     USER_PROVIDED = "USER_PROVIDED"
     USER_CONFIRMED_REALITY = "USER_CONFIRMED_REALITY"
+    EXTERNAL_SOURCE = "EXTERNAL_SOURCE"
 
 
 class CommuteMode(str, Enum):
@@ -37,6 +38,8 @@ class Property:
     district: str | None = None
     rent: int | None = None
     rent_source: PropertyRentSource | None = None
+    rent_source_reference: str | None = None
+    rent_observed_at: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

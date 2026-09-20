@@ -17,7 +17,7 @@ import {
   getDecisionGeography,
   type DecisionGeography,
 } from '@/services/decisionGeography';
-import { getProperties, type Property } from '@/services/property';
+import { acquireExternalRent, getProperties, type Property } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
@@ -37,7 +37,7 @@ function deriveBudgetMeaning(
   if (
     typeof budget !== 'number'
     || typeof property.rent !== 'number'
-    || property.rent_source !== 'USER_CONFIRMED_REALITY'
+    || !['USER_CONFIRMED_REALITY', 'USER_PROVIDED', 'EXTERNAL_SOURCE'].includes(property.rent_source ?? '')
   ) {
     return null;
   }
@@ -107,6 +107,10 @@ export default function HomePage() {
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
   const [rentAnswerPropertyId, setRentAnswerPropertyId] = useState<string | null>(null);
   const [rentFocusRequest, setRentFocusRequest] = useState(0);
+  const [externalRentLookup, setExternalRentLookup] = useState<{
+    propertyId: string;
+    status: 'loading' | 'failed';
+  } | null>(null);
   const latestSubmitIdRef = useRef(0);
 
   useEffect(() => {
@@ -245,6 +249,30 @@ export default function HomePage() {
       current.length === 1 && current[0] === propertyId ? [] : [propertyId]
     ));
   }, []);
+
+  const handleExternalRent = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    setExternalRentLookup({ propertyId, status: 'loading' });
+    setRentAnswerPropertyId(null);
+    try {
+      const result = await acquireExternalRent(conversationId, propertyId);
+      if (result.status === 'UPDATED' && result.property) {
+        setProperties(current => current.map(property => (
+          property.id === result.property?.id ? result.property : property
+        )));
+        setExternalRentLookup(null);
+        return;
+      }
+      setExternalRentLookup({ propertyId, status: 'failed' });
+      // Keep USER_PROVIDED Reality available through the existing one-shot Composer.
+      setRentAnswerPropertyId(propertyId);
+      setRentFocusRequest(current => current + 1);
+    } catch {
+      setExternalRentLookup({ propertyId, status: 'failed' });
+      setRentAnswerPropertyId(propertyId);
+      setRentFocusRequest(current => current + 1);
+    }
+  }, [conversationId]);
 
   const groundedWork = useMemo(() => {
     return profile?.geographic_status === 'GROUNDED'
@@ -603,13 +631,15 @@ export default function HomePage() {
               home={{ ...position, name: home.title ?? '' }}
               meaning={meaning}
               focused={focused}
-              rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY'
+              rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}
               budget={profile?.budget ?? null}
+              rentSourceAvailable={home.rent_source === 'EXTERNAL_SOURCE' && Boolean(home.rent_source_reference)}
+              rentLookupStatus={externalRentLookup?.propertyId === home.id
+                ? externalRentLookup.status : 'idle'}
               onAskRent={() => {
-                setRentAnswerPropertyId(home.id);
                 setWorkPrecisionActionRequest(0);
-                setRentFocusRequest(current => current + 1);
+                void handleExternalRent(home.id);
               }}
               onToggle={() => togglePossibleLifeFocus(home.id)}
             />

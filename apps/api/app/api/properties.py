@@ -15,6 +15,7 @@ from app.services.candidate_decision_state import project_candidate_decision_sta
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_unknown_service import decision_unknown_service
+from app.services.external_rent_reality_service import external_rent_reality_service
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -47,6 +48,15 @@ class HousingCandidateDiscoveryResponse(BaseModel):
     residential_poi_count: int
     commute_qualified_count: int
     items: list[PropertyResponse]
+
+
+class ExternalRentRealityRequest(BaseModel):
+    conversation_id: str = Field(min_length=1)
+
+
+class ExternalRentRealityResponse(BaseModel):
+    status: str
+    property: PropertyResponse | None = None
 
 
 @router.post(
@@ -99,6 +109,34 @@ def list_properties(
             for property_ in properties
             if property_.id is not None
         ],
+    )
+
+
+@router.post(
+    "/{property_id}/external-rent",
+    response_model=ExternalRentRealityResponse,
+)
+def acquire_external_rent(
+    property_id: str,
+    request: ExternalRentRealityRequest,
+    raw_request: Request,
+    response: Response,
+) -> ExternalRentRealityResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    result = external_rent_reality_service.acquire(
+        request.conversation_id,
+        property_id,
+    )
+    return ExternalRentRealityResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None
+            else None
+        ),
     )
 
 

@@ -71,6 +71,8 @@ class PropertyResponse(PropertyFields):
     external_id: str | None = None
     commute_mode: CommuteMode | None = None
     rent_source: PropertyRentSource | None = None
+    rent_source_reference: str | None = None
+    rent_observed_at: str | None = None
 
 
 class PropertyListResponse(BaseModel):

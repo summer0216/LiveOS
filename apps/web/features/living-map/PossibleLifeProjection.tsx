@@ -21,7 +21,7 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, meaning, focused, onToggle, rent, budget, onAskRent }: {
+export default function PossibleLifeProjection({ work, home, meaning, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   meaning: string;
@@ -30,6 +30,8 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
   rent: number | null;
   budget: number | null;
   onAskRent: () => void;
+  rentSourceAvailable?: boolean;
+  rentLookupStatus?: 'idle' | 'loading' | 'failed';
 }) {
   const workRef = useRef<HTMLDivElement>(null);
   const homeRef = useRef<HTMLDivElement>(null);
@@ -86,8 +88,11 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
         <button type="button" className="world-object border-0 bg-transparent p-0" aria-label={`${focused ? '退出聚焦' : '聚焦'} ${home.name}`} aria-pressed={focused} onClick={event => { event.stopPropagation(); onToggle(); }}>
           <span className="object-name">{home.name}</span><span className="object-kicker mt-1">{focused ? '如果住这里' : '可能住这里'}</span>
         </button>
-        {focused && rent === null && <button type="button" className="mt-2 border-0 bg-transparent p-0 text-xs text-slate-600 underline underline-offset-4" onClick={event => { event.stopPropagation(); onAskRent(); }}>实际租金？</button>}
+        {focused && rent === null && rentLookupStatus === 'loading' && <span className="mt-2 text-xs text-slate-600">正在了解实际租金…</span>}
+        {focused && rent === null && rentLookupStatus === 'failed' && <span className="mt-2 text-xs text-slate-500">暂未找到可靠的当前租金</span>}
+        {focused && rent === null && rentLookupStatus !== 'loading' && <button type="button" className="mt-2 border-0 bg-transparent p-0 text-xs text-slate-600 underline underline-offset-4" onClick={event => { event.stopPropagation(); onAskRent(); }}>实际租金？</button>}
         {rent !== null && <span className="mt-2 text-xs text-slate-800">¥{rent.toLocaleString('en-US')} / 月</span>}
+        {rent !== null && rentSourceAvailable && <span className="mt-1 text-xs text-slate-500">来源可查</span>}
         {focused && rent !== null && budget !== null && <>
           <span className="mt-1 text-xs text-slate-500">预算 ¥{budget.toLocaleString('en-US')}</span>
           <span className="mt-1 text-xs text-slate-800">{rentBudgetMeaning(rent, budget)}</span>

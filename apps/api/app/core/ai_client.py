@@ -1,6 +1,7 @@
-from collections.abc import Iterator
+import json
+from collections.abc import Callable, Iterator
 from time import perf_counter
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from openai import OpenAI, OpenAIError
 
@@ -129,6 +130,64 @@ class AIClient:
             raise RuntimeError(
                 f"LLM JSON request failed: {error}",
             ) from error
+
+    def generate_json_with_public_evidence_tool(
+        self,
+        prompt: str,
+        *,
+        tool: dict[str, Any],
+        dispatch: Callable[[dict[str, Any]], str],
+        model: str | None = None,
+        max_output_tokens: int = 384,
+    ) -> str:
+        """Run one bounded model -> tool -> model turn for public evidence."""
+        try:
+            messages: list[Any] = [{"role": "user", "content": prompt}]
+            first = self.client.with_options(
+                timeout=JSON_REQUEST_TIMEOUT_SECONDS,
+            ).chat.completions.create(
+                model=model or settings.OPENAI_MODEL,
+                messages=messages,
+                tools=[tool],
+                tool_choice="auto",
+                temperature=0,
+                max_tokens=192,
+            )
+            assistant_message = first.choices[0].message
+            tool_calls = assistant_message.tool_calls or []
+            if len(tool_calls) != 1:
+                raise RuntimeError("LLM did not request exactly one public evidence tool call.")
+            tool_call = tool_calls[0]
+            if tool_call.function.name != "search_public_rental_evidence":
+                raise RuntimeError("LLM requested an unsupported public evidence tool.")
+            try:
+                arguments = json.loads(tool_call.function.arguments or "{}")
+            except json.JSONDecodeError as error:
+                raise RuntimeError("LLM returned invalid tool arguments.") from error
+            if not isinstance(arguments, dict):
+                raise TypeError("LLM returned invalid tool arguments.")
+
+            messages.append(assistant_message)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": dispatch(arguments),
+            })
+            final = self.client.with_options(
+                timeout=JSON_REQUEST_TIMEOUT_SECONDS,
+            ).chat.completions.create(
+                model=model or settings.OPENAI_MODEL,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0,
+                max_tokens=max_output_tokens,
+            )
+            content = final.choices[0].message.content
+            if not content:
+                raise RuntimeError("LLM returned an empty evidence interpretation.")
+            return content
+        except OpenAIError as error:
+            raise RuntimeError(f"LLM public evidence request failed: {error}") from error
 
 
 ai_client = AIClient()

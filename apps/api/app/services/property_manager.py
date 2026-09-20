@@ -115,6 +115,23 @@ class PropertyManager:
             source,
         )
 
+    def update_external_rent(
+        self,
+        property_id: str,
+        conversation_id: str,
+        rent: int,
+        *,
+        source_reference: str,
+        observed_at: str,
+    ) -> Property | None:
+        return property_store.update_external_rent(
+            property_id,
+            conversation_id,
+            rent,
+            source_reference=source_reference,
+            observed_at=observed_at,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,
