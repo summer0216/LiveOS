@@ -11,6 +11,12 @@ export interface Property {
   rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | 'EXTERNAL_SOURCE' | null;
   rent_source_reference: string | null;
   rent_observed_at: string | null;
+  grocery_external_id: string | null;
+  grocery_name: string | null;
+  grocery_identity: string | null;
+  grocery_lng: number | null;
+  grocery_lat: number | null;
+  grocery_walking_minutes: number | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -36,6 +42,12 @@ export type PropertyInput = Omit<
   | 'rent_source'
   | 'rent_source_reference'
   | 'rent_observed_at'
+  | 'grocery_external_id'
+  | 'grocery_name'
+  | 'grocery_identity'
+  | 'grocery_lng'
+  | 'grocery_lat'
+  | 'grocery_walking_minutes'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'
@@ -91,6 +103,24 @@ export async function acquireExternalRent(
   );
   if (!response.ok) {
     throw new Error(`Failed to acquire external rent: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function establishDailyGrocery(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: string; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/daily-grocery`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to establish daily grocery: ${response.status}`);
   }
   return response.json();
 }

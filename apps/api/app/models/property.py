@@ -40,6 +40,12 @@ class Property:
     rent_source: PropertyRentSource | None = None
     rent_source_reference: str | None = None
     rent_observed_at: str | None = None
+    grocery_external_id: str | None = None
+    grocery_name: str | None = None
+    grocery_identity: str | None = None
+    grocery_lng: float | None = None
+    grocery_lat: float | None = None
+    grocery_walking_minutes: int | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

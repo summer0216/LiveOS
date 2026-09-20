@@ -66,6 +66,23 @@ class TransitDurationService:
         result = self.calculate_living_time(**kwargs)
         return result.minutes if result is not None else None
 
+    def calculate_walking_minutes(
+        self,
+        *,
+        origin_lng: float,
+        origin_lat: float,
+        destination_lng: float,
+        destination_lat: float,
+        api_key: str | None,
+    ) -> int | None:
+        if not api_key:
+            return None
+        return self._walking_minutes(
+            api_key,
+            f"{origin_lng:.6f},{origin_lat:.6f}",
+            f"{destination_lng:.6f},{destination_lat:.6f}",
+        )
+
     def _walking_minutes(
         self,
         api_key: str,

@@ -21,9 +21,10 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, meaning, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
+  grocery?: Point & { walkingMinutes: number };
   meaning: string;
   focused: boolean;
   onToggle: () => void;
@@ -50,6 +51,9 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
   }, [work.name, home.name, meaning, focused, rent, budget]);
 
   const midpoint = { x: (work.x + home.x) / 2, y: (work.y + home.y) / 2 };
+  const groceryMidpoint = grocery
+    ? { x: (home.x + grocery.x) / 2, y: (home.y + grocery.y) / 2 }
+    : null;
   const measured = sizes ?? [{ width: 160, height: 44 }, { width: 160, height: 44 }, { width: 110, height: 18 }];
   const timeBox = { x: midpoint.x - measured[2].width / 2, y: midpoint.y - measured[2].height / 2, ...measured[2] };
   const anchors = [work, home].map(p => ({ x: p.x - 14, y: p.y - 14, width: 28, height: 28 }));
@@ -74,6 +78,7 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
     <div className="pointer-events-none absolute inset-0" style={{ visibility: sizes ? 'visible' : 'hidden' }}>
       <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
         <line x1={work.x} y1={work.y} x2={home.x} y2={home.y} stroke="currentColor" strokeWidth={focused ? 1.75 : 1} strokeDasharray="4 5" className={focused ? 'text-slate-800/80' : 'text-slate-500/60'} />
+        {focused && grocery && <line x1={home.x} y1={home.y} x2={grocery.x} y2={grocery.y} stroke="currentColor" strokeWidth="1" strokeDasharray="2 5" className="text-emerald-800/60" />}
         {[[work, workBox], [home, homeBox]].map(([anchor, box], i) => {
           const end = leaderEnd(anchor, box as Box);
           return <line key={i} x1={anchor.x} y1={anchor.y} x2={end.x} y2={end.y} stroke="currentColor" strokeWidth="0.75" className="text-slate-500/50" />;
@@ -81,6 +86,7 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
       </svg>
       <span data-world-anchor="work" className={`object-mark absolute -translate-x-1/2 -translate-y-1/2 ${focused ? 'opacity-50' : ''}`} style={{ left: work.x, top: work.y }} aria-hidden="true">●</span>
       <button data-world-anchor="home" type="button" className="object-mark pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0" style={{ left: home.x, top: home.y }} aria-label={`${focused ? '退出聚焦' : '聚焦'} ${home.name}锚点`} aria-pressed={focused} onClick={event => { event.stopPropagation(); onToggle(); }}>{focused ? '◉' : '●'}</button>
+      {focused && grocery && <span className="object-mark absolute -translate-x-1/2 -translate-y-1/2 text-emerald-800" style={{ left: grocery.x, top: grocery.y }} aria-hidden="true">○</span>}
       <div ref={workRef} data-world-label="work" className={`world-object absolute w-max whitespace-nowrap ${focused ? 'world-object-context' : ''}`} style={{ left: workBox.x, top: workBox.y }} aria-label={`${work.name}，工作`}>
         <span className="object-name">{work.name}</span><span className="object-kicker mt-1">工作</span>
       </div>
@@ -99,6 +105,7 @@ export default function PossibleLifeProjection({ work, home, meaning, focused, o
         </>}
       </div>
       <span ref={timeRef} data-world-label="time" className={`absolute w-max whitespace-nowrap text-xs text-slate-700 ${focused ? 'font-semibold' : 'opacity-70'}`} style={{ left: timeBox.x, top: timeBox.y }} aria-label={`${home.name}到${work.name}：${meaning}`}>{meaning}</span>
+      {focused && grocery && groceryMidpoint && <span className="absolute w-max -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-xs text-emerald-900" style={{ left: groceryMidpoint.x, top: groceryMidpoint.y }} aria-label={`日常采购，步行 ${grocery.walkingMinutes} 分钟`}><span className="block font-medium">日常采购</span><span className="mt-1 block opacity-75">步行 {grocery.walkingMinutes}min</span></span>}
     </div>
   );
 }

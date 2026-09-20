@@ -17,7 +17,12 @@ import {
   getDecisionGeography,
   type DecisionGeography,
 } from '@/services/decisionGeography';
-import { acquireExternalRent, getProperties, type Property } from '@/services/property';
+import {
+  acquireExternalRent,
+  establishDailyGrocery,
+  getProperties,
+  type Property,
+} from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
@@ -257,8 +262,9 @@ export default function HomePage() {
     try {
       const result = await acquireExternalRent(conversationId, propertyId);
       if (result.status === 'UPDATED' && result.property) {
+        const updatedProperty = result.property;
         setProperties(current => current.map(property => (
-          property.id === result.property?.id ? result.property : property
+          property.id === updatedProperty.id ? updatedProperty : property
         )));
         setExternalRentLookup(null);
         return;
@@ -271,6 +277,20 @@ export default function HomePage() {
       setExternalRentLookup({ propertyId, status: 'failed' });
       setRentAnswerPropertyId(propertyId);
       setRentFocusRequest(current => current + 1);
+    }
+  }, [conversationId]);
+
+  const handleDailyGrocery = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    try {
+      const result = await establishDailyGrocery(conversationId, propertyId);
+      if (!result.property) return;
+      const updatedProperty = result.property;
+      setProperties(current => current.map(property => (
+        property.id === updatedProperty.id ? updatedProperty : property
+      )));
+    } catch (error: unknown) {
+      console.error('Failed to establish Daily Grocery Reality:', error);
     }
   }, [conversationId]);
 
@@ -624,11 +644,21 @@ export default function HomePage() {
           if (!position) return null;
           const focused = focusedChoiceIds.includes(home.id);
           const meaning = `${home.commute_minutes}min · ${home.commute_mode === 'WALKING' ? '步行' : '公共交通'}`;
+          const groceryPosition = projection
+            && typeof home.grocery_lng === 'number'
+            && typeof home.grocery_lat === 'number'
+            && typeof home.grocery_walking_minutes === 'number'
+            ? {
+                ...projection({ lng: home.grocery_lng, lat: home.grocery_lat }),
+                walkingMinutes: home.grocery_walking_minutes,
+              }
+            : undefined;
           return (
             <PossibleLifeProjection
               key={home.id}
               work={{ ...workPosition, name: groundedWork?.displayIdentity ?? '' }}
               home={{ ...position, name: home.title ?? '' }}
+              grocery={groceryPosition}
               meaning={meaning}
               focused={focused}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
@@ -641,7 +671,12 @@ export default function HomePage() {
                 setWorkPrecisionActionRequest(0);
                 void handleExternalRent(home.id);
               }}
-              onToggle={() => togglePossibleLifeFocus(home.id)}
+              onToggle={() => {
+                togglePossibleLifeFocus(home.id);
+                if (!focused && !home.grocery_external_id) {
+                  void handleDailyGrocery(home.id);
+                }
+              }}
             />
           );
         })}

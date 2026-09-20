@@ -14,6 +14,7 @@ from app.schemas.property import (
 from app.services.candidate_decision_state import project_candidate_decision_states
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
+from app.services.daily_grocery_reality import daily_grocery_reality_service
 from app.services.decision_unknown_service import decision_unknown_service
 from app.services.external_rent_reality_service import external_rent_reality_service
 from app.services.housing_candidate_discovery import housing_candidate_discovery
@@ -55,6 +56,15 @@ class ExternalRentRealityRequest(BaseModel):
 
 
 class ExternalRentRealityResponse(BaseModel):
+    status: str
+    property: PropertyResponse | None = None
+
+
+class DailyGroceryRealityRequest(BaseModel):
+    conversation_id: str = Field(min_length=1)
+
+
+class DailyGroceryRealityResponse(BaseModel):
     status: str
     property: PropertyResponse | None = None
 
@@ -131,6 +141,35 @@ def acquire_external_rent(
         property_id,
     )
     return ExternalRentRealityResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None
+            else None
+        ),
+    )
+
+
+@router.post(
+    "/{property_id}/daily-grocery",
+    response_model=DailyGroceryRealityResponse,
+)
+def establish_daily_grocery(
+    property_id: str,
+    request: DailyGroceryRealityRequest,
+    raw_request: Request,
+    response: Response,
+) -> DailyGroceryRealityResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    result = daily_grocery_reality_service.establish(
+        request.conversation_id,
+        property_id,
+        settings.AMAP_WEB_SERVICE_KEY,
+    )
+    return DailyGroceryRealityResponse(
         status=result.status,
         property=(
             PropertyResponse.model_validate(result.property)

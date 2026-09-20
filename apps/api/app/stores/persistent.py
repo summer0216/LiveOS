@@ -438,6 +438,12 @@ class PropertyStore:
             ),
             rent_source_reference=row.get("rent_source_reference"),
             rent_observed_at=row.get("rent_observed_at"),
+            grocery_external_id=row.get("grocery_external_id"),
+            grocery_name=row.get("grocery_name"),
+            grocery_identity=row.get("grocery_identity"),
+            grocery_lng=row.get("grocery_lng"),
+            grocery_lat=row.get("grocery_lat"),
+            grocery_walking_minutes=row.get("grocery_walking_minutes"),
             area=row["area"],
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
@@ -484,13 +490,15 @@ class PropertyStore:
                 INSERT INTO properties(
                     id, owner_id, conversation_id, title, district, rent, rent_source,
                     rent_source_reference, rent_observed_at,
+                    grocery_external_id, grocery_name, grocery_identity,
+                    grocery_lng, grocery_lat, grocery_walking_minutes,
                     area, bedrooms,
                     bathrooms, commute_minutes, commute_mode, pet_friendly,
                     geographic_identity,
                     geographic_precision, geographic_status, lng, lat, provenance,
                     external_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -502,6 +510,12 @@ class PropertyStore:
                     property_.rent_source.value if property_.rent_source else None,
                     property_.rent_source_reference,
                     property_.rent_observed_at,
+                    property_.grocery_external_id,
+                    property_.grocery_name,
+                    property_.grocery_identity,
+                    property_.grocery_lng,
+                    property_.grocery_lat,
+                    property_.grocery_walking_minutes,
                     property_.area,
                     property_.bedrooms,
                     property_.bathrooms,
@@ -625,6 +639,48 @@ class PropertyStore:
                     PropertyRentSource.EXTERNAL_SOURCE.value,
                     source_reference,
                     observed_at,
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_daily_grocery(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        external_id: str,
+        name: str,
+        identity: str,
+        lng: float,
+        lat: float,
+        walking_minutes: int,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET grocery_external_id = %s, grocery_name = %s,
+                    grocery_identity = %s, grocery_lng = %s, grocery_lat = %s,
+                    grocery_walking_minutes = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    external_id,
+                    name,
+                    identity,
+                    lng,
+                    lat,
+                    walking_minutes,
                     now(),
                     property_uuid,
                     owner_id,

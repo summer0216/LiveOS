@@ -132,6 +132,29 @@ class PropertyManager:
             observed_at=observed_at,
         )
 
+    def update_daily_grocery(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        external_id: str,
+        name: str,
+        identity: str,
+        lng: float,
+        lat: float,
+        walking_minutes: int,
+    ) -> Property | None:
+        return property_store.update_daily_grocery(
+            property_id,
+            conversation_id,
+            external_id=external_id,
+            name=name,
+            identity=identity,
+            lng=lng,
+            lat=lat,
+            walking_minutes=walking_minutes,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,
