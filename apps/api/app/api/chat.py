@@ -155,6 +155,7 @@ async def chat_stream(request: ChatRequest, raw_request: Request, response: Resp
         clarification_target=request.clarification_target,
         **({"rent_property_id": request.rent_property_id} if request.rent_property_id else {}),
         **({"user_reality_property_id": request.user_reality_property_id} if request.user_reality_property_id else {}),
+        **({"user_decision_property_id": request.user_decision_property_id} if request.user_decision_property_id else {}),
         current_geographic_reality=(
             (request.current_geographic_reality.lng, request.current_geographic_reality.lat)
             if request.current_geographic_reality is not None

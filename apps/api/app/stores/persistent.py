@@ -456,6 +456,9 @@ class PropertyStore:
             decision_readiness=row.get("decision_readiness"),
             decision_readiness_reason=row.get("decision_readiness_reason"),
             decision_readiness_state_hash=row.get("decision_readiness_state_hash"),
+            user_decision_expression=row.get("user_decision_expression"),
+            user_decision_stance=row.get("user_decision_stance"),
+            user_decision_source=row.get("user_decision_source"),
             meaningful_unknown=row.get("meaningful_unknown"),
             meaningful_unknown_why=row.get("meaningful_unknown_why"),
             meaningful_unknown_state_hash=row.get("meaningful_unknown_state_hash"),
@@ -972,6 +975,35 @@ class PropertyStore:
                 """,
                 (status, reason, state_hash, now(), property_uuid,
                  owner_id, conversation_uuid, judgment_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def admit_user_decision(
+        self, property_id: str, conversation_id: str, *,
+        readiness_hash: str, expression: str, stance: str,
+    ) -> Property | None:
+        if stance not in {"ACCEPT", "DECLINE"} or not expression.strip():
+            return None
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET user_decision_expression = %s, user_decision_stance = %s,
+                    user_decision_source = 'USER_PROVIDED', updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND geographic_status = 'GROUNDED'
+                  AND decision_readiness = 'DECISION_READY'
+                  AND decision_readiness_state_hash = %s
+                  AND user_decision_expression IS NULL
+                RETURNING *
+                """,
+                (expression.strip(), stance, now(), property_uuid, owner_id,
+                 conversation_uuid, readiness_hash),
             ).fetchone()
         return self._from(row) if row is not None else None
 

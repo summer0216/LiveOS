@@ -504,6 +504,9 @@ export default function HomePage() {
           && (focusedUserReality.reality_action_type === 'USER_REALITY'
             || focusedUserReality.feedback_move_type === 'USER_REALITY')
           ? focusedUserReality.id : undefined,
+        userDecisionPropertyId: focusedUserReality?.decision_readiness === 'DECISION_READY'
+          && !focusedUserReality.user_decision_expression
+          ? focusedUserReality.id : undefined,
         clarificationTarget: workPrecisionUnknown && workPrecisionActionRequest > 0
           ? 'WORK_LOCATION' : undefined,
         currentGeographicReality: currentLocation,
@@ -722,6 +725,8 @@ export default function HomePage() {
               livingMeaning={home.living_meaning}
               currentJudgment={home.current_judgment}
               decisionReadiness={home.decision_readiness}
+              userDecisionExpression={home.user_decision_source === 'USER_PROVIDED'
+                ? home.user_decision_expression : null}
               independentKitchen={home.independent_kitchen_source === 'USER_PROVIDED'
                 ? home.independent_kitchen : null}
               indoorSoundObservation={home.indoor_sound_observation_source === 'USER_PROVIDED'

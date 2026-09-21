@@ -21,7 +21,7 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, userDecisionExpression, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
@@ -29,6 +29,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
   livingMeaning?: string | null;
   currentJudgment?: string | null;
   decisionReadiness?: 'NEED_MORE_REALITY' | 'DECISION_READY' | null;
+  userDecisionExpression?: string | null;
   independentKitchen?: boolean | null;
   indoorSoundObservation?: string | null;
   meaningfulUnknown?: string | null;
@@ -126,7 +127,8 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
         {focused && indoorSoundObservation && <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-800">室内声音 · {indoorSoundObservation}</span>}
         {focused && livingMeaning && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">{livingMeaning}</span>}
         {focused && currentJudgment && <span className="mt-2 max-w-56 whitespace-normal border-l border-slate-400/60 pl-2 text-left text-xs font-medium leading-relaxed text-slate-800">{currentJudgment}</span>}
-        {focused && decisionReadiness === 'DECISION_READY' && <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-600">现在已经可以判断这个选择了</span>}
+        {focused && userDecisionExpression && <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-800"><span className="block text-[10px] text-slate-500">我的决定</span><span className="mt-1 block">{userDecisionExpression}</span></span>}
+        {focused && decisionReadiness === 'DECISION_READY' && !userDecisionExpression && <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-600">现在已经可以判断这个选择了</span>}
         {focused && meaningfulUnknown && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">还需要弄清楚</span><span className="mt-1 block">{meaningfulUnknown}</span>{meaningfulUnknownWhy && <span className="mt-1 block text-[11px] text-slate-500">{meaningfulUnknownWhy}</span>}</span>}
         {focused && meaningfulUnknown && realityActionLabel && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">下一步</span>{realityActionType === 'PUBLIC_EVIDENCE' && !publicRentEvidence ? <button type="button" disabled={actionExecutionStatus === 'loading'} className="mt-1 block border-0 bg-transparent p-0 text-left underline underline-offset-4 disabled:no-underline" onClick={event => { event.stopPropagation(); onExecutePublicAction(); }}>{realityActionLabel}</button> : <span className="mt-1 block">{realityActionLabel}</span>}{realityActionWhy && <span className="mt-1 block text-[11px] text-slate-500">{realityActionWhy}</span>}{actionExecutionStatus === 'loading' && <span className="mt-1 block text-[11px]">正在获取公开证据…</span>}{actionExecutionStatus === 'failed' && <span className="mt-1 block text-[11px]">暂未获得可追溯证据</span>}</span>}
         {focused && publicActionOutcome === 'NO_EVIDENCE' && <span className="mt-2 max-w-56 whitespace-normal text-left text-[11px] leading-relaxed text-slate-500"><span className="block">暂未获得可追溯证据</span>{feedbackMoveLabel && <span className="mt-2 block"><span className="block text-[10px] tracking-[0.08em] text-slate-400">接下来</span><span className="mt-1 block text-slate-700">{feedbackMoveLabel}</span>{feedbackMoveWhy && <span className="mt-1 block">{feedbackMoveWhy}</span>}</span>}</span>}

@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     clarification_target: Literal["WORK_LOCATION"] | None = None
     rent_property_id: str | None = Field(default=None, min_length=1)
     user_reality_property_id: str | None = Field(default=None, min_length=1)
+    user_decision_property_id: str | None = Field(default=None, min_length=1)
 
 
 class ChatResponse(BaseModel):

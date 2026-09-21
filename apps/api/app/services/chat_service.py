@@ -37,6 +37,7 @@ from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
 from app.services.property_reality_service import property_reality_service
 from app.services.transit_duration import transit_duration_service
+from app.services.user_decision_return import user_decision_return
 from app.services.user_reality_return import user_reality_return
 
 logger = logging.getLogger(__name__)
@@ -449,6 +450,7 @@ class ChatService:
         clarification_target: str | None = None,
         rent_property_id: str | None = None,
         user_reality_property_id: str | None = None,
+        user_decision_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
@@ -463,6 +465,16 @@ class ChatService:
                 yield WORLD_CONSEQUENCE_READY
                 yield from self._stream_assistant_reply(conversation_id, history)
             return rent_consequence()
+
+        if user_decision_property_id:
+            admitted_decision = user_decision_return.admit(
+                conversation_id, user_decision_property_id, message,
+            )
+            if admitted_decision is not None:
+                def user_decision_consequence():
+                    yield WORLD_CONSEQUENCE_READY
+                    yield from self._stream_assistant_reply(conversation_id, history)
+                return user_decision_consequence()
 
         if user_reality_property_id:
             admitted = user_reality_return.admit(

@@ -24,6 +24,7 @@ interface StreamMessageOptions {
   clarificationTarget?: 'WORK_LOCATION';
   rentPropertyId?: string;
   userRealityPropertyId?: string;
+  userDecisionPropertyId?: string;
   currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
   onWorldStateReady?: () => void;
@@ -77,6 +78,7 @@ export async function streamMessage({
   clarificationTarget,
   rentPropertyId,
   userRealityPropertyId,
+  userDecisionPropertyId,
   currentGeographicReality,
   onChunk,
   onWorldStateReady,
@@ -90,6 +92,7 @@ export async function streamMessage({
     ...(clarificationTarget ? { clarification_target: clarificationTarget } : {}),
     ...(rentPropertyId ? { rent_property_id: rentPropertyId } : {}),
     ...(userRealityPropertyId ? { user_reality_property_id: userRealityPropertyId } : {}),
+    ...(userDecisionPropertyId ? { user_decision_property_id: userDecisionPropertyId } : {}),
     ...(currentGeographicReality ? { current_geographic_reality: currentGeographicReality } : {}),
   };
 

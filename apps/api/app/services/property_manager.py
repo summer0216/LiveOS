@@ -212,6 +212,15 @@ class PropertyManager:
             state_hash=state_hash, judgment_hash=judgment_hash,
         )
 
+    def admit_user_decision(
+        self, property_id: str, conversation_id: str, *,
+        readiness_hash: str, expression: str, stance: str,
+    ) -> Property | None:
+        return property_store.admit_user_decision(
+            property_id, conversation_id, readiness_hash=readiness_hash,
+            expression=expression, stance=stance,
+        )
+
     def update_meaningful_unknown(
         self,
         property_id: str,

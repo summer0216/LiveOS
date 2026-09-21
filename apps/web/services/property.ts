@@ -26,6 +26,9 @@ export interface Property {
   current_judgment: string | null;
   decision_readiness: 'NEED_MORE_REALITY' | 'DECISION_READY' | null;
   decision_readiness_reason: string | null;
+  user_decision_expression: string | null;
+  user_decision_stance: 'ACCEPT' | 'DECLINE' | null;
+  user_decision_source: 'USER_PROVIDED' | null;
   meaningful_unknown: string | null;
   meaningful_unknown_why: string | null;
   reality_action_type: 'PUBLIC_EVIDENCE' | 'USER_REALITY' | null;
@@ -83,6 +86,9 @@ export type PropertyInput = Omit<
   | 'current_judgment'
   | 'decision_readiness'
   | 'decision_readiness_reason'
+  | 'user_decision_expression'
+  | 'user_decision_stance'
+  | 'user_decision_source'
   | 'meaningful_unknown'
   | 'meaningful_unknown_why'
   | 'reality_action_type'

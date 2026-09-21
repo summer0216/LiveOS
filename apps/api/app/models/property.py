@@ -58,6 +58,9 @@ class Property:
     decision_readiness: str | None = None
     decision_readiness_reason: str | None = None
     decision_readiness_state_hash: str | None = None
+    user_decision_expression: str | None = None
+    user_decision_stance: str | None = None
+    user_decision_source: str | None = None
     meaningful_unknown: str | None = None
     meaningful_unknown_why: str | None = None
     meaningful_unknown_state_hash: str | None = None

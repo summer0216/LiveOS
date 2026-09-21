@@ -88,6 +88,9 @@ class PropertyResponse(PropertyFields):
     current_judgment: str | None = None
     decision_readiness: Literal["NEED_MORE_REALITY", "DECISION_READY"] | None = None
     decision_readiness_reason: str | None = None
+    user_decision_expression: str | None = None
+    user_decision_stance: Literal["ACCEPT", "DECLINE"] | None = None
+    user_decision_source: Literal["USER_PROVIDED"] | None = None
     meaningful_unknown: str | None = None
     meaningful_unknown_why: str | None = None
     reality_action_type: str | None = None
