@@ -87,6 +87,10 @@ class PropertyResponse(PropertyFields):
     reality_action_label: str | None = None
     reality_action_why: str | None = None
     public_rent_evidence: dict | None = None
+    public_action_outcome: str | None = None
+    feedback_move_type: str | None = None
+    feedback_move_label: str | None = None
+    feedback_move_why: str | None = None
 
 
 class PropertyListResponse(BaseModel):

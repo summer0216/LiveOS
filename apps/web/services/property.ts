@@ -32,6 +32,10 @@ export interface Property {
     observed_at: string;
     published_at: string | null;
   } | null;
+  public_action_outcome: 'NO_EVIDENCE' | null;
+  feedback_move_type: 'USER_REALITY' | 'SHIFT_ATTENTION' | null;
+  feedback_move_label: string | null;
+  feedback_move_why: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -71,6 +75,10 @@ export type PropertyInput = Omit<
   | 'reality_action_label'
   | 'reality_action_why'
   | 'public_rent_evidence'
+  | 'public_action_outcome'
+  | 'feedback_move_type'
+  | 'feedback_move_label'
+  | 'feedback_move_why'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'

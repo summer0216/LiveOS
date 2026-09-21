@@ -294,6 +294,9 @@ export default function HomePage() {
       if (result.status === 'EVIDENCE_READY') {
         setProperties(await getProperties(conversationId));
         setPublicActionExecution(null);
+      } else if (result.status === 'NO_EVIDENCE') {
+        setProperties(await getProperties(conversationId));
+        setPublicActionExecution(null);
       } else {
         setPublicActionExecution({ propertyId, status: 'failed' });
       }
@@ -716,6 +719,9 @@ export default function HomePage() {
               realityActionWhy={home.reality_action_why}
               realityActionType={home.reality_action_type}
               publicRentEvidence={home.public_rent_evidence}
+              publicActionOutcome={home.public_action_outcome}
+              feedbackMoveLabel={home.feedback_move_label}
+              feedbackMoveWhy={home.feedback_move_why}
               actionExecutionStatus={publicActionExecution?.propertyId === home.id
                 ? publicActionExecution.status : 'idle'}
               onExecutePublicAction={() => { void handlePublicRentAction(home.id); }}

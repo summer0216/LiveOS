@@ -230,6 +230,22 @@ class PropertyManager:
             evidence=evidence,
         )
 
+    def record_public_action_no_evidence(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+    ) -> Property | None:
+        return property_store.record_public_action_no_evidence(
+            property_id, conversation_id, action_hash=action_hash,
+        )
+
+    def update_action_feedback(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+        move_type: str, label: str, why: str, state_hash: str,
+    ) -> Property | None:
+        return property_store.update_action_feedback(
+            property_id, conversation_id, action_hash=action_hash,
+            move_type=move_type, label=label, why=why, state_hash=state_hash,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

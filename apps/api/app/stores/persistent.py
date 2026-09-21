@@ -456,6 +456,11 @@ class PropertyStore:
             reality_action_why=row.get("reality_action_why"),
             reality_action_state_hash=row.get("reality_action_state_hash"),
             public_rent_evidence=row.get("public_rent_evidence"),
+            public_action_outcome=row.get("public_action_outcome"),
+            feedback_move_type=row.get("feedback_move_type"),
+            feedback_move_label=row.get("feedback_move_label"),
+            feedback_move_why=row.get("feedback_move_why"),
+            feedback_state_hash=row.get("feedback_state_hash"),
             area=row["area"],
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
@@ -546,7 +551,8 @@ class PropertyStore:
                     property_.reality_action_label,
                     property_.reality_action_why,
                     property_.reality_action_state_hash,
-                    Jsonb(property_.public_rent_evidence),
+                    Jsonb(property_.public_rent_evidence)
+                    if property_.public_rent_evidence is not None else None,
                     property_.area,
                     property_.bedrooms,
                     property_.bathrooms,
@@ -635,6 +641,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -677,6 +686,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -725,6 +737,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -768,6 +783,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -806,6 +824,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -844,6 +865,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -882,6 +906,9 @@ class PropertyStore:
                 SET reality_action_type = %s, reality_action_label = %s,
                     reality_action_why = %s, reality_action_state_hash = %s,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -905,7 +932,10 @@ class PropertyStore:
         with self._database.connect() as connection:
             row = connection.execute(
                 """
-                UPDATE properties SET public_rent_evidence = %s, updated_at = %s
+                UPDATE properties SET public_rent_evidence = %s,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                   AND reality_action_type = 'PUBLIC_EVIDENCE'
                   AND reality_action_state_hash = %s AND rent IS NULL
@@ -913,6 +943,60 @@ class PropertyStore:
                 """,
                 (Jsonb(evidence), now(), property_uuid, owner_id,
                  conversation_uuid, action_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def record_public_action_no_evidence(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties SET public_action_outcome = 'NO_EVIDENCE',
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND reality_action_type = 'PUBLIC_EVIDENCE'
+                  AND reality_action_state_hash = %s
+                  AND (public_rent_evidence IS NULL OR public_rent_evidence = 'null'::jsonb)
+                  AND rent IS NULL
+                RETURNING *
+                """,
+                (now(), property_uuid, owner_id, conversation_uuid, action_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_action_feedback(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+        move_type: str, label: str, why: str, state_hash: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties SET feedback_move_type = %s,
+                    feedback_move_label = %s, feedback_move_why = %s,
+                    feedback_state_hash = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND reality_action_type = 'PUBLIC_EVIDENCE'
+                  AND reality_action_state_hash = %s
+                  AND public_action_outcome = 'NO_EVIDENCE'
+                  AND (public_rent_evidence IS NULL OR public_rent_evidence = 'null'::jsonb)
+                  AND rent IS NULL
+                RETURNING *
+                """,
+                (move_type, label, why, state_hash, now(), property_uuid,
+                 owner_id, conversation_uuid, action_hash),
             ).fetchone()
         return self._from(row) if row is not None else None
 
@@ -940,6 +1024,9 @@ class PropertyStore:
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
                     public_rent_evidence = NULL,
+                    public_action_outcome = NULL, feedback_move_type = NULL,
+                    feedback_move_label = NULL, feedback_move_why = NULL,
+                    feedback_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *

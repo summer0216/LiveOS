@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 
 from app.core.ai_client import AIClient
 from app.main import app
+from app.models.profile import LivingProfile
 from app.models.property import (
+    CommuteMode,
     GeographicPrecision,
     GeographicStatus,
     Property,
@@ -15,6 +17,7 @@ from app.models.property import (
 from app.services.external_rent_reality_service import ExternalRentRealityService
 from app.services.property_manager import property_manager
 from app.services.public_rental_evidence import PublicRentalEvidence
+from app.stores.runtime import profile_store
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
@@ -154,3 +157,117 @@ def test_public_evidence_action_stops_before_reality_admission():
     assert stored.meaningful_unknown == before.meaningful_unknown
     assert stored.current_judgment == before.current_judgment
     assert fake_openai.chat.completions.calls[0]["tools"][0]["function"]["name"] == "search_public_rental_evidence"
+
+
+def test_no_evidence_feedback_persists_one_next_move_without_changing_reality():
+    class EmptySearch(FakePublicSearch):
+        def search(self, **_kwargs):
+            return []
+
+    class FeedbackIntelligence:
+        move_type = "UNSUPPORTED"
+        tool_called = False
+
+        def generate_json_with_public_evidence_tool(self, _prompt, *, dispatch, **_kwargs):
+            self.tool_called = True
+            dispatch({"property_name": "中关村东大院"})
+            return '{"done":true}'
+
+        def generate_json(self, _prompt, **_kwargs):
+            return json.dumps({
+                "next_move_type": self.move_type,
+                "next_move_label": "如果已看到挂牌，可提供实际月租",
+                "why_this_move": "本次未取得可追溯证据，直接信息可能补足未知。",
+                "unknown_reference": "中关村东大院的月租金是多少？",
+                "action_reference": "查询公开租金挂牌信息",
+                "outcome_reference": "NO_EVIDENCE",
+            }, ensure_ascii=False)
+
+    client = TestClient(app)
+    conversation_id = uuid_for("public-action-feedback")
+    create_owned_conversation(client, conversation_id)
+    profile_store.save(conversation_id, LivingProfile(
+        work_location="融科资讯中心", budget=6000,
+        geographic_identity="北京市海淀区融科资讯中心",
+        geographic_precision=GeographicPrecision.PLACE,
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=116.3205, lat=39.9839,
+    ))
+    target = property_manager.create(conversation_id, Property(
+        title="中关村东大院",
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=116.32, lat=39.98,
+        commute_minutes=1,
+        commute_mode=CommuteMode.WALKING,
+        grocery_external_id="grocery-1", grocery_walking_minutes=7,
+        living_meaning="步行便利但有预算压力。",
+        current_judgment="以成本换取便利。",
+        meaningful_unknown="中关村东大院的月租金是多少？",
+        meaningful_unknown_why="租金影响预算权衡。",
+        meaningful_unknown_state_hash="unknown-state-1",
+        reality_action_type="PUBLIC_EVIDENCE",
+        reality_action_label="查询公开租金挂牌信息",
+        reality_action_why="公开来源可查",
+        reality_action_state_hash="action-state-1",
+    ))
+    intelligence = FeedbackIntelligence()
+    service = ExternalRentRealityService(
+        intelligence=intelligence, evidence_search=EmptySearch(),
+    )
+    before = property_manager.get_scoped(target.id or "", conversation_id)
+    assert before is not None
+    assert before.reality_action_type == "PUBLIC_EVIDENCE"
+    assert before.reality_action_state_hash == "action-state-1"
+    assert before.public_rent_evidence is None
+    assert before.meaningful_unknown
+    assert before.rent is None
+    assert before.title
+    assert before.geographic_status == GeographicStatus.GROUNDED
+    assert before.lng is not None and before.lat is not None
+
+    rejected = service.execute_public_evidence_action(conversation_id, target.id or "")
+    assert intelligence.tool_called
+    assert rejected.status == "NO_EVIDENCE"
+    partial = property_manager.get_scoped(target.id or "", conversation_id)
+    assert partial is not None and partial.public_action_outcome == "NO_EVIDENCE"
+    assert partial.feedback_move_type is None
+
+    intelligence.move_type = "USER_REALITY"
+    accepted = service.feedback_from_no_evidence(conversation_id, target.id or "")
+    assert accepted.status == "NO_EVIDENCE"
+    stored = property_manager.get_scoped(target.id or "", conversation_id)
+    assert stored is not None
+    assert stored.feedback_move_type == "USER_REALITY"
+    assert stored.feedback_move_label == "如果已看到挂牌，可提供实际月租"
+    assert stored.rent is None and stored.public_rent_evidence is None
+    assert stored.meaningful_unknown == target.meaningful_unknown
+    assert stored.living_meaning == target.living_meaning
+    assert stored.current_judgment == target.current_judgment
+
+    changed = property_manager.update_reality_action(
+        target.id or "", conversation_id,
+        action_type="USER_REALITY", label="直接观察",
+        why="方式改变", state_hash="action-state-2",
+    )
+    assert changed is not None
+    assert changed.public_action_outcome is None
+    assert changed.feedback_move_type is None
+
+    restored_action = property_manager.update_reality_action(
+        target.id or "", conversation_id,
+        action_type="PUBLIC_EVIDENCE", label="查询公开租金挂牌信息",
+        why="公开来源可查", state_hash="action-state-3",
+    )
+    assert restored_action is not None
+    property_manager.record_public_action_no_evidence(
+        target.id or "", conversation_id, action_hash="action-state-3",
+    )
+    service.feedback_from_no_evidence(conversation_id, target.id or "")
+    changed_unknown = property_manager.update_meaningful_unknown(
+        target.id or "", conversation_id,
+        question="另一项尚未确认的现实是什么？",
+        why="需要重新判断。", state_hash="unknown-state-2",
+    )
+    assert changed_unknown is not None
+    assert changed_unknown.public_action_outcome is None
+    assert changed_unknown.feedback_move_type is None

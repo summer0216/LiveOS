@@ -58,6 +58,11 @@ class Property:
     reality_action_why: str | None = None
     reality_action_state_hash: str | None = None
     public_rent_evidence: dict | None = None
+    public_action_outcome: str | None = None
+    feedback_move_type: str | None = None
+    feedback_move_label: str | None = None
+    feedback_move_why: str | None = None
+    feedback_state_hash: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None
