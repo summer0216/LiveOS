@@ -440,6 +440,9 @@ class PropertyStore:
             rent_observed_at=row.get("rent_observed_at"),
             independent_kitchen=row.get("independent_kitchen"),
             independent_kitchen_source=row.get("independent_kitchen_source"),
+            indoor_sound_observation=row.get("indoor_sound_observation"),
+            indoor_sound_observation_source=row.get("indoor_sound_observation_source"),
+            indoor_sound_observation_unknown=row.get("indoor_sound_observation_unknown"),
             grocery_external_id=row.get("grocery_external_id"),
             grocery_name=row.get("grocery_name"),
             grocery_identity=row.get("grocery_identity"),
@@ -743,6 +746,45 @@ class PropertyStore:
                 """,
                 (kitchen_present, now(), property_uuid, owner_id,
                  conversation_uuid, unknown_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def admit_user_sound_observation(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, unknown_question: str, observation: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET indoor_sound_observation = %s,
+                    indoor_sound_observation_source = 'USER_PROVIDED',
+                    indoor_sound_observation_unknown = %s,
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND meaningful_unknown_state_hash = %s
+                  AND meaningful_unknown = %s
+                  AND (reality_action_type = 'USER_REALITY'
+                       OR feedback_move_type = 'USER_REALITY')
+                  AND indoor_sound_observation IS NULL
+                RETURNING *
+                """,
+                (observation, unknown_question, now(), property_uuid,
+                 owner_id, conversation_uuid, unknown_hash, unknown_question),
             ).fetchone()
         return self._from(row) if row is not None else None
 

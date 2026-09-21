@@ -164,6 +164,15 @@ class PropertyManager:
             kitchen_present=kitchen_present,
         )
 
+    def admit_user_sound_observation(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, unknown_question: str, observation: str,
+    ) -> Property | None:
+        return property_store.admit_user_sound_observation(
+            property_id, conversation_id, unknown_hash=unknown_hash,
+            unknown_question=unknown_question, observation=observation,
+        )
+
     def update_living_meaning(
         self,
         property_id: str,

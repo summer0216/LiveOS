@@ -569,6 +569,8 @@ Chinese characters and why_it_matters under 60 Chinese characters.
             basis["INDEPENDENT_KITCHEN_REALITY"] = (
                 "PRESENT" if home.independent_kitchen else "ABSENT"
             )
+        if home.indoor_sound_observation and home.indoor_sound_observation_source == "USER_PROVIDED":
+            basis["INDOOR_SOUND_OBSERVATION"] = home.indoor_sound_observation
         if profile.budget is not None:
             basis["BUDGET_REALITY"] = f"{profile.budget} CNY/month"
             if home.rent is not None and home.rent_source is not None:

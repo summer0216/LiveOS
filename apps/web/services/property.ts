@@ -13,6 +13,9 @@ export interface Property {
   rent_observed_at: string | null;
   independent_kitchen: boolean | null;
   independent_kitchen_source: 'USER_PROVIDED' | null;
+  indoor_sound_observation: string | null;
+  indoor_sound_observation_source: 'USER_PROVIDED' | null;
+  indoor_sound_observation_unknown: string | null;
   grocery_external_id: string | null;
   grocery_name: string | null;
   grocery_identity: string | null;
@@ -65,6 +68,9 @@ export type PropertyInput = Omit<
   | 'rent_observed_at'
   | 'independent_kitchen'
   | 'independent_kitchen_source'
+  | 'indoor_sound_observation'
+  | 'indoor_sound_observation_source'
+  | 'indoor_sound_observation_unknown'
   | 'grocery_external_id'
   | 'grocery_name'
   | 'grocery_identity'

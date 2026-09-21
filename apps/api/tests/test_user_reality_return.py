@@ -37,13 +37,21 @@ def test_focused_user_reality_answer_admits_only_answered_unknown(monkeypatch):
 
     class Intelligence:
         def generate_json(self, prompt, **_kwargs):
-            assert "该住所内是否有日常使用的独立厨房？" in prompt
             assert "融科·昆仑巢" in prompt or "另一住所" in prompt
+            if "该住所室内噪音水平如何？" in prompt:
+                quote = "晚上去看了，关窗以后还是能明显听到路上的车声。"
+                answered = quote in prompt
+                return json.dumps({
+                    "unknown_reference": "该住所室内噪音水平如何？",
+                    "reality_type": "INDOOR_SOUND_OBSERVATION" if answered else "NONE",
+                    "value": quote if answered else None,
+                }, ensure_ascii=False)
+            assert "该住所内是否有日常使用的独立厨房？" in prompt
             answered = "我问了，有独立厨房。" in prompt
             return json.dumps({
                 "unknown_reference": "该住所内是否有日常使用的独立厨房？",
-                "answers_unknown": answered,
-                "independent_kitchen": True if answered else None,
+                "reality_type": "INDEPENDENT_KITCHEN" if answered else "NONE",
+                "value": True if answered else None,
             }, ensure_ascii=False)
 
     monkeypatch.setattr(user_reality_return, "_intelligence", Intelligence())
@@ -67,6 +75,42 @@ def test_focused_user_reality_answer_admits_only_answered_unknown(monkeypatch):
     response = client.get(f"/api/properties?conversation_id={conversation_id}").json()
     assert response["items"][0]["independent_kitchen"] is True
 
+    property_manager.update_meaningful_unknown(
+        home.id, conversation_id,
+        question="该住所室内噪音水平如何？",
+        why="影响居住判断", state_hash="unknown-noise",
+    )
+    property_manager.update_reality_action(
+        home.id, conversation_id,
+        action_type="USER_REALITY", label="实地在室内不同时段感受噪音",
+        why="需要亲自观察", state_hash="action-noise",
+    )
+    unrelated = user_reality_return.admit(
+        conversation_id, home.id, "我今天去了超市。",
+    )
+    assert unrelated is None
+    assert property_manager.get_scoped(home.id, conversation_id).indoor_sound_observation is None
+
+    expression = "我晚上去看了，关窗以后还是能明显听到路上的车声。"
+    observed = client.post("/api/chat/stream", json={
+        "conversation_id": conversation_id,
+        "message": expression,
+        "user_reality_property_id": home.id,
+    })
+    assert observed.status_code == 200
+    assert "world-consequence-ready" in observed.text
+    restored = property_manager.get_scoped(home.id, conversation_id)
+    assert restored.indoor_sound_observation == "晚上去看了，关窗以后还是能明显听到路上的车声。"
+    assert restored.indoor_sound_observation_source == "USER_PROVIDED"
+    assert restored.indoor_sound_observation_unknown == "该住所室内噪音水平如何？"
+    assert restored.meaningful_unknown is None
+    assert restored.reality_action_type is None
+    assert restored.feedback_move_type is None
+    assert "dB" not in restored.indoor_sound_observation
+    assert "严重" not in restored.indoor_sound_observation
+    persisted = client.get(f"/api/properties?conversation_id={conversation_id}").json()
+    assert next(p for p in persisted["items"] if p["id"] == home.id)["indoor_sound_observation"] == restored.indoor_sound_observation
+
     # Another focused property with an active Unknown tests an unrelated answer.
     other = property_manager.create(conversation_id, Property(
         title="另一住所", geographic_identity="北京市另一住所",
@@ -84,6 +128,6 @@ def test_focused_user_reality_answer_admits_only_answered_unknown(monkeypatch):
         action_type="USER_REALITY", label="向房东或中介核实独立厨房",
         why="需要用户确认", state_hash="other-action",
     )
-    unrelated = user_reality_return.admit(conversation_id, other.id, "今天天气不错。")
-    assert unrelated is None
+    unrelated_kitchen = user_reality_return.admit(conversation_id, other.id, "今天天气不错。")
+    assert unrelated_kitchen is None
     assert property_manager.get_scoped(other.id, conversation_id).independent_kitchen is None

@@ -42,6 +42,9 @@ class Property:
     rent_observed_at: str | None = None
     independent_kitchen: bool | None = None
     independent_kitchen_source: str | None = None
+    indoor_sound_observation: str | None = None
+    indoor_sound_observation_source: str | None = None
+    indoor_sound_observation_unknown: str | None = None
     grocery_external_id: str | None = None
     grocery_name: str | None = None
     grocery_identity: str | None = None

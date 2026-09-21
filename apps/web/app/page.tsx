@@ -723,6 +723,8 @@ export default function HomePage() {
               currentJudgment={home.current_judgment}
               independentKitchen={home.independent_kitchen_source === 'USER_PROVIDED'
                 ? home.independent_kitchen : null}
+              indoorSoundObservation={home.indoor_sound_observation_source === 'USER_PROVIDED'
+                ? home.indoor_sound_observation : null}
               meaningfulUnknown={home.meaningful_unknown}
               meaningfulUnknownWhy={home.meaningful_unknown_why}
               realityActionLabel={home.reality_action_label}
