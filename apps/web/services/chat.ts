@@ -28,7 +28,7 @@ interface StreamMessageOptions {
   currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
   onWorldStateReady?: () => void;
-  onWorldConsequenceReady?: () => void;
+  onWorldConsequenceReady?: (focusPropertyId?: string) => void;
   onDecisionRelevantFeedback?: () => void;
   onDecisionChange?: (change: DecisionChange) => void;
 }
@@ -144,6 +144,12 @@ export async function streamMessage({
       if (eventType === 'event: world-consequence-ready') {
         if (chunk === true) {
           onWorldConsequenceReady?.();
+          continue;
+        }
+        if (typeof chunk === 'object' && chunk !== null
+          && 'focus_property_id' in chunk
+          && typeof chunk.focus_property_id === 'string') {
+          onWorldConsequenceReady?.(chunk.focus_property_id);
           continue;
         }
         throw new Error('Streaming API returned an invalid world consequence event.');

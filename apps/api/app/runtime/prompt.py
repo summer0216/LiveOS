@@ -110,8 +110,10 @@ Extraction rules:
 23. Never invent or infer lng/lat. If the latest user turn does not provide
     reliable coordinates, set geographic_clarification.relevant to false.
 24. Extract every candidate property explicitly introduced by the user into
-    choices. Preserve only explicit facts. Do not include assistant-suggested
-    or generic properties, and return an empty list when no candidate is named.
+    choices, including one named residence the user explicitly says they want
+    to live in. Preserve only explicit facts. Do not treat a city/district
+    alone as a residence. Do not include assistant-suggested or generic
+    properties, and return an empty list when no candidate is named.
 25. Establish decision_intent only when the user expresses a concrete life
     decision oriented toward a place (for example, preparing to relocate for
     work). A factual mention or weather question is not a decision intent.

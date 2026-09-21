@@ -17,7 +17,12 @@ from app.models.decision_change import (
 )
 from app.models.decision_geography import DecisionGeography
 from app.models.profile_analysis import ProfileAnalysis
-from app.models.property import GeographicPrecision, GeographicStatus, Property
+from app.models.property import (
+    GeographicPrecision,
+    GeographicStatus,
+    Property,
+    PropertyProvenance,
+)
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_action_progress import decision_action_progress_service
@@ -29,6 +34,7 @@ from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
+from app.services.geographic_resolution import geographic_resolver
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.living_meaning_service import living_meaning_service
 from app.services.profile_intelligence import profile_intelligence
@@ -59,6 +65,71 @@ def _is_housing_intent(intent_type: str | None) -> bool:
     return normalized in _HOUSING_INTENT_TYPES
 
 
+def _is_explicit_possible_home(
+    analysis: ProfileAnalysis, geography: DecisionGeography | None,
+) -> bool:
+    return bool(
+        geography is not None
+        and geography.intent_established
+        and geography.identity_source == "USER"
+        and geography.status == "GROUNDED"
+        and geography.geographic_scope == "LOCAL"
+        and (geography.intent_type == "residence"
+             or _is_housing_intent(geography.intent_type))
+        and len(analysis.choices) == 1
+        and analysis.choices[0].title
+        and analysis.choices[0].title.strip() == geography.identity
+        and geography.lng is not None
+        and geography.lat is not None
+    )
+
+
+def _ground_explicit_possible_home(
+    conversation_id: str, property_id: str, *,
+    title: str, geography: DecisionGeography, city_context: str | None,
+) -> None:
+    """Reuse the locality lookup that established Decision Geography."""
+    if not city_context:
+        return
+    result = geographic_resolver.resolve_local_area(
+        title, city_context, settings.AMAP_WEB_SERVICE_KEY,
+    )
+    if (
+        result.status == "GROUNDED"
+        and result.geographic_identity
+        and result.geographic_precision
+        and result.lng == geography.lng
+        and result.lat == geography.lat
+    ):
+        property_manager.update_geographic_grounding(
+            property_id, conversation_id,
+            geographic_identity=result.geographic_identity,
+            geographic_precision=result.geographic_precision,
+            geographic_status=GeographicStatus.GROUNDED,
+            lng=result.lng, lat=result.lat,
+        )
+
+
+def _explicit_possible_home_focus(
+    conversation_id: str,
+    analysis: ProfileAnalysis,
+    geography: DecisionGeography | None,
+) -> str | None:
+    """Identify the one user-named, grounded Home in this turn, if proven."""
+    if not _is_explicit_possible_home(analysis, geography):
+        return None
+    title = (analysis.choices[0].title or "").strip()
+    candidates = [
+        property_ for property_ in property_manager.list(conversation_id)
+        if property_.title == title
+        and property_.provenance == PropertyProvenance.USER_PROVIDED
+        and property_.geographic_status == GeographicStatus.GROUNDED
+        and property_.lng == geography.lng
+        and property_.lat == geography.lat
+    ]
+    return candidates[0].id if len(candidates) == 1 else None
+
+
 class WorldStateReady:
     pass
 
@@ -67,7 +138,8 @@ WORLD_STATE_READY = WorldStateReady()
 
 
 class WorldConsequenceReady:
-    pass
+    def __init__(self, focus_property_id: str | None = None) -> None:
+        self.focus_property_id = focus_property_id
 
 
 WORLD_CONSEQUENCE_READY = WorldConsequenceReady()
@@ -225,12 +297,26 @@ class ChatService:
                 )
             for property_ in materialized_choices:
                 if property_.geographic_status == GeographicStatus.UNRESOLVED:
-                    property_manager.resolve_geographic_grounding(
+                    result = property_manager.resolve_geographic_grounding(
                         property_.id or "",
                         conversation_id,
                         context_location=geographic_context,
                         api_key=settings.AMAP_WEB_SERVICE_KEY,
                     )
+                    if (
+                        result.status != "GROUNDED"
+                        and _is_explicit_possible_home(
+                            analysis, current_decision_geography,
+                        )
+                        and property_.title == analysis.choices[0].title
+                        and current_decision_geography is not None
+                    ):
+                        _ground_explicit_possible_home(
+                            conversation_id, property_.id or "",
+                            title=property_.title or "",
+                            geography=current_decision_geography,
+                            city_context=decision_city_context,
+                        )
             if analysis.geographic_clarification.relevant:
                 clarification = analysis.geographic_clarification
                 property_manager.update_geographic_grounding(
@@ -600,7 +686,10 @@ class ChatService:
             decision_change_context.set(conversation_id, change_causes)
 
             # The durable Work update is observable before residential routing finishes.
-            yield WORLD_CONSEQUENCE_READY
+            focus_property_id = _explicit_possible_home_focus(
+                conversation_id, analysis, current_decision_geography,
+            )
+            yield WorldConsequenceReady(focus_property_id) if focus_property_id else WORLD_CONSEQUENCE_READY
 
             for discovery_future in discovery_futures:
                 while True:

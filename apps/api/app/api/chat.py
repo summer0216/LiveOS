@@ -11,7 +11,6 @@ from app.api.ownership import COOKIE_NAME, anonymous_user_id, set_anonymous_cook
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import (
     STREAM_KEEP_ALIVE,
-    WORLD_CONSEQUENCE_READY,
     WORLD_STATE_READY,
     StreamKeepAlive,
     WorldConsequenceReady,
@@ -84,8 +83,15 @@ def _stream_events(
             if chunk is WORLD_STATE_READY:
                 yield "event: world-state-ready\ndata: true\n\n"
                 continue
-            if chunk is WORLD_CONSEQUENCE_READY:
-                yield "event: world-consequence-ready\ndata: true\n\n"
+            if isinstance(chunk, WorldConsequenceReady):
+                payload = (
+                    {"focus_property_id": chunk.focus_property_id}
+                    if chunk.focus_property_id else True
+                )
+                yield (
+                    "event: world-consequence-ready\n"
+                    f"data: {json.dumps(payload)}\n\n"
+                )
                 continue
             if chunk is STREAM_KEEP_ALIVE:
                 yield ": keep-alive\n\n"

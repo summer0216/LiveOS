@@ -9,6 +9,7 @@ import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
+import { focusedHomeViewport } from '@/lib/focusedHomeViewport';
 import {
   isGroundedDecisionGeography,
 } from '@/lib/decisionGeographyState';
@@ -123,6 +124,10 @@ export default function HomePage() {
     status: 'loading' | 'failed';
   } | null>(null);
   const latestSubmitIdRef = useRef(0);
+  const lastFocusedCameraRef = useRef<{
+    key: string;
+    reorient: NonNullable<typeof reorient>;
+  } | null>(null);
 
   useEffect(() => {
     let settled = false;
@@ -379,32 +384,47 @@ export default function HomePage() {
     return () => cancelAnimationFrame(frame);
   }, [geographicGroundReady, groundedWork]);
   const groundedChoices = useMemo(
-    () => properties.filter(
-      (property): property is Property & { lng: number; lat: number } =>
-        property.geographic_status === 'GROUNDED'
-        && property.conversation_id === conversationId
-        && property.provenance === 'AMAP_RESIDENTIAL_POI'
-        && Boolean(property.external_id && property.title?.trim())
-        && typeof property.commute_minutes === 'number'
-        && Number.isFinite(property.commute_minutes)
-        && property.commute_minutes > 0
-        && (property.commute_mode === 'WALKING' || property.commute_mode === 'PUBLIC_TRANSIT')
-        && typeof property.lng === 'number'
-        && Number.isFinite(property.lng) && Math.abs(property.lng) <= 180
-        && typeof property.lat === 'number'
-        && Number.isFinite(property.lat) && Math.abs(property.lat) <= 90,
-    ).slice(
-      0,
-      groundedWork && profile?.geographic_precision === 'PLACE' ? 1 : 0,
-    ),
+    () => [
+      ...properties.filter(
+        (property): property is Property & { lng: number; lat: number } =>
+          property.conversation_id === conversationId
+          && property.provenance === 'USER_PROVIDED'
+          && property.geographic_status === 'GROUNDED'
+          && Boolean(property.title?.trim())
+          && typeof property.lng === 'number' && Number.isFinite(property.lng)
+          && typeof property.lat === 'number' && Number.isFinite(property.lat),
+      ),
+      ...properties.filter(
+        (property): property is Property & { lng: number; lat: number } =>
+          property.geographic_status === 'GROUNDED'
+          && property.conversation_id === conversationId
+          && property.provenance === 'AMAP_RESIDENTIAL_POI'
+          && Boolean(property.external_id && property.title?.trim())
+          && typeof property.commute_minutes === 'number'
+          && Number.isFinite(property.commute_minutes)
+          && property.commute_minutes > 0
+          && (property.commute_mode === 'WALKING' || property.commute_mode === 'PUBLIC_TRANSIT')
+          && typeof property.lng === 'number'
+          && Number.isFinite(property.lng) && Math.abs(property.lng) <= 180
+          && typeof property.lat === 'number'
+          && Number.isFinite(property.lat) && Math.abs(property.lat) <= 90,
+      ).slice(
+        0,
+        groundedWork && profile?.geographic_precision === 'PLACE' ? 1 : 0,
+      ),
+    ],
     [conversationId, groundedWork, profile?.geographic_precision, properties],
   );
   const standaloneWorkReality = true;
   const housingFitLocations = useMemo(
-    () => groundedWork && groundedChoices.length > 0
+    () => groundedWork && groundedChoices.some(
+      (property) => property.provenance === 'AMAP_RESIDENTIAL_POI',
+    )
       ? [
           { lng: groundedWork.lng, lat: groundedWork.lat },
-          ...groundedChoices.map((property) => ({
+          ...groundedChoices.filter(
+            (property) => property.provenance === 'AMAP_RESIDENTIAL_POI',
+          ).map((property) => ({
             lng: property.lng,
             lat: property.lat,
           })),
@@ -418,6 +438,11 @@ export default function HomePage() {
       .filter((property): property is Property & { lng: number; lat: number } => Boolean(property)),
     [focusedChoiceIds, groundedChoices],
   );
+  const singleFocusedHome = focusedChoices.length === 1 ? focusedChoices[0] : null;
+  const focusedHomeCamera = focusedHomeViewport(singleFocusedHome);
+  const focusedHomeCameraKey = singleFocusedHome && focusedHomeCamera
+    ? `${singleFocusedHome.id}:${singleFocusedHome.lng}:${singleFocusedHome.lat}`
+    : null;
   const dualFocusActive = focusedChoices.length === 2;
   const worldFitLocations = useMemo(
     () => groundedWork && dualFocusActive
@@ -460,6 +485,23 @@ export default function HomePage() {
     restoredDecisionGeography,
   ]);
 
+  useEffect(() => {
+    if (!reorient || !focusedHomeCamera || !focusedHomeCameraKey) {
+      lastFocusedCameraRef.current = null;
+      return;
+    }
+    if (
+      lastFocusedCameraRef.current?.key === focusedHomeCameraKey
+      && lastFocusedCameraRef.current.reorient === reorient
+    ) return;
+    lastFocusedCameraRef.current = { key: focusedHomeCameraKey, reorient };
+    reorient(focusedHomeCamera.center, focusedHomeCamera.zoom);
+  }, [
+    focusedHomeCamera,
+    focusedHomeCameraKey,
+    reorient,
+  ]);
+
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
     const focusedUserReality = focusedChoiceIds.length === 1
@@ -468,6 +510,7 @@ export default function HomePage() {
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
     let consequenceRevision = 0;
+    let pendingFocusPropertyId: string | undefined;
 
     setPhase('forming');
     setWorkVisible(false);
@@ -486,6 +529,16 @@ export default function HomePage() {
         if (latestSubmitIdRef.current !== submitId || revision !== consequenceRevision) return;
         setProfile(durableProfile);
         setProperties(durableProperties);
+        if (pendingFocusPropertyId && durableProperties.some((property) =>
+          property.id === pendingFocusPropertyId
+          && property.conversation_id === currentConversationId
+          && property.provenance === 'USER_PROVIDED'
+          && property.geographic_status === 'GROUNDED'
+          && typeof property.lng === 'number'
+          && typeof property.lat === 'number',
+        )) {
+          setFocusedChoiceIds([pendingFocusPropertyId]);
+        }
         setPhase(
           durableProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty',
         );
@@ -512,7 +565,8 @@ export default function HomePage() {
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
-        onWorldConsequenceReady: () => {
+        onWorldConsequenceReady: (focusPropertyId) => {
+          if (focusPropertyId) pendingFocusPropertyId = focusPropertyId;
           void reconcileWorldConsequences().catch((error: unknown) => {
             console.error('Failed to reconcile persisted World consequence:', error);
           });
@@ -702,6 +756,7 @@ export default function HomePage() {
         className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}
       >
         {geographicGroundReady && workVisible && workPosition && groundedChoices.map((home) => {
+          if (home.provenance !== 'AMAP_RESIDENTIAL_POI') return null;
           const position = choicePositions[home.id];
           if (!position) return null;
           const focused = focusedChoiceIds.includes(home.id);
