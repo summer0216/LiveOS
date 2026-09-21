@@ -221,6 +221,15 @@ class PropertyManager:
             state_hash=state_hash,
         )
 
+    def update_public_rent_evidence(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+        evidence: dict,
+    ) -> Property | None:
+        return property_store.update_public_rent_evidence(
+            property_id, conversation_id, action_hash=action_hash,
+            evidence=evidence,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

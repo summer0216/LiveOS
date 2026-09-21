@@ -21,7 +21,7 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
@@ -32,6 +32,13 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
   meaningfulUnknownWhy?: string | null;
   realityActionLabel?: string | null;
   realityActionWhy?: string | null;
+  realityActionType?: 'PUBLIC_EVIDENCE' | 'USER_REALITY' | null;
+  publicRentEvidence?: {
+    source_reference: string; source_title: string; source_provider: string;
+    property_text: string; observed_at: string; published_at: string | null;
+  } | null;
+  actionExecutionStatus?: 'idle' | 'loading' | 'failed';
+  onExecutePublicAction: () => void;
   focused: boolean;
   onToggle: () => void;
   rent: number | null;
@@ -112,7 +119,8 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
         {focused && livingMeaning && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">{livingMeaning}</span>}
         {focused && currentJudgment && <span className="mt-2 max-w-56 whitespace-normal border-l border-slate-400/60 pl-2 text-left text-xs font-medium leading-relaxed text-slate-800">{currentJudgment}</span>}
         {focused && meaningfulUnknown && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">还需要弄清楚</span><span className="mt-1 block">{meaningfulUnknown}</span>{meaningfulUnknownWhy && <span className="mt-1 block text-[11px] text-slate-500">{meaningfulUnknownWhy}</span>}</span>}
-        {focused && meaningfulUnknown && realityActionLabel && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">下一步</span><span className="mt-1 block">{realityActionLabel}</span>{realityActionWhy && <span className="mt-1 block text-[11px] text-slate-500">{realityActionWhy}</span>}</span>}
+        {focused && meaningfulUnknown && realityActionLabel && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">下一步</span>{realityActionType === 'PUBLIC_EVIDENCE' && !publicRentEvidence ? <button type="button" disabled={actionExecutionStatus === 'loading'} className="mt-1 block border-0 bg-transparent p-0 text-left underline underline-offset-4 disabled:no-underline" onClick={event => { event.stopPropagation(); onExecutePublicAction(); }}>{realityActionLabel}</button> : <span className="mt-1 block">{realityActionLabel}</span>}{realityActionWhy && <span className="mt-1 block text-[11px] text-slate-500">{realityActionWhy}</span>}{actionExecutionStatus === 'loading' && <span className="mt-1 block text-[11px]">正在获取公开证据…</span>}{actionExecutionStatus === 'failed' && <span className="mt-1 block text-[11px]">暂未获得可追溯证据</span>}</span>}
+        {focused && publicRentEvidence && realityActionType === 'PUBLIC_EVIDENCE' && <span className="mt-2 max-w-56 whitespace-normal text-left text-[11px] leading-relaxed text-slate-600"><span className="block text-slate-500">公开证据 · 尚未确认为租金现实</span><a className="pointer-events-auto mt-1 block break-all underline underline-offset-2" href={publicRentEvidence.source_reference} target="_blank" rel="noopener noreferrer" onClick={event => event.stopPropagation()}>{publicRentEvidence.source_title}</a><span className="mt-1 block">{publicRentEvidence.property_text.slice(0, 240)}</span><span className="mt-1 block text-slate-400">获取于 {publicRentEvidence.observed_at}</span></span>}
       </div>
       <span ref={timeRef} data-world-label="time" className={`absolute w-max whitespace-nowrap text-xs text-slate-700 ${focused ? 'font-semibold' : 'opacity-70'}`} style={{ left: timeBox.x, top: timeBox.y }} aria-label={`${home.name}到${work.name}：${meaning}`}>{meaning}</span>
       {focused && grocery && groceryMidpoint && <span className="absolute w-max -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-xs text-emerald-900" style={{ left: groceryMidpoint.x, top: groceryMidpoint.y }} aria-label={`日常采购，步行 ${grocery.walkingMinutes} 分钟`}><span className="block font-medium">日常采购</span><span className="mt-1 block opacity-75">步行 {grocery.walkingMinutes}min</span></span>}

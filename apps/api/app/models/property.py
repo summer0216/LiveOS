@@ -57,6 +57,7 @@ class Property:
     reality_action_label: str | None = None
     reality_action_why: str | None = None
     reality_action_state_hash: str | None = None
+    public_rent_evidence: dict | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

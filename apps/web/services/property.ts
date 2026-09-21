@@ -24,6 +24,14 @@ export interface Property {
   reality_action_type: 'PUBLIC_EVIDENCE' | 'USER_REALITY' | null;
   reality_action_label: string | null;
   reality_action_why: string | null;
+  public_rent_evidence: {
+    source_reference: string;
+    source_title: string;
+    source_provider: string;
+    property_text: string;
+    observed_at: string;
+    published_at: string | null;
+  } | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -62,6 +70,7 @@ export type PropertyInput = Omit<
   | 'reality_action_type'
   | 'reality_action_label'
   | 'reality_action_why'
+  | 'public_rent_evidence'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'
@@ -118,6 +127,22 @@ export async function acquireExternalRent(
   if (!response.ok) {
     throw new Error(`Failed to acquire external rent: ${response.status}`);
   }
+  return response.json();
+}
+
+export async function executePublicRentAction(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: 'EVIDENCE_READY' | 'NO_EVIDENCE' | 'NOT_AVAILABLE'; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/public-rent-evidence`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) throw new Error(`Failed to execute public rent action: ${response.status}`);
   return response.json();
 }
 

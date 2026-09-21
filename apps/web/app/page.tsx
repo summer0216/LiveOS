@@ -20,6 +20,7 @@ import {
 import {
   acquireExternalRent,
   establishDailyGrocery,
+  executePublicRentAction,
   formLivingMeaning,
   getProperties,
   type Property,
@@ -114,6 +115,10 @@ export default function HomePage() {
   const [rentAnswerPropertyId, setRentAnswerPropertyId] = useState<string | null>(null);
   const [rentFocusRequest, setRentFocusRequest] = useState(0);
   const [externalRentLookup, setExternalRentLookup] = useState<{
+    propertyId: string;
+    status: 'loading' | 'failed';
+  } | null>(null);
+  const [publicActionExecution, setPublicActionExecution] = useState<{
     propertyId: string;
     status: 'loading' | 'failed';
   } | null>(null);
@@ -278,6 +283,22 @@ export default function HomePage() {
       setExternalRentLookup({ propertyId, status: 'failed' });
       setRentAnswerPropertyId(propertyId);
       setRentFocusRequest(current => current + 1);
+    }
+  }, [conversationId]);
+
+  const handlePublicRentAction = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    setPublicActionExecution({ propertyId, status: 'loading' });
+    try {
+      const result = await executePublicRentAction(conversationId, propertyId);
+      if (result.status === 'EVIDENCE_READY') {
+        setProperties(await getProperties(conversationId));
+        setPublicActionExecution(null);
+      } else {
+        setPublicActionExecution({ propertyId, status: 'failed' });
+      }
+    } catch {
+      setPublicActionExecution({ propertyId, status: 'failed' });
     }
   }, [conversationId]);
 
@@ -693,6 +714,11 @@ export default function HomePage() {
               meaningfulUnknownWhy={home.meaningful_unknown_why}
               realityActionLabel={home.reality_action_label}
               realityActionWhy={home.reality_action_why}
+              realityActionType={home.reality_action_type}
+              publicRentEvidence={home.public_rent_evidence}
+              actionExecutionStatus={publicActionExecution?.propertyId === home.id
+                ? publicActionExecution.status : 'idle'}
+              onExecutePublicAction={() => { void handlePublicRentAction(home.id); }}
               focused={focused}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}

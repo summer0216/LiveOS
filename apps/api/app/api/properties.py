@@ -61,6 +61,11 @@ class ExternalRentRealityResponse(BaseModel):
     property: PropertyResponse | None = None
 
 
+class PublicRentActionResponse(BaseModel):
+    status: str
+    property: PropertyResponse | None = None
+
+
 class DailyGroceryRealityRequest(BaseModel):
     conversation_id: str = Field(min_length=1)
 
@@ -156,6 +161,32 @@ def acquire_external_rent(
             PropertyResponse.model_validate(result.property)
             if result.property is not None
             else None
+        ),
+    )
+
+
+@router.post(
+    "/{property_id}/public-rent-evidence",
+    response_model=PublicRentActionResponse,
+)
+def execute_public_rent_action(
+    property_id: str,
+    request: ExternalRentRealityRequest,
+    raw_request: Request,
+    response: Response,
+) -> PublicRentActionResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    result = external_rent_reality_service.execute_public_evidence_action(
+        request.conversation_id, property_id,
+    )
+    return PublicRentActionResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None else None
         ),
     )
 

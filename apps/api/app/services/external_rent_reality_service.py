@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 from app.core.ai_client import AIClient, ai_client
@@ -20,6 +20,12 @@ ExternalRentStatus = Literal["UPDATED", "NO_RELIABLE_EVIDENCE", "NOT_FOUND"]
 @dataclass(frozen=True)
 class ExternalRentResult:
     status: ExternalRentStatus
+    property: Property | None = None
+
+
+@dataclass(frozen=True)
+class PublicRentActionResult:
+    status: Literal["EVIDENCE_READY", "NO_EVIDENCE", "NOT_AVAILABLE"]
     property: Property | None = None
 
 
@@ -55,6 +61,63 @@ class ExternalRentRealityService:
         self._properties = properties
         self._intelligence = intelligence
         self._evidence_search = evidence_search
+
+    def execute_public_evidence_action(
+        self, conversation_id: str, property_id: str,
+    ) -> PublicRentActionResult:
+        target = self._properties.get_scoped(property_id, conversation_id)
+        if (
+            target is None
+            or target.reality_action_type != "PUBLIC_EVIDENCE"
+            or not target.reality_action_state_hash
+            or not target.meaningful_unknown
+            or target.rent is not None
+            or not target.title
+            or target.geographic_status != GeographicStatus.GROUNDED
+            or target.lng is None
+            or target.lat is None
+        ):
+            return PublicRentActionResult("NOT_AVAILABLE")
+        if target.public_rent_evidence is not None:
+            return PublicRentActionResult("EVIDENCE_READY", target)
+
+        observed: list[PublicRentalEvidence] = []
+
+        def dispatch(_arguments: dict) -> str:
+            observed.extend(self._evidence_search.search(
+                property_name=target.title or "",
+                city=target.district,
+                district=target.geographic_identity,
+                lng=target.lng,
+                lat=target.lat,
+            ))
+            return self._evidence_search.as_tool_result(observed)
+
+        prompt = f"""
+Execute the user's PUBLIC_EVIDENCE Reality Action for one grounded Possible Life.
+Property: {target.title}
+Geographic identity: {target.geographic_identity}
+Coordinates: {target.lng},{target.lat}
+Unresolved question: {target.meaningful_unknown}
+Call search_public_rental_evidence exactly once. Return JSON {{"done": true}}.
+Do not admit evidence as Rent Reality or answer the unresolved question.
+""".strip()
+        try:
+            self._intelligence.generate_json_with_public_evidence_tool(
+                prompt, tool=PUBLIC_RENT_TOOL, dispatch=dispatch,
+            )
+        except (RuntimeError, TypeError, ValueError):
+            return PublicRentActionResult("NO_EVIDENCE")
+        if not observed:
+            return PublicRentActionResult("NO_EVIDENCE")
+        updated = self._properties.update_public_rent_evidence(
+            property_id, conversation_id,
+            action_hash=target.reality_action_state_hash,
+            evidence=asdict(observed[0]),
+        )
+        return PublicRentActionResult(
+            "EVIDENCE_READY" if updated else "NOT_AVAILABLE", updated,
+        )
 
     def acquire(self, conversation_id: str, property_id: str) -> ExternalRentResult:
         target = self._properties.get_scoped(property_id, conversation_id)
