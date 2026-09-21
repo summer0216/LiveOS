@@ -22,6 +22,8 @@ class FakeMeaningIntelligence:
     def __init__(self) -> None:
         self.include_unsupported_fact = True
         self.recommend_choice = True
+        self.return_known_fact_as_unknown = True
+        self.use_unsupported_future_causality = True
 
     def generate_json(self, prompt: str, **_kwargs) -> str:
         assert "中关村东大院" in prompt
@@ -29,6 +31,27 @@ class FakeMeaningIntelligence:
             {"fact": "WORK_COMMUTE", "value": "1min WALKING"},
             {"fact": "GROCERY_WALK", "value": "7min WALKING"},
         ]
+        if "unknown Reality" in prompt:
+            return json.dumps({
+                "unknown_fact": (
+                    "WORK_COMMUTE"
+                    if self.return_known_fact_as_unknown
+                    else "ACTUAL_LIVING_SPACE"
+                ),
+                "question": (
+                    "实际通勤时间是多少？"
+                    if self.return_known_fact_as_unknown
+                    else "实际居住空间是否足够？"
+                ),
+                "why_it_matters": (
+                    "若租约较短，超预算压力可能很快重新协商或结束。"
+                    if self.use_unsupported_future_causality
+                    else "实际空间是否满足居住需要，会直接改变便利与成本压力的权衡。"
+                ),
+                "meaning_reference": "工作和日常采购几乎都可步行解决，但住房成本会带来预算压力。",
+                "judgment_reference": "这是用更高住房成本换取极短通勤与日常便利的生活选择。",
+                "grounding": grounding,
+            }, ensure_ascii=False)
         if "Current Judgment" in prompt:
             return json.dumps({
                 "judgment": (
@@ -94,6 +117,18 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert partial.current_judgment is None
 
     intelligence.recommend_choice = False
+    rejected_unknown = service.form(conversation_id, home.id or "")
+    assert rejected_unknown.status == "INVALID_UNKNOWN"
+    with_judgment = property_manager.get_scoped(home.id or "", conversation_id)
+    assert with_judgment is not None
+    assert with_judgment.current_judgment is not None
+    assert with_judgment.meaningful_unknown is None
+
+    intelligence.return_known_fact_as_unknown = False
+    rejected_future_assumption = service.form(conversation_id, home.id or "")
+    assert rejected_future_assumption.status == "INVALID_UNKNOWN"
+
+    intelligence.use_unsupported_future_causality = False
     accepted = service.form(conversation_id, home.id or "")
     assert accepted.status == "UPDATED"
     restored = property_manager.get_scoped(home.id or "", conversation_id)
@@ -105,5 +140,8 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert restored.current_judgment is not None
     assert "生活选择" in restored.current_judgment
     assert "最适合" not in restored.current_judgment
+    assert restored.meaningful_unknown == "实际居住空间是否足够？"
+    assert restored.meaningful_unknown_why is not None
+    assert "权衡" in restored.meaningful_unknown_why
     assert restored.commute_minutes == 1
     assert restored.grocery_walking_minutes == 7

@@ -50,6 +50,9 @@ class Property:
     living_meaning_reality_hash: str | None = None
     current_judgment: str | None = None
     current_judgment_state_hash: str | None = None
+    meaningful_unknown: str | None = None
+    meaningful_unknown_why: str | None = None
+    meaningful_unknown_state_hash: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

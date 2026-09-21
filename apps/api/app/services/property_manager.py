@@ -185,6 +185,23 @@ class PropertyManager:
             state_hash=state_hash,
         )
 
+    def update_meaningful_unknown(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        question: str,
+        why: str,
+        state_hash: str,
+    ) -> Property | None:
+        return property_store.update_meaningful_unknown(
+            property_id,
+            conversation_id,
+            question=question,
+            why=why,
+            state_hash=state_hash,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

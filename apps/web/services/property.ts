@@ -19,6 +19,8 @@ export interface Property {
   grocery_walking_minutes: number | null;
   living_meaning: string | null;
   current_judgment: string | null;
+  meaningful_unknown: string | null;
+  meaningful_unknown_why: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -52,6 +54,8 @@ export type PropertyInput = Omit<
   | 'grocery_walking_minutes'
   | 'living_meaning'
   | 'current_judgment'
+  | 'meaningful_unknown'
+  | 'meaningful_unknown_why'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'

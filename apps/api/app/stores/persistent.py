@@ -448,6 +448,9 @@ class PropertyStore:
             living_meaning_reality_hash=row.get("living_meaning_reality_hash"),
             current_judgment=row.get("current_judgment"),
             current_judgment_state_hash=row.get("current_judgment_state_hash"),
+            meaningful_unknown=row.get("meaningful_unknown"),
+            meaningful_unknown_why=row.get("meaningful_unknown_why"),
+            meaningful_unknown_state_hash=row.get("meaningful_unknown_state_hash"),
             area=row["area"],
             bedrooms=row["bedrooms"],
             bathrooms=row["bathrooms"],
@@ -498,13 +501,15 @@ class PropertyStore:
                     grocery_lng, grocery_lat, grocery_walking_minutes,
                     living_meaning, living_meaning_reality_hash,
                     current_judgment, current_judgment_state_hash,
+                    meaningful_unknown, meaningful_unknown_why,
+                    meaningful_unknown_state_hash,
                     area, bedrooms,
                     bathrooms, commute_minutes, commute_mode, pet_friendly,
                     geographic_identity,
                     geographic_precision, geographic_status, lng, lat, provenance,
                     external_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     uuid_value(property_.id),
@@ -526,6 +531,9 @@ class PropertyStore:
                     property_.living_meaning_reality_hash,
                     property_.current_judgment,
                     property_.current_judgment_state_hash,
+                    property_.meaningful_unknown,
+                    property_.meaningful_unknown_why,
+                    property_.meaningful_unknown_state_hash,
                     property_.area,
                     property_.bedrooms,
                     property_.bathrooms,
@@ -608,7 +616,9 @@ class PropertyStore:
                 UPDATE properties
                 SET rent = %s, rent_source = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, updated_at = %s
+                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
@@ -644,7 +654,9 @@ class PropertyStore:
                 SET rent = %s, rent_source = %s, rent_source_reference = %s,
                     rent_observed_at = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, updated_at = %s
+                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
@@ -686,7 +698,9 @@ class PropertyStore:
                     grocery_identity = %s, grocery_lng = %s, grocery_lat = %s,
                     grocery_walking_minutes = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, updated_at = %s
+                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
@@ -724,6 +738,8 @@ class PropertyStore:
                 UPDATE properties
                 SET living_meaning = %s, living_meaning_reality_hash = %s,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
@@ -757,12 +773,49 @@ class PropertyStore:
                 """
                 UPDATE properties
                 SET current_judgment = %s, current_judgment_state_hash = %s,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
                 (
                     judgment,
+                    state_hash,
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_meaningful_unknown(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        question: str,
+        why: str,
+        state_hash: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET meaningful_unknown = %s, meaningful_unknown_why = %s,
+                    meaningful_unknown_state_hash = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    question,
+                    why,
                     state_hash,
                     now(),
                     property_uuid,
@@ -791,6 +844,8 @@ class PropertyStore:
                 SET commute_minutes = %s, commute_mode = %s,
                     living_meaning = NULL, living_meaning_reality_hash = NULL,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
                     updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *

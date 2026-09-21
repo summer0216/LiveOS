@@ -81,6 +81,8 @@ class PropertyResponse(PropertyFields):
     grocery_walking_minutes: int | None = None
     living_meaning: str | None = None
     current_judgment: str | None = None
+    meaningful_unknown: str | None = None
+    meaningful_unknown_why: str | None = None
 
 
 class PropertyListResponse(BaseModel):
