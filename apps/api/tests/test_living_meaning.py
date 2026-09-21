@@ -28,6 +28,21 @@ class FakeMeaningIntelligence:
 
     def generate_json(self, prompt: str, **_kwargs) -> str:
         assert "中关村东大院" in prompt
+        if "Judge whether this proposed Unknown" in prompt:
+            return json.dumps({
+                "question_reference": "实际居住空间是否足够？",
+                "judgment_reference": "这是用更高住房成本换取极短通勤与日常便利的生活选择。",
+                "current_reality_sufficient": False,
+                "material_decision_change": True,
+                "single_observable_fact": True,
+                "impact_without_unsupported_bridge": True,
+                "sufficient_dimension": "",
+                "plausible_answer_a": "空间足够日常起居",
+                "impact_a": "便利与成本权衡保持成立",
+                "plausible_answer_b": "空间不足日常起居",
+                "impact_b": "居住限制改变便利与成本权衡",
+                "reason": "实际空间尚未有 Reality，差异会改变当前判断。",
+            }, ensure_ascii=False)
         grounding = [
             {"fact": "WORK_COMMUTE", "value": "1min WALKING"},
             {"fact": "GROCERY_WALK", "value": "7min WALKING"},

@@ -22,7 +22,7 @@ class LivingMeaningResult:
 class LivingMeaningService:
     meaning_version = "v0.3"
     judgment_version = "v0.4"
-    unknown_version = "v0.5.1-r4"
+    unknown_version = "v0.11-sufficiency"
     action_version = "v0.6"
 
     def __init__(
@@ -369,9 +369,41 @@ Chinese characters. Never use recommendation language such as 推荐、最适合
         personal_meaning: str,
         current_judgment: str,
     ) -> tuple[str, str] | None:
+        rejected_candidates: list[dict[str, str]] = []
+        for _ in range(4):
+            candidate = self._propose_meaningful_unknown(
+                basis, personal_meaning, current_judgment, rejected_candidates,
+            )
+            if candidate is None:
+                return None
+            relevant, reason, sufficient_dimension = self._judge_decision_sufficiency(
+                basis, personal_meaning, current_judgment, candidate,
+            )
+            if relevant:
+                return candidate
+            rejected_candidates.append({
+                "question": candidate[0],
+                "why_rejected": reason or "No demonstrated material decision change",
+                "sufficient_dimension": sufficient_dimension or "",
+            })
+        return None
+
+    def _propose_meaningful_unknown(
+        self,
+        basis: dict[str, str],
+        personal_meaning: str,
+        current_judgment: str,
+        rejected_candidates: list[dict[str, str]],
+    ) -> tuple[str, str] | None:
         prompt = f"""
 Identify the ONE unknown Reality with the highest direct ability to materially
 change how this grounded Possible Life is currently understood or judged.
+An independent, not-yet-known Reality of living in this home can introduce
+a new material consequence; it need not merely change the weight of an
+already-known trade-off. Do not limit candidates to finer details of facts
+already in Grounded Reality.
+Ask about ONE observable Reality only; do not combine two attributes in one
+question or invent emotional consequences to connect it to existing facts.
 Missing data alone does not deserve attention. Before selecting it, internally
 test: (1) it is genuinely unknown, (2) different plausible real answers could
 change the Current Judgment in meaningfully different ways, and (3) that impact
@@ -398,6 +430,19 @@ Personal Meaning:
 Current Judgment:
 {current_judgment}
 
+Previously rejected candidates and Decision Sufficiency reasons:
+{json.dumps(rejected_candidates, ensure_ascii=False)}
+If this list is nonempty, treat every sufficient_dimension as CLOSED for this
+selection: do not propose ANY question about that dimension, including its
+causes, locations, duration, frequency, severity, measurement, or variants.
+The rejection applies to the whole semantic dimension, not just its wording.
+Find an independent unresolved Reality of this home or lived relationship
+that could change the Meaning or Judgment. If none exists, return JSON null.
+An answer may add a new material lived consequence to the provisional
+Judgment; it need not erase or reverse its existing convenience/cost trade-off.
+Ask one concrete observable fact. Do not bundle dimensions or rely on an
+assumed feeling or preference to make the proposed impact sound material.
+
 The unknown_fact must not be any key already present in Grounded Reality.
 Do not ask for Reality already supplied. Do not provide or imply an answer.
 Select for judgment-changing information value, not completeness, curiosity,
@@ -421,6 +466,45 @@ Reality to explain relevance; do not invent preferences, priorities, places,
 times, prices, amenities, safety, quality, or new facts. Keep question under 36
 Chinese characters and why_it_matters under 60 Chinese characters.
 """.strip()
+        if rejected_candidates:
+            prompt = f"""
+The previous candidate was rejected because its entire Reality dimension is
+already sufficiently understood for the current Decision. Your task is to
+find ONE independent unresolved dimension of life at this residence. A new
+detail, cause, measurement, time, place, or degree within an excluded dimension
+is NOT a new dimension. Do not ask about any excluded dimension even if it
+appears in the Current Judgment. If there is no genuinely independent and
+decision-changing Unknown, return JSON null.
+First consider several distinct aspects of actually living inside this home
+that are absent from Grounded Reality. Select one concrete observable aspect
+whose differing answers would add a substantial new lived consequence. Do
+this reasoning internally; output only the one selected Unknown. Do not start
+from the named axes of the existing Judgment and ask for more detail about
+them. The existing Judgment is provisional, not a closed list of life factors.
+If a previous candidate bundled several attributes, ask about exactly ONE
+attribute, not the combination. If it relied on an assumed emotional or
+future effect, give a direct observable life consequence instead. The reason
+must name what changes in daily life, not generic overall quality.
+
+Excluded dimensions and reasons:
+{json.dumps(rejected_candidates, ensure_ascii=False)}
+Grounded Reality:
+{json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Personal Meaning: {personal_meaning}
+Current Judgment: {current_judgment}
+
+Return JSON with exactly these fields, or null:
+{{"unknown_fact": "new unknown identifier, not a known FACT_NAME",
+  "question": "one concrete Chinese question under 36 characters",
+  "why_it_matters": "direct material effect on Meaning or Judgment under 60 characters",
+  "meaning_reference": "exact supplied Personal Meaning",
+  "judgment_reference": "exact supplied Current Judgment",
+  "grounding": [{{"fact": "FACT_NAME", "value": "exact supplied value"}}]}}
+Grounding must cite at least two exact supplied facts. Do not introduce
+unsupported preferences, conditions, prices, amenities, recommendations,
+future events, or an answer. Do not propose generic quality or whether the
+home is good or worth choosing.
+""".strip()
         try:
             interpretation = json.loads(
                 self._intelligence.generate_json(
@@ -431,12 +515,116 @@ Chinese characters and why_it_matters under 60 Chinese characters.
             )
         except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
             return None
-        return self._validate_meaningful_unknown(
+        candidate = self._validate_meaningful_unknown(
             interpretation,
             basis,
             personal_meaning,
             current_judgment,
         )
+        if candidate is not None and candidate[0] in {
+            item["question"] for item in rejected_candidates
+        }:
+            return None
+        return candidate
+
+    def _judge_decision_sufficiency(
+        self,
+        basis: dict[str, str],
+        personal_meaning: str,
+        current_judgment: str,
+        candidate: tuple[str, str],
+    ) -> tuple[bool, str | None, str | None]:
+        prompt = f"""
+Judge whether this proposed Unknown deserves the ONE current Attention slot.
+The question is not whether more precise information is available. Ask whether
+different plausible answers would materially change Personal Meaning or Current
+Judgment given what is ALREADY known. If the known Reality already establishes
+the decision-relevant consequence on that dimension, additional precision is
+not enough unless it could plausibly change the judgment. Do not invent a user
+preference, threshold, measurement, or recommendation.
+An independent, previously unknown aspect of life in this home can materially
+extend the provisional Judgment even if the existing trade-off remains true.
+Do not equate "material change" only with reversing the existing trade-off.
+Describe each impact as a change in lived meaning or trade-off, never as
+"rent / do not rent", negotiation, or a recommendation to the user.
+Reject a candidate that bundles multiple unknown facts or whose proposed
+impact relies on an unstated emotion, preference, or causal bridge rather than
+the supplied Reality. Do not invent a connection between two independent
+dimensions just to justify the candidate.
+
+Grounded Reality: {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Personal Meaning: {personal_meaning}
+Current Judgment: {current_judgment}
+Proposed Unknown: {candidate[0]}
+Proposed impact: {candidate[1]}
+
+Return JSON only with exactly:
+{{"question_reference": "exact Proposed Unknown",
+  "judgment_reference": "exact Current Judgment",
+  "current_reality_sufficient": true,
+  "material_decision_change": false,
+  "single_observable_fact": true,
+  "impact_without_unsupported_bridge": true,
+  "sufficient_dimension": "the already decision-ready Reality dimension, or empty",
+  "plausible_answer_a": "one plausible answer, or empty if insufficient",
+  "impact_a": "how it changes Meaning or Judgment, or empty",
+  "plausible_answer_b": "contrasting plausible answer, or empty",
+  "impact_b": "different material consequence, or empty",
+  "reason": "concise decision-sufficiency explanation"}}
+Only set material_decision_change=true when BOTH contrasting answers lead
+to materially different interpretations supported by current Reality. A more
+exact description of an already-understood trade-off is not a material change.
+Set single_observable_fact=false if the question combines separate attributes.
+Set impact_without_unsupported_bridge=false if its impact needs an unstated
+emotion, preference, interaction, or event to become decision-relevant.
+If uncertain, reject the candidate.
+""".strip()
+        try:
+            decision = json.loads(self._intelligence.generate_json(
+                prompt,
+                model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
+                max_output_tokens=320,
+            ))
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return False, None, None
+        if (
+            not isinstance(decision, dict)
+            or set(decision) != {
+                "question_reference", "judgment_reference",
+                "current_reality_sufficient", "material_decision_change",
+                "single_observable_fact", "impact_without_unsupported_bridge",
+                "sufficient_dimension",
+                "plausible_answer_a", "impact_a", "plausible_answer_b",
+                "impact_b", "reason",
+            }
+            or decision["question_reference"] != candidate[0]
+            or decision["judgment_reference"] != current_judgment
+            or type(decision["current_reality_sufficient"]) is not bool
+            or type(decision["material_decision_change"]) is not bool
+            or type(decision["single_observable_fact"]) is not bool
+            or type(decision["impact_without_unsupported_bridge"]) is not bool
+            or not isinstance(decision["reason"], str)
+            or not decision["reason"].strip()
+            or not isinstance(decision["sufficient_dimension"], str)
+        ):
+            return False, None, None
+        relevant = (
+            decision["current_reality_sufficient"] is False
+            and decision["material_decision_change"] is True
+            and decision["single_observable_fact"] is True
+            and decision["impact_without_unsupported_bridge"] is True
+            and all(isinstance(decision[key], str) and decision[key].strip()
+                    for key in ("plausible_answer_a", "impact_a",
+                                "plausible_answer_b", "impact_b"))
+            and decision["plausible_answer_a"] != decision["plausible_answer_b"]
+            and decision["impact_a"] != decision["impact_b"]
+        )
+        reason = decision["reason"].strip()
+        if decision["single_observable_fact"] is False:
+            reason = "The candidate bundles multiple unknown facts; select one. " + reason
+        if decision["impact_without_unsupported_bridge"] is False:
+            reason = "The proposed impact assumes unsupported consequences. " + reason
+        return (relevant, reason, decision["sufficient_dimension"].strip())
 
     @staticmethod
     def _validate_meaningful_unknown(
