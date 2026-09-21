@@ -688,6 +688,7 @@ export default function HomePage() {
               grocery={groceryPosition}
               meaning={meaning}
               livingMeaning={home.living_meaning}
+              currentJudgment={home.current_judgment}
               focused={focused}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}

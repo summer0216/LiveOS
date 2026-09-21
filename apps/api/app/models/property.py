@@ -48,6 +48,8 @@ class Property:
     grocery_walking_minutes: int | None = None
     living_meaning: str | None = None
     living_meaning_reality_hash: str | None = None
+    current_judgment: str | None = None
+    current_judgment_state_hash: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

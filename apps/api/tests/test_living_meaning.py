@@ -21,6 +21,7 @@ from tests.ownership import create_owned_conversation
 class FakeMeaningIntelligence:
     def __init__(self) -> None:
         self.include_unsupported_fact = True
+        self.recommend_choice = True
 
     def generate_json(self, prompt: str, **_kwargs) -> str:
         assert "中关村东大院" in prompt
@@ -28,6 +29,16 @@ class FakeMeaningIntelligence:
             {"fact": "WORK_COMMUTE", "value": "1min WALKING"},
             {"fact": "GROCERY_WALK", "value": "7min WALKING"},
         ]
+        if "Current Judgment" in prompt:
+            return json.dumps({
+                "judgment": (
+                    "这是最适合用户的选择。"
+                    if self.recommend_choice
+                    else "这是用更高住房成本换取极短通勤与日常便利的生活选择。"
+                ),
+                "meaning_reference": "工作和日常采购几乎都可步行解决，但住房成本会带来预算压力。",
+                "grounding": grounding,
+            }, ensure_ascii=False)
         if self.include_unsupported_fact:
             grounding.append({"fact": "CAFE_WALK", "value": "2min WALKING"})
         return json.dumps({
@@ -75,6 +86,14 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert property_manager.get_scoped(home.id or "", conversation_id).living_meaning is None
 
     intelligence.include_unsupported_fact = False
+    rejected_judgment = service.form(conversation_id, home.id or "")
+    assert rejected_judgment.status == "INVALID_JUDGMENT"
+    partial = property_manager.get_scoped(home.id or "", conversation_id)
+    assert partial is not None
+    assert partial.living_meaning is not None
+    assert partial.current_judgment is None
+
+    intelligence.recommend_choice = False
     accepted = service.form(conversation_id, home.id or "")
     assert accepted.status == "UPDATED"
     restored = property_manager.get_scoped(home.id or "", conversation_id)
@@ -83,5 +102,8 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert "步行解决" in restored.living_meaning
     assert "预算压力" in restored.living_meaning
     assert "1分钟" not in restored.living_meaning
+    assert restored.current_judgment is not None
+    assert "生活选择" in restored.current_judgment
+    assert "最适合" not in restored.current_judgment
     assert restored.commute_minutes == 1
     assert restored.grocery_walking_minutes == 7

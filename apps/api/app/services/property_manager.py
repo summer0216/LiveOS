@@ -170,6 +170,21 @@ class PropertyManager:
             reality_hash=reality_hash,
         )
 
+    def update_current_judgment(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        judgment: str,
+        state_hash: str,
+    ) -> Property | None:
+        return property_store.update_current_judgment(
+            property_id,
+            conversation_id,
+            judgment=judgment,
+            state_hash=state_hash,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

@@ -18,6 +18,7 @@ export interface Property {
   grocery_lat: number | null;
   grocery_walking_minutes: number | null;
   living_meaning: string | null;
+  current_judgment: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -50,6 +51,7 @@ export type PropertyInput = Omit<
   | 'grocery_lat'
   | 'grocery_walking_minutes'
   | 'living_meaning'
+  | 'current_judgment'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'
