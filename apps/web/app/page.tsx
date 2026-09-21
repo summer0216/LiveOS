@@ -11,7 +11,9 @@ import AMapGround, {
 import { createClientId } from '@/lib/createClientId';
 import { focusedHomeViewport } from '@/lib/focusedHomeViewport';
 import {
+  decisionGeographyFingerprint,
   isGroundedDecisionGeography,
+  shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
 import { streamMessage } from '@/services/chat';
 import {
@@ -237,17 +239,25 @@ export default function HomePage() {
       return false;
     }
 
-    setRestoredDecisionGeography(geography);
+    const geographyChanged = shouldApplyObservedDecisionGeography({
+      candidate: geography,
+      baselineFingerprint: decisionGeographyFingerprint(restoredDecisionGeography),
+      observationId: submitId,
+      latestObservationId: latestSubmitIdRef.current,
+    });
+    if (geographyChanged) setRestoredDecisionGeography(geography);
     setDecisionWorldActive(true);
     if (isGroundedWorkReality(geography)) {
       setObservedWorkReality(geography);
     }
-    reorient?.(
-      { lng: geography.lng, lat: geography.lat },
-      decisionGeographyZoom(geography),
-    );
+    if (geographyChanged) {
+      reorient?.(
+        { lng: geography.lng, lat: geography.lat },
+        decisionGeographyZoom(geography),
+      );
+    }
     return true;
-  }, [reorient]);
+  }, [reorient, restoredDecisionGeography]);
 
   const focusChoice = useCallback((propertyId: string) => {
     setPendingAction((current) => current?.propertyId === propertyId ? current : null);
@@ -553,10 +563,7 @@ export default function HomePage() {
         rentPropertyId: focusedChoiceIds.length === 1
           && focusedChoiceIds[0] === rentAnswerPropertyId
           ? rentAnswerPropertyId : undefined,
-        userRealityPropertyId: focusedUserReality?.meaningful_unknown
-          && (focusedUserReality.reality_action_type === 'USER_REALITY'
-            || focusedUserReality.feedback_move_type === 'USER_REALITY')
-          ? focusedUserReality.id : undefined,
+        userRealityPropertyId: focusedUserReality?.id,
         userDecisionPropertyId: focusedUserReality?.decision_readiness === 'DECISION_READY'
           && !focusedUserReality.user_decision_expression
           ? focusedUserReality.id : undefined,

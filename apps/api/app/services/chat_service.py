@@ -41,7 +41,10 @@ from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
-from app.services.property_reality_service import property_reality_service
+from app.services.property_reality_service import (
+    RentRealityResult,
+    property_reality_service,
+)
 from app.services.transit_duration import transit_duration_service
 from app.services.user_decision_return import user_decision_return
 from app.services.user_reality_return import user_reality_return
@@ -159,6 +162,7 @@ class ChatService:
         conversation_id: str,
         message: str,
         rent_property_id: str | None = None,
+        skip_explicit_rent: bool = False,
     ) -> tuple[Conversation, list[ConversationMessage]]:
         started_at = perf_counter()
         conversation = conversation_manager.get_or_create(
@@ -170,6 +174,8 @@ class ChatService:
         rent_reality = (
             property_reality_service.apply_rent_answer(conversation_id, rent_property_id, message)
             if rent_property_id else
+            RentRealityResult(status="NO_EXPLICIT_RENT")
+            if skip_explicit_rent else
             property_reality_service.apply_explicit_rent(conversation_id, message)
         )
         logger.info(
@@ -542,6 +548,7 @@ class ChatService:
             conversation_id=conversation_id,
             message=message,
             **({"rent_property_id": rent_property_id} if rent_property_id else {}),
+            skip_explicit_rent=bool(user_reality_property_id),
         )
 
         if rent_property_id:

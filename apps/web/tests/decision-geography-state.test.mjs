@@ -61,3 +61,23 @@ test('the unchanged persisted state is not replayed as a new transition', () => 
     false,
   );
 });
+
+test('a focused home reality reread preserves its viewport until geography changes', () => {
+  const current = grounded('成都龙湖时代天街', 104.074, 30.668);
+  const rentUpdatedReread = { ...current };
+  const newDestination = grounded('北京', 116.407387, 39.904179);
+  const baselineFingerprint = decisionGeographyFingerprint(current);
+
+  assert.equal(shouldApplyObservedDecisionGeography({
+    candidate: rentUpdatedReread,
+    baselineFingerprint,
+    observationId: 2,
+    latestObservationId: 2,
+  }), false);
+  assert.equal(shouldApplyObservedDecisionGeography({
+    candidate: newDestination,
+    baselineFingerprint,
+    observationId: 3,
+    latestObservationId: 3,
+  }), true);
+});
