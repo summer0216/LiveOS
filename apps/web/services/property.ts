@@ -11,6 +11,8 @@ export interface Property {
   rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | 'EXTERNAL_SOURCE' | null;
   rent_source_reference: string | null;
   rent_observed_at: string | null;
+  independent_kitchen: boolean | null;
+  independent_kitchen_source: 'USER_PROVIDED' | null;
   grocery_external_id: string | null;
   grocery_name: string | null;
   grocery_identity: string | null;
@@ -61,6 +63,8 @@ export type PropertyInput = Omit<
   | 'rent_source'
   | 'rent_source_reference'
   | 'rent_observed_at'
+  | 'independent_kitchen'
+  | 'independent_kitchen_source'
   | 'grocery_external_id'
   | 'grocery_name'
   | 'grocery_identity'

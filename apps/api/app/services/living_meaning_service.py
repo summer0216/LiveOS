@@ -565,6 +565,10 @@ Chinese characters and why_it_matters under 60 Chinese characters.
         }
         if home.rent is not None and home.rent_source is not None:
             basis["RENT_REALITY"] = f"{home.rent} CNY/month"
+        if home.independent_kitchen is not None and home.independent_kitchen_source == "USER_PROVIDED":
+            basis["INDEPENDENT_KITCHEN_REALITY"] = (
+                "PRESENT" if home.independent_kitchen else "ABSENT"
+            )
         if profile.budget is not None:
             basis["BUDGET_REALITY"] = f"{profile.budget} CNY/month"
             if home.rent is not None and home.rent_source is not None:

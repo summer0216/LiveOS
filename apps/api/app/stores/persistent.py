@@ -438,6 +438,8 @@ class PropertyStore:
             ),
             rent_source_reference=row.get("rent_source_reference"),
             rent_observed_at=row.get("rent_observed_at"),
+            independent_kitchen=row.get("independent_kitchen"),
+            independent_kitchen_source=row.get("independent_kitchen_source"),
             grocery_external_id=row.get("grocery_external_id"),
             grocery_name=row.get("grocery_name"),
             grocery_identity=row.get("grocery_identity"),
@@ -703,6 +705,44 @@ class PropertyStore:
                     owner_id,
                     conversation_uuid,
                 ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def admit_user_kitchen_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, kitchen_present: bool,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET independent_kitchen = %s,
+                    independent_kitchen_source = 'USER_PROVIDED',
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND meaningful_unknown_state_hash = %s
+                  AND meaningful_unknown IS NOT NULL
+                  AND (reality_action_type = 'USER_REALITY'
+                       OR feedback_move_type = 'USER_REALITY')
+                  AND independent_kitchen IS NULL
+                RETURNING *
+                """,
+                (kitchen_present, now(), property_uuid, owner_id,
+                 conversation_uuid, unknown_hash),
             ).fetchone()
         return self._from(row) if row is not None else None
 

@@ -30,12 +30,14 @@ from app.services.decision_record_service import decision_record_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
 from app.services.housing_candidate_discovery import housing_candidate_discovery
+from app.services.living_meaning_service import living_meaning_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
 from app.services.property_manager import property_manager
 from app.services.property_reality_service import property_reality_service
 from app.services.transit_duration import transit_duration_service
+from app.services.user_reality_return import user_reality_return
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +448,7 @@ class ChatService:
         current_geographic_reality: tuple[float, float] | None = None,
         clarification_target: str | None = None,
         rent_property_id: str | None = None,
+        user_reality_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
@@ -460,6 +463,25 @@ class ChatService:
                 yield WORLD_CONSEQUENCE_READY
                 yield from self._stream_assistant_reply(conversation_id, history)
             return rent_consequence()
+
+        if user_reality_property_id:
+            admitted = user_reality_return.admit(
+                conversation_id, user_reality_property_id, message,
+            )
+            if admitted is not None:
+                def user_reality_consequence():
+                    yield WORLD_CONSEQUENCE_READY
+                    try:
+                        living_meaning_service.form(conversation_id, user_reality_property_id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to refresh Living Meaning after user Reality conversation_id=%s",
+                            conversation_id,
+                        )
+                    else:
+                        yield WORLD_CONSEQUENCE_READY
+                    yield from self._stream_assistant_reply(conversation_id, history)
+                return user_reality_consequence()
 
         properties = property_manager.list(conversation_id)
         profile = profile_manager.get(conversation_id)

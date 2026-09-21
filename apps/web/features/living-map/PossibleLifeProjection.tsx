@@ -21,13 +21,14 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, independentKitchen, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
   meaning: string;
   livingMeaning?: string | null;
   currentJudgment?: string | null;
+  independentKitchen?: boolean | null;
   meaningfulUnknown?: string | null;
   meaningfulUnknownWhy?: string | null;
   realityActionLabel?: string | null;
@@ -64,7 +65,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
     const observer = new ResizeObserver(measure);
     elements.forEach(el => { if (el) observer.observe(el); });
     return () => observer.disconnect();
-  }, [work.name, home.name, meaning, focused, rent, budget]);
+  }, [work.name, home.name, meaning, focused, rent, budget, independentKitchen]);
 
   const midpoint = { x: (work.x + home.x) / 2, y: (work.y + home.y) / 2 };
   const groceryMidpoint = grocery
@@ -119,6 +120,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
           <span className="mt-1 text-xs text-slate-500">预算 ¥{budget.toLocaleString('en-US')}</span>
           <span className="mt-1 text-xs text-slate-800">{rentBudgetMeaning(rent, budget)}</span>
         </>}
+        {focused && independentKitchen !== null && independentKitchen !== undefined && <span className="mt-2 text-xs text-slate-800">独立厨房 · {independentKitchen ? '有' : '无'}</span>}
         {focused && livingMeaning && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">{livingMeaning}</span>}
         {focused && currentJudgment && <span className="mt-2 max-w-56 whitespace-normal border-l border-slate-400/60 pl-2 text-left text-xs font-medium leading-relaxed text-slate-800">{currentJudgment}</span>}
         {focused && meaningfulUnknown && <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600"><span className="block text-[10px] tracking-[0.08em] text-slate-400">还需要弄清楚</span><span className="mt-1 block">{meaningfulUnknown}</span>{meaningfulUnknownWhy && <span className="mt-1 block text-[11px] text-slate-500">{meaningfulUnknownWhy}</span>}</span>}

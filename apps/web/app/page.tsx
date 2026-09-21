@@ -462,6 +462,9 @@ export default function HomePage() {
 
   const handleSubmit = useCallback(async (message: string) => {
     const currentConversationId = conversationId || createClientId();
+    const focusedUserReality = focusedChoiceIds.length === 1
+      ? groundedChoices.find((choice) => choice.id === focusedChoiceIds[0])
+      : undefined;
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
     let consequenceRevision = 0;
@@ -497,6 +500,10 @@ export default function HomePage() {
         rentPropertyId: focusedChoiceIds.length === 1
           && focusedChoiceIds[0] === rentAnswerPropertyId
           ? rentAnswerPropertyId : undefined,
+        userRealityPropertyId: focusedUserReality?.meaningful_unknown
+          && (focusedUserReality.reality_action_type === 'USER_REALITY'
+            || focusedUserReality.feedback_move_type === 'USER_REALITY')
+          ? focusedUserReality.id : undefined,
         clarificationTarget: workPrecisionUnknown && workPrecisionActionRequest > 0
           ? 'WORK_LOCATION' : undefined,
         currentGeographicReality: currentLocation,
@@ -611,6 +618,7 @@ export default function HomePage() {
     workPrecisionActionRequest,
     rentAnswerPropertyId,
     focusedChoiceIds,
+    groundedChoices,
   ]);
 
   const workPosition = useMemo(
@@ -713,6 +721,8 @@ export default function HomePage() {
               meaning={meaning}
               livingMeaning={home.living_meaning}
               currentJudgment={home.current_judgment}
+              independentKitchen={home.independent_kitchen_source === 'USER_PROVIDED'
+                ? home.independent_kitchen : null}
               meaningfulUnknown={home.meaningful_unknown}
               meaningfulUnknownWhy={home.meaningful_unknown_why}
               realityActionLabel={home.reality_action_label}

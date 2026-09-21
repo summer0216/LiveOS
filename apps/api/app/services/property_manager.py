@@ -155,6 +155,15 @@ class PropertyManager:
             walking_minutes=walking_minutes,
         )
 
+    def admit_user_kitchen_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, kitchen_present: bool,
+    ) -> Property | None:
+        return property_store.admit_user_kitchen_reality(
+            property_id, conversation_id, unknown_hash=unknown_hash,
+            kitchen_present=kitchen_present,
+        )
+
     def update_living_meaning(
         self,
         property_id: str,
