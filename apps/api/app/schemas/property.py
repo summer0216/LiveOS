@@ -83,6 +83,9 @@ class PropertyResponse(PropertyFields):
     current_judgment: str | None = None
     meaningful_unknown: str | None = None
     meaningful_unknown_why: str | None = None
+    reality_action_type: str | None = None
+    reality_action_label: str | None = None
+    reality_action_why: str | None = None
 
 
 class PropertyListResponse(BaseModel):

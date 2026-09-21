@@ -21,6 +21,9 @@ export interface Property {
   current_judgment: string | null;
   meaningful_unknown: string | null;
   meaningful_unknown_why: string | null;
+  reality_action_type: 'PUBLIC_EVIDENCE' | 'USER_REALITY' | null;
+  reality_action_label: string | null;
+  reality_action_why: string | null;
   area: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -56,6 +59,9 @@ export type PropertyInput = Omit<
   | 'current_judgment'
   | 'meaningful_unknown'
   | 'meaningful_unknown_why'
+  | 'reality_action_type'
+  | 'reality_action_label'
+  | 'reality_action_why'
   | 'geographic_identity'
   | 'geographic_precision'
   | 'geographic_status'

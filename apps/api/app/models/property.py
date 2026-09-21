@@ -53,6 +53,10 @@ class Property:
     meaningful_unknown: str | None = None
     meaningful_unknown_why: str | None = None
     meaningful_unknown_state_hash: str | None = None
+    reality_action_type: str | None = None
+    reality_action_label: str | None = None
+    reality_action_why: str | None = None
+    reality_action_state_hash: str | None = None
     area: int | None = None
     bedrooms: int | None = None
     bathrooms: int | None = None

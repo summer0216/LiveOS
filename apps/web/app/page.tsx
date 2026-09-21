@@ -691,6 +691,8 @@ export default function HomePage() {
               currentJudgment={home.current_judgment}
               meaningfulUnknown={home.meaningful_unknown}
               meaningfulUnknownWhy={home.meaningful_unknown_why}
+              realityActionLabel={home.reality_action_label}
+              realityActionWhy={home.reality_action_why}
               focused={focused}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}

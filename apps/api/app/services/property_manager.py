@@ -202,6 +202,25 @@ class PropertyManager:
             state_hash=state_hash,
         )
 
+    def update_reality_action(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        action_type: str,
+        label: str,
+        why: str,
+        state_hash: str,
+    ) -> Property | None:
+        return property_store.update_reality_action(
+            property_id,
+            conversation_id,
+            action_type=action_type,
+            label=label,
+            why=why,
+            state_hash=state_hash,
+        )
+
     def resolve_geographic_grounding(
         self,
         property_id: str,

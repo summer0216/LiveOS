@@ -24,6 +24,7 @@ class FakeMeaningIntelligence:
         self.recommend_choice = True
         self.return_known_fact_as_unknown = True
         self.use_unsupported_future_causality = True
+        self.action_type = "UNSUPPORTED"
 
     def generate_json(self, prompt: str, **_kwargs) -> str:
         assert "中关村东大院" in prompt
@@ -31,6 +32,13 @@ class FakeMeaningIntelligence:
             {"fact": "WORK_COMMUTE", "value": "1min WALKING"},
             {"fact": "GROCERY_WALK", "value": "7min WALKING"},
         ]
+        if "Choose ONE reliable next action" in prompt:
+            return json.dumps({
+                "action_type": self.action_type,
+                "action_label": "现场确认实际居住空间",
+                "why_this_action": "这一现实需要直接观察，公开信息不足以确认。",
+                "unknown_reference": "实际居住空间是否足够？",
+            }, ensure_ascii=False)
         if "unknown Reality" in prompt:
             return json.dumps({
                 "unknown_fact": (
@@ -129,6 +137,13 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert rejected_future_assumption.status == "INVALID_UNKNOWN"
 
     intelligence.use_unsupported_future_causality = False
+    rejected_action = service.form(conversation_id, home.id or "")
+    assert rejected_action.status == "INVALID_ACTION"
+    without_action = property_manager.get_scoped(home.id or "", conversation_id)
+    assert without_action is not None
+    assert without_action.reality_action_type is None
+
+    intelligence.action_type = "USER_REALITY"
     accepted = service.form(conversation_id, home.id or "")
     assert accepted.status == "UPDATED"
     restored = property_manager.get_scoped(home.id or "", conversation_id)
@@ -143,5 +158,19 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert restored.meaningful_unknown == "实际居住空间是否足够？"
     assert restored.meaningful_unknown_why is not None
     assert "权衡" in restored.meaningful_unknown_why
+    assert restored.reality_action_type == "USER_REALITY"
+    assert restored.reality_action_label == "现场确认实际居住空间"
+    assert restored.reality_action_why is not None
+    assert restored.rent is None
     assert restored.commute_minutes == 1
     assert restored.grocery_walking_minutes == 7
+
+    changed = property_manager.update_meaningful_unknown(
+        home.id or "", conversation_id,
+        question="实际室内噪音水平如何？",
+        why="噪音可能改变当前权衡。",
+        state_hash="changed-unknown",
+    )
+    assert changed is not None
+    assert changed.reality_action_type is None
+    assert changed.reality_action_label is None

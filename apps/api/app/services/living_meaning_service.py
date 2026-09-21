@@ -23,6 +23,7 @@ class LivingMeaningService:
     meaning_version = "v0.3"
     judgment_version = "v0.4"
     unknown_version = "v0.5.1-r4"
+    action_version = "v0.6"
 
     def __init__(
         self,
@@ -113,30 +114,147 @@ class LivingMeaningService:
                 sort_keys=True,
             ).encode()
         ).hexdigest()
+        unknown_updated = False
         if (
             home.meaningful_unknown
             and home.meaningful_unknown_why
             and home.meaningful_unknown_state_hash == unknown_hash
         ):
+            unknown = (home.meaningful_unknown, home.meaningful_unknown_why)
+        else:
+            unknown = self._generate_meaningful_unknown(
+                basis,
+                home.living_meaning,
+                judgment,
+            )
+            if unknown is None:
+                return LivingMeaningResult("INVALID_UNKNOWN", home)
+            updated = self._properties.update_meaningful_unknown(
+                property_id,
+                conversation_id,
+                question=unknown[0],
+                why=unknown[1],
+                state_hash=unknown_hash,
+            )
+            if updated is None:
+                return LivingMeaningResult("NOT_FOUND")
+            home = updated
+            unknown_updated = True
+
+        action_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "version": self.action_version,
+                    "unknown_hash": unknown_hash,
+                    "question": unknown[0],
+                    "why": unknown[1],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        if (
+            home.reality_action_type
+            and home.reality_action_label
+            and home.reality_action_why
+            and home.reality_action_state_hash == action_hash
+        ):
             return LivingMeaningResult(
-                "UPDATED" if meaning_updated or judgment_updated else "EXISTING",
+                "UPDATED" if meaning_updated or judgment_updated or unknown_updated
+                else "EXISTING",
                 home,
             )
-        unknown = self._generate_meaningful_unknown(
-            basis,
-            home.living_meaning,
-            judgment,
+        action = self._generate_reality_action(
+            basis, home.living_meaning, judgment, unknown
         )
-        if unknown is None:
-            return LivingMeaningResult("INVALID_UNKNOWN", home)
-        updated = self._properties.update_meaningful_unknown(
+        if action is None:
+            return LivingMeaningResult("INVALID_ACTION", home)
+        updated = self._properties.update_reality_action(
             property_id,
             conversation_id,
-            question=unknown[0],
-            why=unknown[1],
-            state_hash=unknown_hash,
+            action_type=action[0],
+            label=action[1],
+            why=action[2],
+            state_hash=action_hash,
         )
         return LivingMeaningResult("UPDATED" if updated else "NOT_FOUND", updated)
+
+    def _generate_reality_action(
+        self,
+        basis: dict[str, str],
+        personal_meaning: str,
+        current_judgment: str,
+        unknown: tuple[str, str],
+    ) -> tuple[str, str, str] | None:
+        prompt = f"""
+Choose ONE reliable next action to learn the Reality needed by this unresolved
+Decision-Relevant Unknown. This is a plan only: do not execute, answer, or
+claim the Reality was observed. Choose the acquisition mode based on the
+nature of this Unknown, not a keyword rule.
+
+PUBLIC_EVIDENCE means traceable public evidence can reasonably answer it.
+USER_REALITY means public evidence is insufficient and the user's direct
+knowledge or observation is needed. Do not invent a source or evidence.
+
+Return JSON only, with exactly these fields:
+{{
+  "action_type": "PUBLIC_EVIDENCE or USER_REALITY",
+  "action_label": "one concise Chinese acquisition action",
+  "why_this_action": "one concise Chinese reason this mode is reliable",
+  "unknown_reference": "exact supplied Unknown question"
+}}
+
+Grounded Reality:
+{json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Personal Meaning: {personal_meaning}
+Current Judgment: {current_judgment}
+Unknown: {unknown[0]}
+Why Unknown matters: {unknown[1]}
+
+Describe only how to obtain the missing evidence. Do not include a guessed
+answer, recommendation, ranking, score, fabricated source, or completed-action
+claim. Keep each Chinese text under 50 characters.
+""".strip()
+        try:
+            interpretation = json.loads(
+                self._intelligence.generate_json(
+                    prompt,
+                    model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
+                    max_output_tokens=320,
+                )
+            )
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if not isinstance(interpretation, dict) or set(interpretation) != {
+            "action_type", "action_label", "why_this_action", "unknown_reference"
+        }:
+            return None
+        action_type = interpretation.get("action_type")
+        label = interpretation.get("action_label")
+        why = interpretation.get("why_this_action")
+        if (
+            action_type not in {"PUBLIC_EVIDENCE", "USER_REALITY"}
+            or interpretation.get("unknown_reference") != unknown[0]
+            or not isinstance(label, str)
+            or not label.strip()
+            or len(label.strip()) > 50
+            or not isinstance(why, str)
+            or not why.strip()
+            or len(why.strip()) > 50
+        ):
+            return None
+        combined = f"{label} {why}"
+        if any(term in combined for term in (
+            "已经确认", "已确认", "已查到", "已证实", "已观察到", "推荐", "最适合",
+            "最佳", "应该选择", "值得租", "不值得租"
+        )):
+            return None
+        allowed_numbers = {
+            number for value in basis.values() for number in re.findall(r"\d+", value)
+        }
+        if any(number not in allowed_numbers for number in re.findall(r"\d+", combined)):
+            return None
+        return action_type, label.strip(), why.strip()
 
     def _generate_meaning(self, basis: dict[str, str]) -> str | None:
         prompt = f"""
