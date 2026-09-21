@@ -721,6 +721,7 @@ export default function HomePage() {
               meaning={meaning}
               livingMeaning={home.living_meaning}
               currentJudgment={home.current_judgment}
+              decisionReadiness={home.decision_readiness}
               independentKitchen={home.independent_kitchen_source === 'USER_PROVIDED'
                 ? home.independent_kitchen : null}
               indoorSoundObservation={home.indoor_sound_observation_source === 'USER_PROVIDED'

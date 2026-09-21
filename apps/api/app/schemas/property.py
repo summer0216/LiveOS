@@ -86,6 +86,8 @@ class PropertyResponse(PropertyFields):
     grocery_walking_minutes: int | None = None
     living_meaning: str | None = None
     current_judgment: str | None = None
+    decision_readiness: Literal["NEED_MORE_REALITY", "DECISION_READY"] | None = None
+    decision_readiness_reason: str | None = None
     meaningful_unknown: str | None = None
     meaningful_unknown_why: str | None = None
     reality_action_type: str | None = None

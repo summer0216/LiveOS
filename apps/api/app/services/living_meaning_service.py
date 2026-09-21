@@ -22,6 +22,7 @@ class LivingMeaningResult:
 class LivingMeaningService:
     meaning_version = "v0.3"
     judgment_version = "v0.4"
+    readiness_version = "v0.12"
     unknown_version = "v0.11-sufficiency"
     action_version = "v0.6"
 
@@ -102,6 +103,40 @@ class LivingMeaningService:
             home = updated
             judgment_updated = True
 
+        readiness_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "version": self.readiness_version,
+                    "reality_hash": fingerprint,
+                    "personal_meaning": home.living_meaning,
+                    "current_judgment": judgment,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        if (
+            home.decision_readiness in {"NEED_MORE_REALITY", "DECISION_READY"}
+            and home.decision_readiness_state_hash == readiness_hash
+        ):
+            readiness = home.decision_readiness
+        else:
+            result = self._generate_decision_readiness(
+                basis, home.living_meaning, judgment,
+            )
+            if result is None:
+                return LivingMeaningResult("INVALID_READINESS", home)
+            readiness, reason = result
+            updated = self._properties.update_decision_readiness(
+                property_id, conversation_id, status=readiness, reason=reason,
+                state_hash=readiness_hash, judgment_hash=judgment_hash,
+            )
+            if updated is None:
+                return LivingMeaningResult("NOT_FOUND")
+            home = updated
+        if readiness == "DECISION_READY":
+            return LivingMeaningResult("DECISION_READY", home)
+
         unknown_hash = hashlib.sha256(
             json.dumps(
                 {
@@ -178,6 +213,86 @@ class LivingMeaningService:
             state_hash=action_hash,
         )
         return LivingMeaningResult("UPDATED" if updated else "NOT_FOUND", updated)
+
+    def _generate_decision_readiness(
+        self,
+        basis: dict[str, str],
+        personal_meaning: str,
+        current_judgment: str,
+    ) -> tuple[str, str] | None:
+        prompt = f"""
+Judge whether the CURRENT Possible Life has enough grounded Reality for the
+user to meaningfully face its provisional decision. Decide only between:
+NEED_MORE_REALITY and DECISION_READY.
+
+DECISION_READY means the core lived trade-offs are sufficiently understood to
+consider whether this Possible Life is acceptable. It does NOT mean all facts
+are known, the home is good/bad, or the user should choose/reject it. Unknowns
+can remain. More information being useful or interesting is NOT by itself a
+reason to continue investigation.
+
+NEED_MORE_REALITY means some missing Reality is still NECESSARY to understand
+a core consequence of living here before the user can meaningfully consider
+the choice. Do not rely on fact counts, completeness, generic curiosity, or a
+possible future refinement of an already understood trade-off.
+
+Grounded Reality:
+{json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Personal Meaning: {personal_meaning}
+Current Judgment: {current_judgment}
+
+Return JSON only with exactly:
+{{"status": "NEED_MORE_REALITY or DECISION_READY",
+  "reason": "one concise Chinese reason grounded in the current life decision",
+  "meaning_reference": "exact supplied Personal Meaning",
+  "judgment_reference": "exact supplied Current Judgment",
+  "grounding": [{{"fact": "FACT_NAME", "value": "exact supplied value"}}]}}
+Use at least two exact supplied facts in grounding. The reason must describe
+readiness, not recommend, score, rank, resolve unknowns, or invent Reality,
+preferences, priorities, thresholds, or future events. Keep it under 100
+Chinese characters. If uncertain that a missing fact is necessary, choose
+DECISION_READY rather than an endless information-gathering loop.
+""".strip()
+        try:
+            decision = json.loads(self._intelligence.generate_json(
+                prompt,
+                model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
+                max_output_tokens=320,
+            ))
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if not isinstance(decision, dict) or set(decision) != {
+            "status", "reason", "meaning_reference", "judgment_reference",
+            "grounding",
+        }:
+            return None
+        status = decision["status"]
+        reason = decision["reason"]
+        grounding = decision["grounding"]
+        if (
+            not isinstance(status, str)
+            or status not in {"NEED_MORE_REALITY", "DECISION_READY"}
+            or not isinstance(reason, str)
+            or not reason.strip()
+            or len(reason.strip()) > 100
+            or decision["meaning_reference"] != personal_meaning
+            or decision["judgment_reference"] != current_judgment
+            or not isinstance(grounding, list)
+        ):
+            return None
+        facts = set()
+        for item in grounding:
+            if not isinstance(item, dict) or set(item) != {"fact", "value"}:
+                return None
+            fact = item["fact"]
+            if not isinstance(fact, str) or basis.get(fact) != item["value"]:
+                return None
+            facts.add(fact)
+        if len(facts) < 2 or any(term in reason for term in (
+            "推荐", "最适合", "最佳", "应该选择", "值得租", "不值得租",
+        )):
+            return None
+        return status, reason.strip()
 
     def _generate_reality_action(
         self,

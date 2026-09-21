@@ -453,6 +453,9 @@ class PropertyStore:
             living_meaning_reality_hash=row.get("living_meaning_reality_hash"),
             current_judgment=row.get("current_judgment"),
             current_judgment_state_hash=row.get("current_judgment_state_hash"),
+            decision_readiness=row.get("decision_readiness"),
+            decision_readiness_reason=row.get("decision_readiness_reason"),
+            decision_readiness_state_hash=row.get("decision_readiness_state_hash"),
             meaningful_unknown=row.get("meaningful_unknown"),
             meaningful_unknown_why=row.get("meaningful_unknown_why"),
             meaningful_unknown_state_hash=row.get("meaningful_unknown_state_hash"),
@@ -640,7 +643,9 @@ class PropertyStore:
                 UPDATE properties
                 SET rent = %s, rent_source = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL, meaningful_unknown = NULL,
                     meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -685,7 +690,9 @@ class PropertyStore:
                 SET rent = %s, rent_source = %s, rent_source_reference = %s,
                     rent_observed_at = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL, meaningful_unknown = NULL,
                     meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -728,6 +735,8 @@ class PropertyStore:
                     independent_kitchen_source = 'USER_PROVIDED',
                     living_meaning = NULL, living_meaning_reality_hash = NULL,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
                     meaningful_unknown = NULL, meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -767,6 +776,8 @@ class PropertyStore:
                     indoor_sound_observation_unknown = %s,
                     living_meaning = NULL, living_meaning_reality_hash = NULL,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
                     meaningful_unknown = NULL, meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -813,7 +824,9 @@ class PropertyStore:
                     grocery_identity = %s, grocery_lng = %s, grocery_lat = %s,
                     grocery_walking_minutes = %s, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
-                    current_judgment_state_hash = NULL, meaningful_unknown = NULL,
+                    current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL, meaningful_unknown = NULL,
                     meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -860,6 +873,8 @@ class PropertyStore:
                 UPDATE properties
                 SET living_meaning = %s, living_meaning_reality_hash = %s,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
                     meaningful_unknown = NULL, meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -901,6 +916,8 @@ class PropertyStore:
                 """
                 UPDATE properties
                 SET current_judgment = %s, current_judgment_state_hash = %s,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
                     meaningful_unknown = NULL, meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
@@ -921,6 +938,40 @@ class PropertyStore:
                     owner_id,
                     conversation_uuid,
                 ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_decision_readiness(
+        self, property_id: str, conversation_id: str, *,
+        status: str, reason: str, state_hash: str, judgment_hash: str,
+    ) -> Property | None:
+        if status not in {"NEED_MORE_REALITY", "DECISION_READY"}:
+            return None
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET decision_readiness = %s, decision_readiness_reason = %s,
+                    decision_readiness_state_hash = %s,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND current_judgment_state_hash = %s
+                RETURNING *
+                """,
+                (status, reason, state_hash, now(), property_uuid,
+                 owner_id, conversation_uuid, judgment_hash),
             ).fetchone()
         return self._from(row) if row is not None else None
 
@@ -1101,6 +1152,8 @@ class PropertyStore:
                 SET commute_minutes = %s, commute_mode = %s,
                     living_meaning = NULL, living_meaning_reality_hash = NULL,
                     current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
                     meaningful_unknown = NULL, meaningful_unknown_why = NULL,
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,

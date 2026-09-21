@@ -24,6 +24,8 @@ export interface Property {
   grocery_walking_minutes: number | null;
   living_meaning: string | null;
   current_judgment: string | null;
+  decision_readiness: 'NEED_MORE_REALITY' | 'DECISION_READY' | null;
+  decision_readiness_reason: string | null;
   meaningful_unknown: string | null;
   meaningful_unknown_why: string | null;
   reality_action_type: 'PUBLIC_EVIDENCE' | 'USER_REALITY' | null;
@@ -79,6 +81,8 @@ export type PropertyInput = Omit<
   | 'grocery_walking_minutes'
   | 'living_meaning'
   | 'current_judgment'
+  | 'decision_readiness'
+  | 'decision_readiness_reason'
   | 'meaningful_unknown'
   | 'meaningful_unknown_why'
   | 'reality_action_type'

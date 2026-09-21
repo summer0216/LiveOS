@@ -203,6 +203,15 @@ class PropertyManager:
             state_hash=state_hash,
         )
 
+    def update_decision_readiness(
+        self, property_id: str, conversation_id: str, *,
+        status: str, reason: str, state_hash: str, judgment_hash: str,
+    ) -> Property | None:
+        return property_store.update_decision_readiness(
+            property_id, conversation_id, status=status, reason=reason,
+            state_hash=state_hash, judgment_hash=judgment_hash,
+        )
+
     def update_meaningful_unknown(
         self,
         property_id: str,
