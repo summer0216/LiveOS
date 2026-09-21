@@ -20,7 +20,7 @@ class LivingMeaningResult:
 
 
 class LivingMeaningService:
-    meaning_version = "v0.2.1"
+    meaning_version = "v0.3"
     def __init__(
         self,
         *,
@@ -50,10 +50,12 @@ class LivingMeaningService:
             return LivingMeaningResult("EXISTING", home)
 
         prompt = f"""
-Interpret one grounded Possible Life. Use only the supplied Reality.
+Interpret what one grounded Possible Life means for this user's daily life.
+Use only the supplied Reality. Synthesize implications and trade-offs instead
+of restating names, minutes, rent, and budget as a factual sentence.
 Return JSON only:
 {{
-  "meaning": "one concise Chinese living meaning",
+  "meaning": "one concise Chinese personal meaning",
   "grounding": [{{"fact": "FACT_NAME", "value": "exact supplied value"}}]
 }}
 
@@ -62,6 +64,11 @@ Grounded Reality:
 
 Allowed FACT_NAME values are exactly the keys in Grounded Reality.
 Every grounding value must exactly equal its supplied value.
+Ground the interpretation in at least two relevant facts, but do not
+mechanically mention every fact. Qualitative meaning directly supported by the
+facts is allowed: short walking relationships may mean easy daily access, and
+rent above an explicit budget may mean cost pressure. Express the combined
+life consequence or trade-off, not a recommendation and not a Reality summary.
 Do not invent places, times, prices, distances, amenities, preferences,
 recommendations, rankings, or scores. Keep meaning under 80 Chinese characters.
 Refer to grocery only as "日常采购"; do not infer or name a grocery category.
@@ -117,6 +124,15 @@ Refer to grocery only as "日常采购"; do not infer or name a grocery category
             basis["RENT_REALITY"] = f"{home.rent} CNY/month"
         if profile.budget is not None:
             basis["BUDGET_REALITY"] = f"{profile.budget} CNY/month"
+            if home.rent is not None and home.rent_source is not None:
+                difference = home.rent - profile.budget
+                basis["BUDGET_MEANING"] = (
+                    f"OVER_BUDGET {difference} CNY"
+                    if difference > 0
+                    else f"UNDER_BUDGET {abs(difference)} CNY"
+                    if difference < 0
+                    else "WITHIN_BUDGET"
+                )
         return basis
 
     @staticmethod
@@ -142,7 +158,7 @@ Refer to grocery only as "日常采购"; do not infer or name a grocery category
             if not isinstance(fact, str) or basis.get(fact) != value:
                 return None
             grounded_facts.add(fact)
-        if not {"WORK_COMMUTE", "GROCERY_WALK"}.issubset(grounded_facts):
+        if len(grounded_facts) < 2:
             return None
         allowed_numbers = {
             number

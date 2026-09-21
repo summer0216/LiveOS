@@ -31,7 +31,7 @@ class FakeMeaningIntelligence:
         if self.include_unsupported_fact:
             grounding.append({"fact": "CAFE_WALK", "value": "2min WALKING"})
         return json.dumps({
-            "meaning": "工作和日常采购都可以通过步行轻松解决。",
+            "meaning": "工作和日常采购几乎都可步行解决，但住房成本会带来预算压力。",
             "grounding": grounding,
         }, ensure_ascii=False)
 
@@ -79,6 +79,9 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert accepted.status == "UPDATED"
     restored = property_manager.get_scoped(home.id or "", conversation_id)
     assert restored is not None
-    assert restored.living_meaning == "工作和日常采购都可以通过步行轻松解决。"
+    assert restored.living_meaning is not None
+    assert "步行解决" in restored.living_meaning
+    assert "预算压力" in restored.living_meaning
+    assert "1分钟" not in restored.living_meaning
     assert restored.commute_minutes == 1
     assert restored.grocery_walking_minutes == 7
