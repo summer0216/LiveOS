@@ -20,7 +20,7 @@ class LivingMeaningResult:
 
 
 class LivingMeaningService:
-    meaning_version = "v0.3"
+    meaning_version = "v0.3-grounded-claims"
     judgment_version = "v0.4"
     readiness_version = "v0.12"
     unknown_version = "v0.11-sufficiency"
@@ -51,6 +51,13 @@ class LivingMeaningService:
                 sort_keys=True,
             ).encode()
         ).hexdigest()
+        if home.living_meaning and home.living_meaning_reality_hash != fingerprint:
+            updated = self._properties.update_living_meaning(
+                property_id, conversation_id, meaning=None, reality_hash=None,
+            )
+            if updated is None:
+                return LivingMeaningResult("NOT_FOUND")
+            home = updated
         meaning_updated = False
         if not (
             home.living_meaning
@@ -214,6 +221,41 @@ class LivingMeaningService:
         )
         return LivingMeaningResult("UPDATED" if updated else "NOT_FOUND", updated)
 
+    def _audit_interpretation(
+        self, interpretation: str, basis: dict[str, str],
+    ) -> tuple[bool, list[str]]:
+        prompt = f"""
+Audit whether EVERY claim in the proposed interpretation is supported by the
+supplied grounded Reality. Inspect the entire sentence, not only its cited
+facts. A direct qualitative implication is allowed; a claim about a living
+condition absent from Reality is not. Missing evidence is UNKNOWN. If any
+clause introduces unsupported Reality, reject the whole sentence.
+
+Grounded Reality: {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Proposed interpretation: {json.dumps(interpretation, ensure_ascii=False)}
+
+Return JSON only with exactly:
+{{"supported": true or false, "unsupported_claims": ["unsupported clause"]}}
+Set supported=true and unsupported_claims=[] only if every clause is supported.
+""".strip()
+        try:
+            result = json.loads(self._intelligence.generate_json(
+                prompt,
+                model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
+                max_output_tokens=192,
+            ))
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return False, []
+        if not (
+            isinstance(result, dict)
+            and set(result) == {"supported", "unsupported_claims"}
+            and isinstance(result["supported"], bool)
+            and isinstance(result["unsupported_claims"], list)
+            and all(isinstance(claim, str) for claim in result["unsupported_claims"])
+        ):
+            return False, []
+        return result["supported"] is True and result["unsupported_claims"] == [], result["unsupported_claims"]
+
     def _generate_decision_readiness(
         self,
         basis: dict[str, str],
@@ -372,6 +414,17 @@ claim. Keep each Chinese text under 50 characters.
         return action_type, label.strip(), why.strip()
 
     def _generate_meaning(self, basis: dict[str, str]) -> str | None:
+        rent_budget_only = set(basis) == {
+            "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
+        }
+        scope_instruction = (
+            "This input supports only the housing-rent decision constraint. "
+            "Write one concise sentence interpreting the monthly rent relative "
+            "to the stated rent budget. The precise housing-cost difference is "
+            "sufficient Meaning. Do not add another life consequence, speculate "
+            "about other spending, or claim no other consequences exist."
+            if rent_budget_only else ""
+        )
         prompt = f"""
 Interpret what one grounded Possible Life means for this user's daily life.
 Use only the supplied Reality. Synthesize implications and trade-offs instead
@@ -385,41 +438,70 @@ Return JSON only:
 Grounded Reality:
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
 
+The budget is the user's stated housing-rent target, not their income, total
+spending capacity, or other expenses. A rent/budget gap establishes a monthly
+housing-cost difference only. If this is the only grounded consequence, that
+precise difference is sufficient Personal Meaning; do not force a broader
+life, spending, or emotional implication.
+
 Allowed FACT_NAME values are exactly the keys in Grounded Reality.
 Every grounding value must exactly equal its supplied value.
 Ground the interpretation in at least two relevant facts, but do not
 mechanically mention every fact. Qualitative meaning directly supported by the
-facts is allowed: short walking relationships may mean easy daily access, and
-rent above an explicit budget may mean cost pressure. Express the combined
-life consequence or trade-off, not a recommendation and not a Reality summary.
+facts is allowed. Express only the life consequence or trade-off actually
+established by these facts, not a recommendation or a Reality summary.
+If the facts support only one consequence, express that consequence alone.
+Do not invent a second side of a trade-off. A place name identifies a place;
+it does not establish any qualities of life there.
 Do not invent places, times, prices, distances, amenities, preferences,
 recommendations, rankings, or scores. Keep meaning under 80 Chinese characters.
-Refer to grocery only as "日常采购"; do not infer or name a grocery category.
+An absent Reality field is unknown, not evidence for any living condition.
+Every claim must be supported by Reality, not merely by cited grounding keys.
+{scope_instruction}
 """.strip()
-        try:
-            interpretation = json.loads(
-                self._intelligence.generate_json(
+        for attempt in range(2):
+            try:
+                interpretation = json.loads(self._intelligence.generate_json(
                     prompt,
                     model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
                     max_output_tokens=512,
-                )
+                ))
+            except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+                return None
+            meaning = self._validate_interpretation(
+                interpretation, basis, text_field="meaning",
             )
-        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
-            return None
-        return self._validate_interpretation(
-            interpretation,
-            basis,
-            text_field="meaning",
-        )
+            supported, unsupported = (
+                self._audit_interpretation(meaning, basis) if meaning else (False, [])
+            )
+            if meaning and supported:
+                return meaning
+            if attempt == 0:
+                prompt += (
+                    "\nThe previous answer was rejected. Unsupported claims: "
+                    + json.dumps(unsupported, ensure_ascii=False)
+                    + ". Remove these claims and their paraphrases. Do not add a replacement claim without evidence."
+                )
+        return None
 
     def _generate_judgment(
         self,
         basis: dict[str, str],
         personal_meaning: str,
     ) -> str | None:
+        rent_budget_only = set(basis) == {
+            "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
+        }
+        scope_instruction = (
+            "Only the rent-versus-budget choice is grounded. Describe the "
+            "known monthly housing-cost commitment relative to the user's "
+            "stated rent target. Do not infer other living consequences."
+            if rent_budget_only else ""
+        )
         prompt = f"""
 Form one provisional Current Judgment for a grounded Possible Life.
-Describe what kind of life choice its current trade-off represents. Do not
+Describe the choice only to the extent current Reality supports. If only one
+consequence is grounded, describe it without inventing a balancing trade-off. Do not
 recommend, rank, score, approve, reject, or make the user's decision.
 
 Return JSON only:
@@ -435,48 +517,52 @@ Grounded Reality:
 Personal Meaning:
 {personal_meaning}
 
-Use only this Reality and Personal Meaning. Synthesize the supported trade-off
-without mechanically repeating every fact. Every grounding value and the
+The budget is a housing-rent target, not evidence about income or other
+spending. A judgment about a known rent/budget gap alone is sufficient when
+no other decision relationship is grounded.
+
+Use only this Reality and Personal Meaning. Synthesize only a supported
+consequence or trade-off without mechanically repeating every fact. Every grounding value and the
 meaning_reference must match the supplied values exactly. Do not invent user
 preferences, priorities, neighborhood quality, safety, housing quality,
 emotions, future prices, amenities, or new Reality. Keep judgment under 70
 Chinese characters. Never use recommendation language such as 推荐、最适合、
 最佳、应该选择、值得租、不值得租.
+An absent Reality field remains unknown. Every claim must be supported by
+Reality, even when the cited grounding keys are valid.
+{scope_instruction}
 """.strip()
-        try:
-            interpretation = json.loads(
-                self._intelligence.generate_json(
+        for attempt in range(2):
+            try:
+                interpretation = json.loads(self._intelligence.generate_json(
                     prompt,
                     model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
                     max_output_tokens=512,
+                ))
+            except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+                return None
+            if (
+                not isinstance(interpretation, dict)
+                or interpretation.get("meaning_reference") != personal_meaning
+            ):
+                return None
+            judgment = self._validate_interpretation(
+                interpretation, basis, text_field="judgment", max_length=70,
+            )
+            supported, unsupported = (
+                self._audit_interpretation(judgment, basis) if judgment else (False, [])
+            )
+            if judgment and not any(term in judgment for term in (
+                "推荐", "最适合", "最佳", "应该选择", "值得租", "不值得租",
+            )) and supported:
+                return judgment
+            if attempt == 0:
+                prompt += (
+                    "\nThe previous answer was rejected. Unsupported claims: "
+                    + json.dumps(unsupported, ensure_ascii=False)
+                    + ". Remove these claims and their paraphrases. Do not add a replacement claim without evidence."
                 )
-            )
-        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
-            return None
-        if (
-            not isinstance(interpretation, dict)
-            or interpretation.get("meaning_reference") != personal_meaning
-        ):
-            return None
-        judgment = self._validate_interpretation(
-            interpretation,
-            basis,
-            text_field="judgment",
-            max_length=70,
-        )
-        if judgment is None or any(
-            term in judgment
-            for term in (
-                "推荐",
-                "最适合",
-                "最佳",
-                "应该选择",
-                "值得租",
-                "不值得租",
-            )
-        ):
-            return None
-        return judgment
+        return None
 
     def _generate_meaningful_unknown(
         self,
@@ -845,27 +931,41 @@ If uncertain, reject the candidate.
         home: Property | None,
         profile: LivingProfile | None,
     ) -> bool:
-        return bool(
-            home is not None
-            and home.geographic_status == GeographicStatus.GROUNDED
-            and home.title
+        if (
+            home is None
+            or home.geographic_status != GeographicStatus.GROUNDED
+            or not home.title
+            or profile is None
+        ):
+            return False
+        has_work_and_daily_life = bool(
+            profile.geographic_status == GeographicStatus.GROUNDED
+            and profile.work_location
             and home.commute_minutes is not None
             and home.commute_mode is not None
             and home.grocery_external_id
             and home.grocery_walking_minutes is not None
-            and profile is not None
-            and profile.geographic_status == GeographicStatus.GROUNDED
-            and profile.work_location
         )
+        has_rent_and_budget = (
+            home.rent is not None
+            and home.rent_source is not None
+            and profile.budget is not None
+        )
+        return has_work_and_daily_life or has_rent_and_budget
 
     @staticmethod
     def _basis(home: Property, profile: LivingProfile) -> dict[str, str]:
-        basis = {
-            "HOME_IDENTITY": home.title or "",
-            "WORK_IDENTITY": profile.work_location or "",
-            "WORK_COMMUTE": f"{home.commute_minutes}min {home.commute_mode.value}",
-            "GROCERY_WALK": f"{home.grocery_walking_minutes}min WALKING",
-        }
+        basis = {"HOME_IDENTITY": home.title or ""}
+        if (
+            profile.geographic_status == GeographicStatus.GROUNDED
+            and profile.work_location
+            and home.commute_minutes is not None
+            and home.commute_mode is not None
+        ):
+            basis["WORK_IDENTITY"] = profile.work_location
+            basis["WORK_COMMUTE"] = f"{home.commute_minutes}min {home.commute_mode.value}"
+        if home.grocery_external_id and home.grocery_walking_minutes is not None:
+            basis["GROCERY_WALK"] = f"{home.grocery_walking_minutes}min WALKING"
         if home.rent is not None and home.rent_source is not None:
             basis["RENT_REALITY"] = f"{home.rent} CNY/month"
         if home.independent_kitchen is not None and home.independent_kitchen_source == "USER_PROVIDED":

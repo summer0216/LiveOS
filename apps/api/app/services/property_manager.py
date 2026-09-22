@@ -178,8 +178,8 @@ class PropertyManager:
         property_id: str,
         conversation_id: str,
         *,
-        meaning: str,
-        reality_hash: str,
+        meaning: str | None,
+        reality_hash: str | None,
     ) -> Property | None:
         return property_store.update_living_meaning(
             property_id,

@@ -928,6 +928,7 @@ export default function HomePage() {
                 onClick={(event) => {
                   event.stopPropagation();
                   focusChoice(property.id);
+                  if (!focused) void handleLivingMeaning(property.id);
                 }}
               >
                 <span className="object-mark">
@@ -962,6 +963,39 @@ export default function HomePage() {
                           <span className={`choice-budget-meaning ${budgetMeaning === '超预算' ? 'choice-budget-meaning-over' : ''}`}>
                             {budgetMeaning}
                           </span>
+                        )}
+                      </span>
+                    )}
+                    {singleFocused && property.living_meaning && (
+                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
+                        {property.living_meaning}
+                      </span>
+                    )}
+                    {singleFocused && property.current_judgment && (
+                      <span className="mt-2 max-w-56 whitespace-normal border-l border-slate-400/60 pl-2 text-left text-xs font-medium leading-relaxed text-slate-800">
+                        {property.current_judgment}
+                      </span>
+                    )}
+                    {singleFocused && property.decision_readiness === 'DECISION_READY' && !property.user_decision_expression && (
+                      <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-600">
+                        现在已经可以判断这个选择了
+                      </span>
+                    )}
+                    {singleFocused && property.meaningful_unknown && (
+                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
+                        <span className="block text-[10px] tracking-[0.08em] text-slate-400">还需要弄清楚</span>
+                        <span className="mt-1 block">{property.meaningful_unknown}</span>
+                        {property.meaningful_unknown_why && (
+                          <span className="mt-1 block text-[11px] text-slate-500">{property.meaningful_unknown_why}</span>
+                        )}
+                      </span>
+                    )}
+                    {singleFocused && property.meaningful_unknown && property.reality_action_label && (
+                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
+                        <span className="block text-[10px] tracking-[0.08em] text-slate-400">下一步</span>
+                        <span className="mt-1 block">{property.reality_action_label}</span>
+                        {property.reality_action_why && (
+                          <span className="mt-1 block text-[11px] text-slate-500">{property.reality_action_why}</span>
                         )}
                       </span>
                     )}

@@ -10,6 +10,7 @@ from app.models.property import (
     GeographicStatus,
     Property,
     PropertyProvenance,
+    PropertyRentSource,
 )
 from app.services.living_meaning_service import LivingMeaningService
 from app.services.property_manager import property_manager
@@ -28,6 +29,8 @@ class FakeMeaningIntelligence:
 
     def generate_json(self, prompt: str, **_kwargs) -> str:
         assert "中关村东大院" in prompt
+        if "Audit whether EVERY claim" in prompt:
+            return json.dumps({"supported": True, "unsupported_claims": []})
         if "Judge whether the CURRENT Possible Life" in prompt:
             return json.dumps({
                 "status": "NEED_MORE_REALITY",
@@ -200,3 +203,88 @@ def test_grounded_reality_forms_only_supported_persisted_living_meaning():
     assert changed is not None
     assert changed.reality_action_type is None
     assert changed.reality_action_label is None
+
+
+def test_grounded_home_with_user_rent_and_budget_forms_meaning_without_work():
+    class RentAndBudgetIntelligence:
+        def __init__(self) -> None:
+            self.meaning_calls = 0
+            self.judgment_calls = 0
+
+        def generate_json(self, prompt: str, **_kwargs) -> str:
+            assert '"WORK_IDENTITY"' not in prompt
+            assert '"WORK_COMMUTE"' not in prompt
+            assert '"GROCERY_WALK"' not in prompt
+            if "Audit whether EVERY claim" in prompt:
+                unsupported = "日常采购方便" in prompt or "居住便利" in prompt
+                return json.dumps({
+                    "supported": not unsupported,
+                    "unsupported_claims": ["未提供的生活条件"] if unsupported else [],
+                }, ensure_ascii=False)
+            grounding = [
+                {"fact": "RENT_REALITY", "value": "2500 CNY/month"},
+                {"fact": "BUDGET_REALITY", "value": "2000 CNY/month"},
+            ]
+            if "Judge whether the CURRENT Possible Life" in prompt:
+                return json.dumps({
+                    "status": "DECISION_READY",
+                    "reason": "已知租金超出预算，可以判断目前的成本取舍。",
+                    "meaning_reference": "月租比预算高500元，每月增加500元住房成本。",
+                    "judgment_reference": "这是住房成本超出已表达预算的居住选择。",
+                    "grounding": grounding,
+                }, ensure_ascii=False)
+            if "Current Judgment" in prompt:
+                self.judgment_calls += 1
+                return json.dumps({
+                    "judgment": (
+                        "居住便利与预算超支并存。" if self.judgment_calls == 1
+                        else "这是住房成本超出已表达预算的居住选择。"
+                    ),
+                    "meaning_reference": "月租比预算高500元，每月增加500元住房成本。",
+                    "grounding": grounding,
+                }, ensure_ascii=False)
+            self.meaning_calls += 1
+            return json.dumps({
+                "meaning": (
+                    "日常采购方便，但房租超出预算500元。" if self.meaning_calls == 1
+                    else "月租比预算高500元，每月增加500元住房成本。"
+                ),
+                "grounding": grounding,
+            }, ensure_ascii=False)
+
+    client = TestClient(app)
+    conversation_id = uuid_for("living-meaning-rent-without-work")
+    create_owned_conversation(client, conversation_id)
+    profile_store.save(conversation_id, LivingProfile(budget=2000))
+    home = property_manager.create(conversation_id, Property(
+        title="龙湖时代天街",
+        geographic_identity="成都市龙湖时代天街",
+        geographic_precision=GeographicPrecision.COMMUNITY,
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=104.074,
+        lat=30.668,
+        rent=2500,
+        rent_source=PropertyRentSource.USER_PROVIDED,
+        provenance=PropertyProvenance.USER_PROVIDED,
+    ))
+
+    property_manager.update_living_meaning(
+        home.id or "", conversation_id,
+        meaning="日常采购方便，但房租超出预算500元。",
+        reality_hash="previous-meaning-version",
+    )
+    intelligence = RentAndBudgetIntelligence()
+    result = LivingMeaningService(intelligence=intelligence).form(
+        conversation_id, home.id or "",
+    )
+
+    assert result.status == "DECISION_READY"
+    restored = property_manager.get_scoped(home.id or "", conversation_id)
+    assert restored is not None
+    assert restored.living_meaning == "月租比预算高500元，每月增加500元住房成本。"
+    assert restored.current_judgment == "这是住房成本超出已表达预算的居住选择。"
+    assert intelligence.meaning_calls == 2
+    assert intelligence.judgment_calls == 2
+    assert restored.rent == 2500
+    assert restored.commute_minutes is None
+    assert restored.grocery_walking_minutes is None

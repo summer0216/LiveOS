@@ -862,8 +862,8 @@ class PropertyStore:
         property_id: str,
         conversation_id: str,
         *,
-        meaning: str,
-        reality_hash: str,
+        meaning: str | None,
+        reality_hash: str | None,
     ) -> Property | None:
         owner_id = resolve_owner_id(self._database, conversation_id)
         property_uuid = optional_uuid(property_id)
