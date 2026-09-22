@@ -22,6 +22,7 @@ export interface Property {
   grocery_lng: number | null;
   grocery_lat: number | null;
   grocery_walking_minutes: number | null;
+  place_context: PlaceContextReality[] | null;
   living_meaning: string | null;
   current_judgment: string | null;
   decision_readiness: 'NEED_MORE_REALITY' | 'DECISION_READY' | null;
@@ -61,6 +62,18 @@ export interface Property {
   lat: number | null;
 }
 
+export interface PlaceContextReality {
+  category: 'COMMERCIAL' | 'TRANSIT' | 'EDUCATION';
+  external_id: string;
+  name: string;
+  identity: string;
+  type_code: string;
+  lng: number;
+  lat: number;
+  distance_m: number;
+  walking_minutes: number | null;
+}
+
 export type PropertyInput = Omit<
   Property,
   | 'id'
@@ -82,6 +95,7 @@ export type PropertyInput = Omit<
   | 'grocery_lng'
   | 'grocery_lat'
   | 'grocery_walking_minutes'
+  | 'place_context'
   | 'living_meaning'
   | 'current_judgment'
   | 'decision_readiness'
@@ -188,6 +202,24 @@ export async function establishDailyGrocery(
   );
   if (!response.ok) {
     throw new Error(`Failed to establish daily grocery: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function establishPlaceContext(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: string; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/place-context`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to establish Place Context: ${response.status}`);
   }
   return response.json();
 }

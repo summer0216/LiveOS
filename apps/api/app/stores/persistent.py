@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from psycopg.types.json import Jsonb
-
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -28,6 +26,7 @@ from app.models.property import (
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
+from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -449,6 +448,7 @@ class PropertyStore:
             grocery_lng=row.get("grocery_lng"),
             grocery_lat=row.get("grocery_lat"),
             grocery_walking_minutes=row.get("grocery_walking_minutes"),
+            place_context=row.get("place_context"),
             living_meaning=row.get("living_meaning"),
             living_meaning_reality_hash=row.get("living_meaning_reality_hash"),
             current_judgment=row.get("current_judgment"),
@@ -852,6 +852,29 @@ class PropertyStore:
                     now(),
                     property_uuid,
                     owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_place_context(
+        self, property_id: str, conversation_id: str, items: list[dict],
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET place_context = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (
+                    Jsonb(items), now(), property_uuid, owner_id,
                     conversation_uuid,
                 ),
             ).fetchone()

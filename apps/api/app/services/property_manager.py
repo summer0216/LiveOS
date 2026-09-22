@@ -155,6 +155,11 @@ class PropertyManager:
             walking_minutes=walking_minutes,
         )
 
+    def update_place_context(
+        self, property_id: str, conversation_id: str, items: list[dict],
+    ) -> Property | None:
+        return property_store.update_place_context(property_id, conversation_id, items)
+
     def admit_user_kitchen_reality(
         self, property_id: str, conversation_id: str, *,
         unknown_hash: str, kitchen_present: bool,

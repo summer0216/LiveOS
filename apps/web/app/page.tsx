@@ -23,6 +23,7 @@ import {
 import {
   acquireExternalRent,
   establishDailyGrocery,
+  establishPlaceContext,
   executePublicRentAction,
   formLivingMeaning,
   getProperties,
@@ -130,6 +131,7 @@ export default function HomePage() {
     key: string;
     reorient: NonNullable<typeof reorient>;
   } | null>(null);
+  const lastUserHomeGroceryFocusRef = useRef<string | null>(null);
 
   useEffect(() => {
     let settled = false;
@@ -350,15 +352,29 @@ export default function HomePage() {
     }
   }, [conversationId]);
 
+  const handlePlaceContext = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    try {
+      const result = await establishPlaceContext(conversationId, propertyId);
+      if (!result.property) return;
+      const updatedProperty = result.property;
+      setProperties(current => current.map(property => (
+        property.id === updatedProperty.id ? updatedProperty : property
+      )));
+    } catch (error: unknown) {
+      console.error('Failed to establish Place Context:', error);
+    }
+  }, [conversationId]);
+
   const enterPossibleLifeFocus = useCallback(async (home: Property) => {
     let reality = home;
     if (!reality.grocery_external_id) {
       const grounded = await handleDailyGrocery(home.id);
-      if (!grounded) return;
-      reality = grounded;
+      if (grounded) reality = grounded;
     }
     await handleLivingMeaning(reality.id);
-  }, [handleDailyGrocery, handleLivingMeaning]);
+    await handlePlaceContext(reality.id);
+  }, [handleDailyGrocery, handleLivingMeaning, handlePlaceContext]);
 
   const groundedWork = useMemo(() => {
     return profile?.geographic_status === 'GROUNDED'
@@ -449,6 +465,20 @@ export default function HomePage() {
     [focusedChoiceIds, groundedChoices],
   );
   const singleFocusedHome = focusedChoices.length === 1 ? focusedChoices[0] : null;
+  useEffect(() => {
+    if (
+      !geographicGroundReady
+      || !singleFocusedHome
+      || singleFocusedHome.provenance !== 'USER_PROVIDED'
+    ) {
+      lastUserHomeGroceryFocusRef.current = null;
+      return;
+    }
+    const focusKey = `${conversationId}:${singleFocusedHome.id}`;
+    if (lastUserHomeGroceryFocusRef.current === focusKey) return;
+    lastUserHomeGroceryFocusRef.current = focusKey;
+    void enterPossibleLifeFocus(singleFocusedHome);
+  }, [conversationId, enterPossibleLifeFocus, geographicGroundReady, singleFocusedHome]);
   const focusedHomeCamera = focusedHomeViewport(singleFocusedHome);
   const focusedHomeCameraKey = singleFocusedHome && focusedHomeCamera
     ? `${singleFocusedHome.id}:${singleFocusedHome.lng}:${singleFocusedHome.lat}`
@@ -900,6 +930,19 @@ export default function HomePage() {
           const focused = focusedChoiceIds.includes(property.id);
           const focusedOrder = focusedChoiceIds.indexOf(property.id);
           const singleFocused = focused && !dualFocusActive;
+          const groundedGrocery = singleFocused
+            && Boolean(property.grocery_external_id && property.grocery_name)
+            && typeof property.grocery_lng === 'number'
+            && Number.isFinite(property.grocery_lng)
+            && typeof property.grocery_lat === 'number'
+            && Number.isFinite(property.grocery_lat)
+            && typeof property.grocery_walking_minutes === 'number'
+            && property.grocery_walking_minutes > 0;
+          const placeContext = singleFocused ? (property.place_context ?? []).filter(item => (
+            Boolean(item.external_id && item.name && item.identity)
+            && Number.isFinite(item.lng) && Number.isFinite(item.lat)
+            && ['COMMERCIAL', 'TRANSIT', 'EDUCATION'].includes(item.category)
+          )) : [];
           const rentActionPending = pendingAction?.propertyId === property.id
             && pendingAction.type === 'CONFIRM_RENT'
             && pendingAction.status === 'PENDING';
@@ -928,7 +971,6 @@ export default function HomePage() {
                 onClick={(event) => {
                   event.stopPropagation();
                   focusChoice(property.id);
-                  if (!focused) void handleLivingMeaning(property.id);
                 }}
               >
                 <span className="object-mark">
@@ -966,6 +1008,21 @@ export default function HomePage() {
                         )}
                       </span>
                     )}
+                    {groundedGrocery && (
+                      <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-emerald-900">
+                        <span className="block font-medium">日常采购</span>
+                        <span className="mt-1 block">{property.grocery_name}</span>
+                        <span className="mt-1 block">步行 {property.grocery_walking_minutes} min</span>
+                      </span>
+                    )}
+                    {placeContext.map(item => (
+                      <span key={item.category} className="mt-2 block max-w-56 whitespace-normal text-left text-xs text-slate-700">
+                        <span className="font-medium">{{ COMMERCIAL: '商业', TRANSIT: '出行', EDUCATION: '教育' }[item.category]} · {item.name}</span>
+                        {typeof item.walking_minutes === 'number' && item.walking_minutes > 0 && (
+                          <span className="mt-1 block">步行 {item.walking_minutes} min</span>
+                        )}
+                      </span>
+                    ))}
                     {singleFocused && property.living_meaning && (
                       <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
                         {property.living_meaning}

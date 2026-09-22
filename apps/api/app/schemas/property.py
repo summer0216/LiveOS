@@ -1,7 +1,5 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from app.models.property import (
     CommuteMode,
     GeographicPrecision,
@@ -10,6 +8,7 @@ from app.models.property import (
     PropertyRentSource,
 )
 from app.schemas.decision_unknown import DecisionUnknownResponse
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PropertyFields(BaseModel):
@@ -84,6 +83,7 @@ class PropertyResponse(PropertyFields):
     grocery_lng: float | None = None
     grocery_lat: float | None = None
     grocery_walking_minutes: int | None = None
+    place_context: list[dict] | None = None
     living_meaning: str | None = None
     current_judgment: str | None = None
     decision_readiness: Literal["NEED_MORE_REALITY", "DECISION_READY"] | None = None

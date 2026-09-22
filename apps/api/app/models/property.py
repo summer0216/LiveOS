@@ -51,6 +51,7 @@ class Property:
     grocery_lng: float | None = None
     grocery_lat: float | None = None
     grocery_walking_minutes: int | None = None
+    place_context: list[dict] | None = None
     living_meaning: str | None = None
     living_meaning_reality_hash: str | None = None
     current_judgment: str | None = None
