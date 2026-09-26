@@ -1,5 +1,7 @@
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from app.models.property import (
     CommuteMode,
     GeographicPrecision,
@@ -8,7 +10,6 @@ from app.models.property import (
     PropertyRentSource,
 )
 from app.schemas.decision_unknown import DecisionUnknownResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PropertyFields(BaseModel):
@@ -74,6 +75,10 @@ class PropertyResponse(PropertyFields):
     rent_observed_at: str | None = None
     independent_kitchen: bool | None = None
     independent_kitchen_source: str | None = None
+    tenancy_mode: Literal["ENTIRE_RENT", "SHARED_RENT"] | None = None
+    tenancy_mode_source: str | None = None
+    independent_bathroom: bool | None = None
+    independent_bathroom_source: str | None = None
     indoor_sound_observation: str | None = None
     indoor_sound_observation_source: str | None = None
     indoor_sound_observation_unknown: str | None = None
@@ -84,6 +89,7 @@ class PropertyResponse(PropertyFields):
     grocery_lat: float | None = None
     grocery_walking_minutes: int | None = None
     place_context: list[dict] | None = None
+    place_understanding: dict | None = None
     living_meaning: str | None = None
     current_judgment: str | None = None
     decision_readiness: Literal["NEED_MORE_REALITY", "DECISION_READY"] | None = None

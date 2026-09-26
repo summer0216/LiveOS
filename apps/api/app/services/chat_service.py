@@ -17,11 +17,11 @@ from app.models.decision_change import (
 )
 from app.models.decision_geography import DecisionGeography
 from app.models.profile_analysis import ProfileAnalysis
+from app.models.profile_patch import LivingProfilePatch
 from app.models.property import (
     GeographicPrecision,
     GeographicStatus,
     Property,
-    PropertyProvenance,
 )
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
@@ -111,26 +111,6 @@ def _ground_explicit_possible_home(
             geographic_status=GeographicStatus.GROUNDED,
             lng=result.lng, lat=result.lat,
         )
-
-
-def _explicit_possible_home_focus(
-    conversation_id: str,
-    analysis: ProfileAnalysis,
-    geography: DecisionGeography | None,
-) -> str | None:
-    """Identify the one user-named, grounded Home in this turn, if proven."""
-    if not _is_explicit_possible_home(analysis, geography):
-        return None
-    title = (analysis.choices[0].title or "").strip()
-    candidates = [
-        property_ for property_ in property_manager.list(conversation_id)
-        if property_.title == title
-        and property_.provenance == PropertyProvenance.USER_PROVIDED
-        and property_.geographic_status == GeographicStatus.GROUNDED
-        and property_.lng == geography.lng
-        and property_.lat == geography.lat
-    ]
-    return candidates[0].id if len(candidates) == 1 else None
 
 
 class WorldStateReady:
@@ -576,6 +556,15 @@ class ChatService:
             if admitted is not None:
                 def user_reality_consequence():
                     yield WORLD_CONSEQUENCE_READY
+                    profile = profile_manager.get(conversation_id)
+                    if profile is not None and profile.budget is not None:
+                        budget_audit = profile_intelligence.audit_explicit_budget(history)
+                        if budget_audit.status == "ABSENT":
+                            profile_manager.merge(
+                                conversation_id,
+                                LivingProfilePatch(clear_fields=frozenset({"budget"})),
+                                profile.latest_insights,
+                            )
                     try:
                         living_meaning_service.form(conversation_id, user_reality_property_id)
                     except Exception:
@@ -693,10 +682,7 @@ class ChatService:
             decision_change_context.set(conversation_id, change_causes)
 
             # The durable Work update is observable before residential routing finishes.
-            focus_property_id = _explicit_possible_home_focus(
-                conversation_id, analysis, current_decision_geography,
-            )
-            yield WorldConsequenceReady(focus_property_id) if focus_property_id else WORLD_CONSEQUENCE_READY
+            yield WORLD_CONSEQUENCE_READY
 
             for discovery_future in discovery_futures:
                 while True:

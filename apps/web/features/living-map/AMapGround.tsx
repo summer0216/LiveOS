@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  geographicCameraCenterForViewport,
+  geographicZoomForViewport,
+  type GeographicCameraFraming,
+  type MapViewportInsets,
+} from '@/lib/geographicScaleContract';
 
 type AMapInstance = {
   destroy: () => void;
@@ -65,6 +71,8 @@ export interface GeographicProjection {
   (location: { lng: number; lat: number }): { x: number; y: number };
 }
 
+export type GeographicCameraTarget = number | GeographicCameraFraming;
+
 interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
   fitRequestKey?: string;
@@ -73,7 +81,11 @@ interface AMapGroundProps {
   presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onGroundReadyChange?: (ready: boolean) => void;
-  onCameraReady?: (reorient: (center: { lng: number; lat: number }, zoom: number) => void) => void;
+  onCameraReady?: (reorient: (
+    center: { lng: number; lat: number },
+    target: GeographicCameraTarget,
+    occlusion?: HTMLElement | null,
+  ) => void) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
   onZoomChange?: (zoom: number) => void;
@@ -157,6 +169,11 @@ export default function AMapGround({
     let groundPaintFrame: number | null = null;
     let userExploredCamera = false;
     let programmaticCameraUpdateUntil = 0;
+    let lastAdaptiveCameraRequest: {
+      center: { lng: number; lat: number };
+      framing: GeographicCameraFraming;
+      occlusion: HTMLElement | null;
+    } | null = null;
     const mapInitialCenter = initialCenterRef.current;
     const mapInitialZoom = initialZoomRef.current;
 
@@ -190,14 +207,65 @@ export default function AMapGround({
           );
         }
 
-        onCameraReady?.((center, zoom) => {
+        const viewportForTarget = (occlusion?: HTMLElement | null) => {
+          const container = containerRef.current;
+          const width = container?.clientWidth ?? 0;
+          const height = container?.clientHeight ?? 0;
+          const insets: Partial<MapViewportInsets> = {};
+          if (container && occlusion?.isConnected) {
+            const mapRect = container.getBoundingClientRect();
+            const occupiedRect = occlusion.getBoundingClientRect();
+            const overlapWidth = Math.max(
+              0,
+              Math.min(mapRect.right, occupiedRect.right)
+                - Math.max(mapRect.left, occupiedRect.left),
+            );
+            const overlapHeight = Math.max(
+              0,
+              Math.min(mapRect.bottom, occupiedRect.bottom)
+                - Math.max(mapRect.top, occupiedRect.top),
+            );
+            if (overlapWidth > 0 && overlapHeight > 0) {
+              const horizontalReadingLayer = overlapWidth >= mapRect.width * 0.75;
+              if (horizontalReadingLayer) {
+                if (occupiedRect.top >= mapRect.top + mapRect.height / 2) {
+                  insets.bottom = mapRect.bottom - occupiedRect.top + 16;
+                } else {
+                  insets.top = occupiedRect.bottom - mapRect.top + 16;
+                }
+              } else if (occupiedRect.left >= mapRect.left + mapRect.width / 2) {
+                insets.right = mapRect.right - occupiedRect.left + 16;
+              } else {
+                insets.left = occupiedRect.right - mapRect.left + 16;
+              }
+            }
+          }
+          return { width, height, insets };
+        };
+        const applyCameraTarget = (
+          center: { lng: number; lat: number },
+          target: GeographicCameraTarget,
+          occlusion: HTMLElement | null = null,
+          immediately = false,
+        ) => {
           programmaticCameraUpdateUntil = performance.now() + 1500;
+          lastAdaptiveCameraRequest = typeof target === 'number'
+            ? null
+            : { center, framing: target, occlusion };
+          const viewport = viewportForTarget(occlusion);
+          const zoom = typeof target === 'number'
+            ? target
+            : geographicZoomForViewport(target, viewport);
+          const cameraCenter = typeof target === 'number'
+            ? center
+            : geographicCameraCenterForViewport(center, zoom, viewport);
           mapInstance.setZoomAndCenter(
             zoom,
-            new window.AMap!.LngLat(center.lng, center.lat),
-            false,
+            new window.AMap!.LngLat(cameraCenter.lng, cameraCenter.lat),
+            immediately,
           );
-        });
+        };
+        onCameraReady?.(applyCameraTarget);
 
         const createProjection = (): GeographicProjection => ({ lng, lat }) => {
           const pixel = mapInstance.lngLatToContainer(
@@ -296,6 +364,17 @@ export default function AMapGround({
         refitOnResize = () => {
           if (!active || userExploredCamera) return;
           mapInstance.resize();
+          if (lastAdaptiveCameraRequest) {
+            applyCameraTarget(
+              lastAdaptiveCameraRequest.center,
+              lastAdaptiveCameraRequest.framing,
+              lastAdaptiveCameraRequest.occlusion,
+              true,
+            );
+            refreshProjection();
+            refreshZoom();
+            return;
+          }
           fitGroundedLocations();
         };
         window.addEventListener('resize', refitOnResize);

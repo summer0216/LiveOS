@@ -160,6 +160,31 @@ class PropertyManager:
     ) -> Property | None:
         return property_store.update_place_context(property_id, conversation_id, items)
 
+    def update_place_understanding(
+        self, property_id: str, conversation_id: str, understanding: dict,
+    ) -> Property | None:
+        return property_store.update_place_understanding(
+            property_id, conversation_id, understanding,
+        )
+
+    def admit_user_bathroom_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, independent_bathroom: bool,
+    ) -> Property | None:
+        return property_store.admit_user_bathroom_reality(
+            property_id, conversation_id, unknown_hash=unknown_hash,
+            independent_bathroom=independent_bathroom,
+        )
+
+    def admit_user_tenancy_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, tenancy_mode: str,
+    ) -> Property | None:
+        return property_store.admit_user_tenancy_reality(
+            property_id, conversation_id, unknown_hash=unknown_hash,
+            tenancy_mode=tenancy_mode,
+        )
+
     def admit_user_kitchen_reality(
         self, property_id: str, conversation_id: str, *,
         unknown_hash: str, kitchen_present: bool,

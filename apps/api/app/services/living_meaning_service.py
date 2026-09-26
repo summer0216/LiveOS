@@ -224,6 +224,7 @@ class LivingMeaningService:
     def _audit_interpretation(
         self, interpretation: str, basis: dict[str, str],
     ) -> tuple[bool, list[str]]:
+        personal_connections = self._personal_reality_connections(basis)
         prompt = f"""
 Audit whether EVERY claim in the proposed interpretation is supported by the
 supplied grounded Reality. Inspect the entire sentence, not only its cited
@@ -232,7 +233,16 @@ condition absent from Reality is not. Missing evidence is UNKNOWN. If any
 clause introduces unsupported Reality, reject the whole sentence.
 
 Grounded Reality: {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Grounded Personal Reality connections:
+{json.dumps(personal_connections, ensure_ascii=False)}
 Proposed interpretation: {json.dumps(interpretation, ensure_ascii=False)}
+
+Objective facts may establish what is true, but their coexistence does not
+establish personal value, pressure, priority, or a trade-off. When Grounded
+Personal Reality connections is empty, reject any claim that convenience,
+cost, or another fact matters to this user or competes in their decision.
+Only factual interpretation plus explicit uncertainty about personal meaning
+is supported in that state.
 
 Return JSON only with exactly:
 {{"supported": true or false, "unsupported_claims": ["unsupported clause"]}}
@@ -262,6 +272,7 @@ Set supported=true and unsupported_claims=[] only if every clause is supported.
         personal_meaning: str,
         current_judgment: str,
     ) -> tuple[str, str] | None:
+        personal_connections = self._personal_reality_connections(basis)
         prompt = f"""
 Judge whether the CURRENT Possible Life has enough grounded Reality for the
 user to meaningfully face its provisional decision. Decide only between:
@@ -280,8 +291,16 @@ possible future refinement of an already understood trade-off.
 
 Grounded Reality:
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Grounded Personal Reality connections:
+{json.dumps(personal_connections, ensure_ascii=False)}
 Personal Meaning: {personal_meaning}
 Current Judgment: {current_judgment}
+
+Knowing multiple objective facts is not Decision Sufficiency. DECISION_READY
+requires at least one grounded Personal Reality connection showing how known
+Reality relates to an explicit user constraint, preference, priority, or
+evaluation. If the connection list is empty, return NEED_MORE_REALITY. Do not
+turn objective-fact coexistence into a personal trade-off.
 
 Return JSON only with exactly:
 {{"status": "NEED_MORE_REALITY or DECISION_READY",
@@ -334,6 +353,11 @@ DECISION_READY rather than an endless information-gathering loop.
             "推荐", "最适合", "最佳", "应该选择", "值得租", "不值得租",
         )):
             return None
+        if status == "DECISION_READY" and not personal_connections:
+            return (
+                "NEED_MORE_REALITY",
+                "现有客观事实尚未与用户明确的个人约束、偏好或评价建立联系。",
+            )
         return status, reason.strip()
 
     def _generate_reality_action(
@@ -414,10 +438,17 @@ claim. Keep each Chinese text under 50 characters.
         return action_type, label.strip(), why.strip()
 
     def _generate_meaning(self, basis: dict[str, str]) -> str | None:
+        personal_connections = self._personal_reality_connections(basis)
+        rent_only = set(basis) == {"HOME_IDENTITY", "RENT_REALITY"}
         rent_budget_only = set(basis) == {
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
         scope_instruction = (
+            "This input establishes the monthly housing cost but supplies no "
+            "user budget or other personal constraint. Interpret that this "
+            "cost is now known while its fit and pressure remain unknown. Do "
+            "not call it cheap, expensive, affordable, stressful, or suitable."
+            if rent_only else
             "This input supports only the housing-rent decision constraint. "
             "Write one concise sentence interpreting the monthly rent relative "
             "to the stated rent budget. The precise housing-cost difference is "
@@ -437,6 +468,16 @@ Return JSON only:
 
 Grounded Reality:
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+
+Grounded Personal Reality connections:
+{json.dumps(personal_connections, ensure_ascii=False)}
+
+Objective Reality establishes what is true. Personal Meaning requires a
+Grounded Personal Reality connection. If this list is empty, you may describe
+the known factual situation and state that its personal significance remains
+unknown, but must not call a fact convenient, burdensome, valuable, suitable,
+or part of a trade-off for this user. Two objective facts existing together do
+not establish competing consequences.
 
 The budget is the user's stated housing-rent target, not their income, total
 spending capacity, or other expenses. A rent/budget gap establishes a monthly
@@ -489,10 +530,17 @@ Every claim must be supported by Reality, not merely by cited grounding keys.
         basis: dict[str, str],
         personal_meaning: str,
     ) -> str | None:
+        personal_connections = self._personal_reality_connections(basis)
+        rent_only = set(basis) == {"HOME_IDENTITY", "RENT_REALITY"}
         rent_budget_only = set(basis) == {
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
         scope_instruction = (
+            "Only the confirmed monthly rent is grounded; no user budget or "
+            "personal constraint is supplied. State that the housing cost is "
+            "known but its decision fit remains unresolved. Do not infer cost "
+            "pressure, affordability, suitability, or a balancing benefit."
+            if rent_only else
             "Only the rent-versus-budget choice is grounded. Describe the "
             "known monthly housing-cost commitment relative to the user's "
             "stated rent target. Do not infer other living consequences."
@@ -514,8 +562,16 @@ Return JSON only:
 Grounded Reality:
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
 
+Grounded Personal Reality connections:
+{json.dumps(personal_connections, ensure_ascii=False)}
+
 Personal Meaning:
 {personal_meaning}
+
+Current Judgment inherits the Personal Meaning boundary. If the connection
+list is empty, preserve uncertainty about what these objective facts mean to
+the user. Do not synthesize their coexistence into convenience, pressure,
+priority, suitability, or a trade-off.
 
 The budget is a housing-rent target, not evidence about income or other
 spending. A judgment about a known rent/budget gap alone is sufficient when
@@ -946,16 +1002,21 @@ If uncertain, reject the candidate.
             and home.grocery_external_id
             and home.grocery_walking_minutes is not None
         )
-        has_rent_and_budget = (
+        has_confirmed_rent = (
             home.rent is not None
             and home.rent_source is not None
-            and profile.budget is not None
         )
-        return has_work_and_daily_life or has_rent_and_budget
+        return has_work_and_daily_life or has_confirmed_rent
 
     @staticmethod
     def _basis(home: Property, profile: LivingProfile) -> dict[str, str]:
         basis = {"HOME_IDENTITY": home.title or ""}
+        if home.independent_bathroom is not None and home.independent_bathroom_source == "USER_PROVIDED":
+            basis["INDEPENDENT_BATHROOM_REALITY"] = (
+                "PRESENT" if home.independent_bathroom else "ABSENT"
+            )
+        if home.tenancy_mode and home.tenancy_mode_source == "USER_PROVIDED":
+            basis["TENANCY_MODE_REALITY"] = home.tenancy_mode
         if (
             profile.geographic_status == GeographicStatus.GROUNDED
             and profile.work_location
@@ -985,7 +1046,18 @@ If uncertain, reject the candidate.
                     if difference < 0
                     else "WITHIN_BUDGET"
                 )
+        if profile.commute_minutes is not None:
+            basis["COMMUTE_CONSTRAINT"] = f"MAX {profile.commute_minutes}min"
         return basis
+
+    @staticmethod
+    def _personal_reality_connections(basis: dict[str, str]) -> list[str]:
+        connections: list[str] = []
+        if "RENT_REALITY" in basis and "BUDGET_REALITY" in basis:
+            connections.append("RENT_REALITY ↔ BUDGET_REALITY")
+        if "WORK_COMMUTE" in basis and "COMMUTE_CONSTRAINT" in basis:
+            connections.append("WORK_COMMUTE ↔ COMMUTE_CONSTRAINT")
+        return connections
 
     @staticmethod
     def _validate_interpretation(

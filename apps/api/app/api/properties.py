@@ -1,3 +1,6 @@
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field
+
 from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.core.config import settings
 from app.models.property import GeographicStatus, Property
@@ -17,10 +20,9 @@ from app.services.external_rent_reality_service import external_rent_reality_ser
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.living_meaning_service import living_meaning_service
 from app.services.place_context_reality import place_context_reality_service
+from app.services.place_understanding_service import place_understanding_service
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
-from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
 
 router = APIRouter(
     prefix="/properties",
@@ -80,6 +82,15 @@ class PlaceContextRealityRequest(BaseModel):
 
 
 class PlaceContextRealityResponse(BaseModel):
+    status: str
+    property: PropertyResponse | None = None
+
+
+class PlaceUnderstandingRequest(BaseModel):
+    conversation_id: str = Field(min_length=1)
+
+
+class PlaceUnderstandingResponse(BaseModel):
     status: str
     property: PropertyResponse | None = None
 
@@ -247,6 +258,30 @@ def establish_place_context(
         request.conversation_id, property_id, settings.AMAP_WEB_SERVICE_KEY,
     )
     return PlaceContextRealityResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None else None
+        ),
+    )
+
+
+@router.post(
+    "/{property_id}/place-understanding",
+    response_model=PlaceUnderstandingResponse,
+)
+def form_place_understanding(
+    property_id: str,
+    request: PlaceUnderstandingRequest,
+    raw_request: Request,
+    response: Response,
+) -> PlaceUnderstandingResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    result = place_understanding_service.form(request.conversation_id, property_id)
+    return PlaceUnderstandingResponse(
         status=result.status,
         property=(
             PropertyResponse.model_validate(result.property)

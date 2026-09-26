@@ -275,14 +275,19 @@ def _scope_for_level(
 
 
 def _matches_title(title: str, *identities: str | None) -> bool:
-    normalized_title = "".join(title.split())
+    normalized_title = _normalize_place_punctuation(title)
     return any(
-        normalized_title in "".join(identity.split())
+        normalized_title in _normalize_place_punctuation(identity)
         or _normalize_administrative_text(normalized_title)
         in _normalize_administrative_text(identity)
         for identity in identities
         if identity
     )
+
+
+def _normalize_place_punctuation(value: str) -> str:
+    """Ignore display punctuation without changing any geographic identity tokens."""
+    return re.sub(r"[\s·・•()（）-]", "", value)
 
 
 def _geocode_matches_identity(title: str, geocode: dict) -> bool:

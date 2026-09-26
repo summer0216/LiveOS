@@ -42,6 +42,10 @@ class Property:
     rent_observed_at: str | None = None
     independent_kitchen: bool | None = None
     independent_kitchen_source: str | None = None
+    tenancy_mode: str | None = None
+    tenancy_mode_source: str | None = None
+    independent_bathroom: bool | None = None
+    independent_bathroom_source: str | None = None
     indoor_sound_observation: str | None = None
     indoor_sound_observation_source: str | None = None
     indoor_sound_observation_unknown: str | None = None
@@ -52,6 +56,7 @@ class Property:
     grocery_lat: float | None = None
     grocery_walking_minutes: int | None = None
     place_context: list[dict] | None = None
+    place_understanding: dict | None = None
     living_meaning: str | None = None
     living_meaning_reality_hash: str | None = None
     current_judgment: str | None = None

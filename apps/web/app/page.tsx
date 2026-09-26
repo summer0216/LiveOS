@@ -6,10 +6,15 @@ import { useSearchParams } from 'next/navigation';
 import ConversationComposer from '@/features/conversation/components/ConversationComposer';
 import PossibleLifeProjection from '@/features/living-map/PossibleLifeProjection';
 import AMapGround, {
+  type GeographicCameraTarget,
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
-import { focusedHomeViewport } from '@/lib/focusedHomeViewport';
+import {
+  decisionGeographyZoom,
+  geographicScaleZoom,
+  homeViewport,
+} from '@/lib/geographicScaleContract';
 import {
   decisionGeographyFingerprint,
   isGroundedDecisionGeography,
@@ -26,6 +31,7 @@ import {
   establishPlaceContext,
   executePublicRentAction,
   formLivingMeaning,
+  formPlaceUnderstanding,
   getProperties,
   type Property,
 } from '@/services/property';
@@ -74,14 +80,6 @@ function formatAreaWorkIdentity(userValue: string, groundedIdentity: string) {
   return userValue.slice(city.length).replace(/^的/, '') || userValue;
 }
 
-function decisionGeographyZoom(
-  geography: Pick<DecisionGeography, 'geographic_scope'>,
-) {
-  if (geography.geographic_scope === 'REGION') return 6.5;
-  if (geography.geographic_scope === 'LOCAL') return 12.5;
-  return 10.5;
-}
-
 function isGroundedWorkReality(
   geography: DecisionGeography | null | undefined,
 ): geography is DecisionGeography & { lng: number; lat: number } {
@@ -104,7 +102,11 @@ export default function HomePage() {
   const [locationResolution, setLocationResolution] = useState<LocationResolution>('pending');
   const [currentLocation, setCurrentLocation] = useState<{ lng: number; lat: number } | null>(null);
   const [reorient, setReorient] = useState<
-    ((center: { lng: number; lat: number }, zoom: number) => void) | null
+    ((
+      center: { lng: number; lat: number },
+      target: GeographicCameraTarget,
+      occlusion?: HTMLElement | null,
+    ) => void) | null
   >(null);
   const [decisionWorldActive, setDecisionWorldActive] = useState(false);
   const [restoredDecisionGeography, setRestoredDecisionGeography] = useState<
@@ -114,6 +116,7 @@ export default function HomePage() {
     DecisionGeography | null
   >(null);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
+  const [focusedReadingElement, setFocusedReadingElement] = useState<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
   const [rentAnswerPropertyId, setRentAnswerPropertyId] = useState<string | null>(null);
@@ -128,6 +131,10 @@ export default function HomePage() {
   } | null>(null);
   const latestSubmitIdRef = useRef(0);
   const lastFocusedCameraRef = useRef<{
+    key: string;
+    reorient: NonNullable<typeof reorient>;
+  } | null>(null);
+  const lastSeeCameraRef = useRef<{
     key: string;
     reorient: NonNullable<typeof reorient>;
   } | null>(null);
@@ -218,7 +225,11 @@ export default function HomePage() {
   }, []);
 
   const handleCameraReady = useCallback(
-    (nextReorient: (center: { lng: number; lat: number }, zoom: number) => void) => {
+    (nextReorient: (
+      center: { lng: number; lat: number },
+      target: GeographicCameraTarget,
+      occlusion?: HTMLElement | null,
+    ) => void) => {
       setReorient(() => nextReorient);
     },
     [],
@@ -352,17 +363,33 @@ export default function HomePage() {
     }
   }, [conversationId]);
 
-  const handlePlaceContext = useCallback(async (propertyId: string) => {
-    if (!conversationId) return;
+  const handlePlaceContext = useCallback(async (propertyId: string): Promise<Property | null> => {
+    if (!conversationId) return null;
     try {
       const result = await establishPlaceContext(conversationId, propertyId);
+      if (!result.property) return null;
+      const updatedProperty = result.property;
+      setProperties(current => current.map(property => (
+        property.id === updatedProperty.id ? updatedProperty : property
+      )));
+      return updatedProperty;
+    } catch (error: unknown) {
+      console.error('Failed to establish Place Context:', error);
+      return null;
+    }
+  }, [conversationId]);
+
+  const handlePlaceUnderstanding = useCallback(async (propertyId: string) => {
+    if (!conversationId) return;
+    try {
+      const result = await formPlaceUnderstanding(conversationId, propertyId);
       if (!result.property) return;
       const updatedProperty = result.property;
       setProperties(current => current.map(property => (
         property.id === updatedProperty.id ? updatedProperty : property
       )));
     } catch (error: unknown) {
-      console.error('Failed to establish Place Context:', error);
+      console.error('Failed to form Place Understanding:', error);
     }
   }, [conversationId]);
 
@@ -373,8 +400,11 @@ export default function HomePage() {
       if (grounded) reality = grounded;
     }
     await handleLivingMeaning(reality.id);
-    await handlePlaceContext(reality.id);
-  }, [handleDailyGrocery, handleLivingMeaning, handlePlaceContext]);
+    const groundedContext = await handlePlaceContext(reality.id);
+    if (groundedContext?.place_context?.length) {
+      await handlePlaceUnderstanding(reality.id);
+    }
+  }, [handleDailyGrocery, handleLivingMeaning, handlePlaceContext, handlePlaceUnderstanding]);
 
   const groundedWork = useMemo(() => {
     return profile?.geographic_status === 'GROUNDED'
@@ -465,6 +495,21 @@ export default function HomePage() {
     [focusedChoiceIds, groundedChoices],
   );
   const singleFocusedHome = focusedChoices.length === 1 ? focusedChoices[0] : null;
+  const groundedUserHomes = groundedChoices.filter(
+    (property) => property.provenance === 'USER_PROVIDED',
+  );
+  const activeGroundedHome = groundedUserHomes.filter((property) => (
+    restoredDecisionGeography?.status === 'GROUNDED'
+    && property.lng === restoredDecisionGeography.lng
+    && property.lat === restoredDecisionGeography.lat
+  ));
+  const seeHome = focusedChoiceIds.length === 0
+    ? activeGroundedHome.length === 1
+      ? activeGroundedHome[0]
+      : groundedUserHomes.length === 1
+        ? groundedUserHomes[0]
+        : null
+    : null;
   useEffect(() => {
     if (
       !geographicGroundReady
@@ -479,9 +524,9 @@ export default function HomePage() {
     lastUserHomeGroceryFocusRef.current = focusKey;
     void enterPossibleLifeFocus(singleFocusedHome);
   }, [conversationId, enterPossibleLifeFocus, geographicGroundReady, singleFocusedHome]);
-  const focusedHomeCamera = focusedHomeViewport(singleFocusedHome);
+  const focusedHomeCamera = homeViewport(singleFocusedHome, 'FOCUS');
   const focusedHomeCameraKey = singleFocusedHome && focusedHomeCamera
-    ? `${singleFocusedHome.id}:${singleFocusedHome.lng}:${singleFocusedHome.lat}`
+    ? `${singleFocusedHome.id}:${singleFocusedHome.lng}:${singleFocusedHome.lat}:${singleFocusedHome.geographic_precision}`
     : null;
   const dualFocusActive = focusedChoices.length === 2;
   const worldFitLocations = useMemo(
@@ -525,20 +570,44 @@ export default function HomePage() {
     restoredDecisionGeography,
   ]);
 
+  const seeHomeCamera = homeViewport(seeHome, 'SEE');
+  const seeHomeCameraKey = seeHome && seeHomeCamera
+    ? `${seeHome.id}:${seeHome.lng}:${seeHome.lat}:${seeHome.geographic_precision}`
+    : null;
+  useEffect(() => {
+    if (!reorient || !seeHomeCamera || !seeHomeCameraKey) return;
+    if (
+      lastSeeCameraRef.current?.key === seeHomeCameraKey
+      && lastSeeCameraRef.current.reorient === reorient
+    ) return;
+    lastSeeCameraRef.current = { key: seeHomeCameraKey, reorient };
+    reorient(seeHomeCamera.center, seeHomeCamera.framing);
+  }, [reorient, seeHomeCamera, seeHomeCameraKey]);
+
   useEffect(() => {
     if (!reorient || !focusedHomeCamera || !focusedHomeCameraKey) {
       lastFocusedCameraRef.current = null;
       return;
     }
+    const viewportAdaptiveFocus = (
+      focusedHomeCamera.framing.level === 'PLACE'
+      || focusedHomeCamera.framing.level === 'RESIDENCE'
+    );
+    if (viewportAdaptiveFocus && !focusedReadingElement) return;
     if (
       lastFocusedCameraRef.current?.key === focusedHomeCameraKey
       && lastFocusedCameraRef.current.reorient === reorient
     ) return;
     lastFocusedCameraRef.current = { key: focusedHomeCameraKey, reorient };
-    reorient(focusedHomeCamera.center, focusedHomeCamera.zoom);
+    reorient(
+      focusedHomeCamera.center,
+      focusedHomeCamera.framing,
+      viewportAdaptiveFocus ? focusedReadingElement : null,
+    );
   }, [
     focusedHomeCamera,
     focusedHomeCameraKey,
+    focusedReadingElement,
     reorient,
   ]);
 
@@ -550,7 +619,6 @@ export default function HomePage() {
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
     let consequenceRevision = 0;
-    let pendingFocusPropertyId: string | undefined;
 
     setPhase('forming');
     setWorkVisible(false);
@@ -569,16 +637,6 @@ export default function HomePage() {
         if (latestSubmitIdRef.current !== submitId || revision !== consequenceRevision) return;
         setProfile(durableProfile);
         setProperties(durableProperties);
-        if (pendingFocusPropertyId && durableProperties.some((property) =>
-          property.id === pendingFocusPropertyId
-          && property.conversation_id === currentConversationId
-          && property.provenance === 'USER_PROVIDED'
-          && property.geographic_status === 'GROUNDED'
-          && typeof property.lng === 'number'
-          && typeof property.lat === 'number',
-        )) {
-          setFocusedChoiceIds([pendingFocusPropertyId]);
-        }
         setPhase(
           durableProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty',
         );
@@ -602,8 +660,7 @@ export default function HomePage() {
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
-        onWorldConsequenceReady: (focusPropertyId) => {
-          if (focusPropertyId) pendingFocusPropertyId = focusPropertyId;
+        onWorldConsequenceReady: () => {
           void reconcileWorldConsequences().catch((error: unknown) => {
             console.error('Failed to reconcile persisted World consequence:', error);
           });
@@ -653,7 +710,7 @@ export default function HomePage() {
         !isGroundedDecisionGeography(restoredDecisionGeography)
         && currentLocation
       ) {
-        reorient?.(currentLocation, 12.5);
+        reorient?.(currentLocation, geographicScaleZoom('DISTRICT', 'SEE'));
       }
       await chatCompletion;
       const [completedProfile, completedProperties] = await Promise.all([
@@ -780,7 +837,7 @@ export default function HomePage() {
           initialZoom={
             restoredDecisionCenter && restoredDecisionGeography
               ? decisionGeographyZoom(restoredDecisionGeography)
-              : 12.5
+              : geographicScaleZoom('DISTRICT', 'SEE')
           }
           onProjectionReady={handleProjectionReady}
           onGroundReadyChange={handleGroundReadyChange}
@@ -814,11 +871,10 @@ export default function HomePage() {
               home={{ ...position, name: home.title ?? '' }}
               grocery={groceryPosition}
               meaning={meaning}
-              livingMeaning={home.living_meaning}
-              currentJudgment={home.current_judgment}
-              decisionReadiness={home.decision_readiness}
-              userDecisionExpression={home.user_decision_source === 'USER_PROVIDED'
-                ? home.user_decision_expression : null}
+              livingMeaning={null}
+              currentJudgment={null}
+              decisionReadiness={null}
+              userDecisionExpression={null}
               independentKitchen={home.independent_kitchen_source === 'USER_PROVIDED'
                 ? home.independent_kitchen : null}
               indoorSoundObservation={home.indoor_sound_observation_source === 'USER_PROVIDED'
@@ -928,6 +984,7 @@ export default function HomePage() {
           const position = choicePositions[property.id];
           if (!position) return null;
           const focused = focusedChoiceIds.includes(property.id);
+          const placeReality = property.geographic_precision === 'PLACE';
           const focusedOrder = focusedChoiceIds.indexOf(property.id);
           const singleFocused = focused && !dualFocusActive;
           const groundedGrocery = singleFocused
@@ -938,11 +995,6 @@ export default function HomePage() {
             && Number.isFinite(property.grocery_lat)
             && typeof property.grocery_walking_minutes === 'number'
             && property.grocery_walking_minutes > 0;
-          const placeContext = singleFocused ? (property.place_context ?? []).filter(item => (
-            Boolean(item.external_id && item.name && item.identity)
-            && Number.isFinite(item.lng) && Number.isFinite(item.lat)
-            && ['COMMERCIAL', 'TRANSIT', 'EDUCATION'].includes(item.category)
-          )) : [];
           const rentActionPending = pendingAction?.propertyId === property.id
             && pendingAction.type === 'CONFIRM_RENT'
             && pendingAction.status === 'PENDING';
@@ -962,7 +1014,7 @@ export default function HomePage() {
             >
               <button
                 type="button"
-                className={`world-object choice-object pointer-events-auto appearance-none border-0 bg-transparent p-0 text-center focus:outline-none ${focused ? 'choice-object-focused' : ''} ${confirmedWithinBudget ? 'choice-object-confirmed-viable' : ''} ${receded ? 'world-object-receded' : ''}`}
+                className={`world-object choice-object pointer-events-auto appearance-none border-0 bg-transparent p-0 text-center focus:outline-none ${focused ? 'choice-object-focused' : ''} ${placeReality ? 'choice-object-place' : ''} ${confirmedWithinBudget ? 'choice-object-confirmed-viable' : ''} ${receded ? 'world-object-receded' : ''}`}
                 aria-label={[
                   `聚焦 ${property.title ?? '未命名选择'}`,
                   budgetMeaning,
@@ -973,17 +1025,26 @@ export default function HomePage() {
                   focusChoice(property.id);
                 }}
               >
-                <span className="object-mark">
-                  {focused ? '◉' : dualFocusActive ? '○' : '●'}
-                </span>
+                {!placeReality && (
+                  <span className="object-mark">
+                    {focused ? '◉' : dualFocusActive ? '○' : '●'}
+                  </span>
+                )}
                 {focused ? (
                   <span
                     className={`choice-focus-copy ${dualFocusActive ? (focusedOrder === 0 ? 'choice-focus-copy-left' : 'choice-focus-copy-right') : 'choice-focus-copy-single'}`}
                   >
-                    <span className="object-kicker">可能的家</span>
-                    <span className="object-name mt-2">
-                      {property.title ?? '未命名选择'}
-                    </span>
+                    {placeReality ? (
+                      <>
+                        <span className="object-name">{property.title ?? '未命名选择'}</span>
+                        <span className="object-kicker mt-1">想住的地方</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="object-kicker">可能的家</span>
+                        <span className="object-name mt-2">{property.title ?? '未命名选择'}</span>
+                      </>
+                    )}
                     {typeof property.commute_minutes === 'number' && (
                       <span className="mt-1 font-mono text-[10px] font-medium tracking-[0.08em] text-slate-700">
                         到工作地点 {property.commute_minutes} min
@@ -1015,48 +1076,12 @@ export default function HomePage() {
                         <span className="mt-1 block">步行 {property.grocery_walking_minutes} min</span>
                       </span>
                     )}
-                    {placeContext.map(item => (
-                      <span key={item.category} className="mt-2 block max-w-56 whitespace-normal text-left text-xs text-slate-700">
-                        <span className="font-medium">{{ COMMERCIAL: '商业', TRANSIT: '出行', EDUCATION: '教育' }[item.category]} · {item.name}</span>
-                        {typeof item.walking_minutes === 'number' && item.walking_minutes > 0 && (
-                          <span className="mt-1 block">步行 {item.walking_minutes} min</span>
-                        )}
-                      </span>
-                    ))}
-                    {singleFocused && property.living_meaning && (
-                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
-                        {property.living_meaning}
-                      </span>
-                    )}
-                    {singleFocused && property.current_judgment && (
-                      <span className="mt-2 max-w-56 whitespace-normal border-l border-slate-400/60 pl-2 text-left text-xs font-medium leading-relaxed text-slate-800">
-                        {property.current_judgment}
-                      </span>
-                    )}
-                    {singleFocused && property.decision_readiness === 'DECISION_READY' && !property.user_decision_expression && (
-                      <span className="mt-2 max-w-56 whitespace-normal text-left text-xs text-slate-600">
-                        现在已经可以判断这个选择了
-                      </span>
-                    )}
-                    {singleFocused && property.meaningful_unknown && (
-                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
-                        <span className="block text-[10px] tracking-[0.08em] text-slate-400">还需要弄清楚</span>
-                        <span className="mt-1 block">{property.meaningful_unknown}</span>
-                        {property.meaningful_unknown_why && (
-                          <span className="mt-1 block text-[11px] text-slate-500">{property.meaningful_unknown_why}</span>
-                        )}
-                      </span>
-                    )}
-                    {singleFocused && property.meaningful_unknown && property.reality_action_label && (
-                      <span className="mt-3 max-w-56 whitespace-normal text-left text-xs leading-relaxed text-slate-600">
-                        <span className="block text-[10px] tracking-[0.08em] text-slate-400">下一步</span>
-                        <span className="mt-1 block">{property.reality_action_label}</span>
-                        {property.reality_action_why && (
-                          <span className="mt-1 block text-[11px] text-slate-500">{property.reality_action_why}</span>
-                        )}
-                      </span>
-                    )}
                   </span>
+                ) : placeReality ? (
+                  <>
+                    <span className="object-name">{property.title ?? '未命名选择'}</span>
+                    <span className="object-kicker mt-1">想住的地方</span>
+                  </>
                 ) : (
                   <>
                     <span className="object-name mt-2">
@@ -1107,6 +1132,99 @@ export default function HomePage() {
           </div>
         )}
       </section>
+      {geographicGroundReady && singleFocusedHome && (
+        Boolean(singleFocusedHome.place_understanding?.claims.length)
+        || Boolean(singleFocusedHome.living_meaning)
+        || Boolean(singleFocusedHome.current_judgment)
+        || Boolean(singleFocusedHome.user_decision_expression)
+        || singleFocusedHome.decision_readiness === 'DECISION_READY'
+        || Boolean(singleFocusedHome.meaningful_unknown)
+        || Boolean(singleFocusedHome.place_context?.length)
+      ) && (
+        <aside
+          ref={setFocusedReadingElement}
+          aria-label={`${singleFocusedHome.title ?? '当前聚焦的家'}的地方解读`}
+          data-focused-property-id={singleFocusedHome.id}
+          className="focused-world-reading pointer-events-auto"
+        >
+          <div className="text-xs font-semibold text-slate-800">{singleFocusedHome.title ?? '当前聚焦的家'}</div>
+          {singleFocusedHome.place_understanding?.claims.length ? (
+            <section className="mt-4" aria-label="地方环境">
+              <h2 className="text-xs font-semibold text-slate-700">地方环境</h2>
+              {singleFocusedHome.place_understanding.place_model && (
+                <p className="mt-2 text-sm leading-relaxed text-slate-800">
+                  {singleFocusedHome.place_understanding.place_model.text}
+                </p>
+              )}
+              {!singleFocusedHome.place_understanding.place_model && singleFocusedHome.place_understanding.claims.map((claim, index) => (
+                <p key={index} className="mt-2 text-xs leading-relaxed text-slate-700">{claim.text}</p>
+              ))}
+              {singleFocusedHome.place_understanding.place_model && (
+                <div className="mt-3 border-t border-slate-200 pt-2" aria-label="支撑的地方模式">
+                  {singleFocusedHome.place_understanding.claims.map((claim, index) => (
+                    <p key={index} className="mt-1 text-[11px] leading-relaxed text-slate-500">{claim.text}</p>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : singleFocusedHome.provenance === 'USER_PROVIDED' && singleFocusedHome.place_context?.length ? (
+            <section className="mt-4" aria-label="周边地方结构">
+              <h2 className="text-xs font-semibold text-slate-700">周边地方结构</h2>
+              {singleFocusedHome.place_context.filter(item => item.category !== 'GROCERY').map(item => {
+                const nearbyAnchor = item.co_located_with?.find(link =>
+                  singleFocusedHome.place_context?.some(anchor =>
+                    anchor.external_id === link.external_id && anchor.anchor_candidate
+                  )
+                );
+                const anchorName = singleFocusedHome.place_context?.find(anchor =>
+                  anchor.external_id === nearbyAnchor?.external_id
+                )?.name;
+                return (
+                  <p key={item.external_id} className="mt-2 text-xs leading-relaxed text-slate-600">
+                    {item.anchor_candidate && '地方锚点候选 · '}
+                    {{ COMMERCIAL: '商业', GROCERY: '采购', TRANSIT: '出行', EDUCATION: '教育', HEALTHCARE: '医疗' }[item.category]}
+                    {' · '}{item.name}
+                    {typeof item.walking_minutes === 'number' && item.walking_minutes > 0 && ` · 步行 ${item.walking_minutes} min`}
+                    {!item.anchor_candidate && nearbyAnchor && anchorName && (
+                      <span className="block text-[11px] text-slate-500">与{anchorName}相距 {nearbyAnchor.distance_m} m</span>
+                    )}
+                  </p>
+                );
+              })}
+            </section>
+          ) : null}
+          {singleFocusedHome.living_meaning && (
+            <section className="mt-4" aria-label="生活含义">
+              <h2 className="text-xs font-semibold text-slate-700">生活含义</h2>
+              <p className="mt-2 text-xs leading-relaxed text-slate-700">{singleFocusedHome.living_meaning}</p>
+            </section>
+          )}
+          {singleFocusedHome.current_judgment && (
+            <section className="mt-4" aria-label="当前判断">
+              <h2 className="text-xs font-semibold text-slate-700">当前判断</h2>
+              <p className="mt-2 text-xs leading-relaxed text-slate-800">{singleFocusedHome.current_judgment}</p>
+            </section>
+          )}
+          {singleFocusedHome.user_decision_source === 'USER_PROVIDED' && singleFocusedHome.user_decision_expression ? (
+            <section className="mt-4" aria-label="我的决定">
+              <h2 className="text-xs font-semibold text-slate-700">我的决定</h2>
+              <p className="mt-2 text-xs leading-relaxed text-slate-800">{singleFocusedHome.user_decision_expression}</p>
+            </section>
+          ) : singleFocusedHome.decision_readiness === 'DECISION_READY' && (
+            <p className="mt-4 text-xs text-slate-600">现在已经可以判断这个选择了</p>
+          )}
+          {singleFocusedHome.meaningful_unknown && (
+            <section className="mt-4" aria-label="还需要弄清楚">
+              <h2 className="text-xs font-semibold text-slate-700">还需要弄清楚</h2>
+              <p className="mt-2 text-xs leading-relaxed text-slate-700">{singleFocusedHome.meaningful_unknown}</p>
+              {singleFocusedHome.meaningful_unknown_why && <p className="mt-1 text-xs text-slate-500">{singleFocusedHome.meaningful_unknown_why}</p>}
+              {singleFocusedHome.reality_action_label && (
+                <p className="mt-2 text-xs text-slate-600">下一步 · {singleFocusedHome.reality_action_label}</p>
+              )}
+            </section>
+          )}
+        </aside>
+      )}
       <div className="absolute inset-x-0 bottom-0 z-20 px-5 pb-5 sm:px-10 sm:pb-8">
         <div className="mx-auto max-w-3xl">
           <ConversationComposer

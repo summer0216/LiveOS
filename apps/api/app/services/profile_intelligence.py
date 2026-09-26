@@ -1,6 +1,7 @@
 import json
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from typing import Literal
 
 from app.core.ai_client import ai_client
 from app.models.action_progress import (
@@ -44,7 +45,53 @@ def _is_housing_intent_type(intent_type: str | None) -> bool:
     }
 
 
+@dataclass(frozen=True)
+class BudgetRealityAudit:
+    status: Literal["CONFIRMED", "ABSENT", "UNKNOWN"]
+    amount: int | None = None
+    evidence: str | None = None
+
+
 class ProfileIntelligence:
+    def audit_explicit_budget(
+        self,
+        history: list[ConversationMessage],
+    ) -> BudgetRealityAudit:
+        user_messages = [message.content for message in history if message.role == "user"]
+        prompt = f"""
+Determine whether the USER explicitly established a housing budget Reality in
+these user messages. Rent and budget are different Reality types. A property's
+actual, quoted, observed, or historical rent is never a budget unless the user
+separately states it as their target, limit, or budget. Ignore assistant text.
+
+User messages:
+{json.dumps(user_messages, ensure_ascii=False)}
+
+Return JSON only with exactly:
+{{"budget": integer or null, "evidence": "exact contiguous user quote" or null}}
+Use null for both fields when no explicit user budget exists. Never reinterpret
+rent as budget. Do not infer affordability or a spending limit.
+""".strip()
+        try:
+            result = json.loads(ai_client.generate_json(prompt))
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return BudgetRealityAudit("UNKNOWN")
+        if not isinstance(result, dict) or set(result) != {"budget", "evidence"}:
+            return BudgetRealityAudit("UNKNOWN")
+        amount = result["budget"]
+        evidence = result["evidence"]
+        if amount is None and evidence is None:
+            return BudgetRealityAudit("ABSENT")
+        if (
+            type(amount) is int
+            and amount > 0
+            and isinstance(evidence, str)
+            and evidence.strip()
+            and any(evidence in message for message in user_messages)
+        ):
+            return BudgetRealityAudit("CONFIRMED", amount, evidence)
+        return BudgetRealityAudit("UNKNOWN")
+
     def extract_json(
         self,
         history: list[ConversationMessage],

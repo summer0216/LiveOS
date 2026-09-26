@@ -23,6 +23,12 @@ export interface Property {
   grocery_lat: number | null;
   grocery_walking_minutes: number | null;
   place_context: PlaceContextReality[] | null;
+  place_understanding: {
+    claims: { text: string; evidence_ids: string[] }[];
+    anchor_ids: string[];
+    place_model?: { text: string; pattern_indices: number[]; evidence_ids: string[] } | null;
+    reality_hash: string;
+  } | null;
   living_meaning: string | null;
   current_judgment: string | null;
   decision_readiness: 'NEED_MORE_REALITY' | 'DECISION_READY' | null;
@@ -63,7 +69,8 @@ export interface Property {
 }
 
 export interface PlaceContextReality {
-  category: 'COMMERCIAL' | 'TRANSIT' | 'EDUCATION';
+  structure_version?: number;
+  category: 'COMMERCIAL' | 'GROCERY' | 'TRANSIT' | 'EDUCATION' | 'HEALTHCARE';
   external_id: string;
   name: string;
   identity: string;
@@ -72,6 +79,8 @@ export interface PlaceContextReality {
   lat: number;
   distance_m: number;
   walking_minutes: number | null;
+  anchor_candidate?: boolean;
+  co_located_with?: { external_id: string; distance_m: number }[];
 }
 
 export type PropertyInput = Omit<
@@ -96,6 +105,7 @@ export type PropertyInput = Omit<
   | 'grocery_lat'
   | 'grocery_walking_minutes'
   | 'place_context'
+  | 'place_understanding'
   | 'living_meaning'
   | 'current_judgment'
   | 'decision_readiness'
@@ -221,6 +231,22 @@ export async function establishPlaceContext(
   if (!response.ok) {
     throw new Error(`Failed to establish Place Context: ${response.status}`);
   }
+  return response.json();
+}
+
+export async function formPlaceUnderstanding(
+  conversationId: string,
+  propertyId: string,
+): Promise<{ status: string; property: Property | null }> {
+  const response = await apiRequest(
+    `/properties/${encodeURIComponent(propertyId)}/place-understanding`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: conversationId }),
+    },
+  );
+  if (!response.ok) throw new Error(`Failed to form Place Understanding: ${response.status}`);
   return response.json();
 }
 

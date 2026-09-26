@@ -40,8 +40,6 @@ class UserRealityReturn:
         active_unknown = bool(
             home.meaningful_unknown
             and home.meaningful_unknown_state_hash
-            and (home.reality_action_type == "USER_REALITY"
-                 or home.feedback_move_type == "USER_REALITY")
         )
 
         prompt = f"""
@@ -56,6 +54,15 @@ Active Unknown: {json.dumps(home.meaningful_unknown if active_unknown else None,
 Current user message: {json.dumps(user_text, ensure_ascii=False)}
 
 Supported Reality slots in this focused Possible Life:
+- INDEPENDENT_BATHROOM: an explicit factual yes/no answer about whether the
+  rented room/residence has a bathroom for its exclusive use. Value must be
+  a JSON boolean. Interpret short answers against the active Unknown only.
+  Do not infer bathroom count, privacy, cleanliness, quality, suitability,
+  preference or value. Ambiguous, hypothetical or desired arrangements are NONE.
+- TENANCY_MODE: an explicit factual answer to the active tenancy Unknown.
+  Value is ENTIRE_RENT or SHARED_RENT. Interpret a short answer in the
+  active question's context; wishes, hypotheticals and ambiguity are NONE.
+  This establishes tenancy arrangement only, not privacy, quality or fit.
 - RENT: an explicit factual monthly rent amount for this focused residence,
   even if no Unknown or Action asked for it. Value must be a JSON integer.
   A wish, budget, target, hypothetical, quote about another residence, or
@@ -71,7 +78,7 @@ Select RENT only for a factual rent statement about the focused residence.
 Select the other slots only when they actually answer the active Unknown.
 Return JSON only with exactly these fields:
 {{"unknown_reference": "exact active Unknown", "reality_type":
-  "RENT or INDEPENDENT_KITCHEN or INDOOR_SOUND_OBSERVATION or NONE",
+  "RENT or TENANCY_MODE or INDEPENDENT_BATHROOM or INDEPENDENT_KITCHEN or INDOOR_SOUND_OBSERVATION or NONE",
   "value": "integer, exact user quote, boolean, or null"}}
 For RENT or when there is no active Unknown, unknown_reference must be null.
 Use reality_type=NONE and value=null if unrelated, hypothetical, ambiguous,
@@ -108,6 +115,24 @@ assistant inference.
             )
         if not active_unknown or result["unknown_reference"] != home.meaningful_unknown:
             return None
+        if result["reality_type"] == "TENANCY_MODE":
+            if home.tenancy_mode is not None or result["value"] not in (
+                "ENTIRE_RENT", "SHARED_RENT",
+            ):
+                return None
+            return self._properties.admit_user_tenancy_reality(
+                property_id, conversation_id,
+                unknown_hash=home.meaningful_unknown_state_hash,
+                tenancy_mode=result["value"],
+            )
+        if result["reality_type"] == "INDEPENDENT_BATHROOM":
+            if home.independent_bathroom is not None or type(result["value"]) is not bool:
+                return None
+            return self._properties.admit_user_bathroom_reality(
+                property_id, conversation_id,
+                unknown_hash=home.meaningful_unknown_state_hash,
+                independent_bathroom=result["value"],
+            )
         if result["reality_type"] == "INDEPENDENT_KITCHEN":
             if home.independent_kitchen is not None or type(result["value"]) is not bool:
                 return None

@@ -86,6 +86,8 @@ def test_readiness_gates_unknown_and_invalidates_with_reality():
 
         def generate_json(self, prompt, **_kwargs):
             self.calls.append(prompt)
+            if "Audit whether EVERY claim" in prompt:
+                return json.dumps({"supported": True, "unsupported_claims": []})
             grounding = [
                 {"fact": "WORK_COMMUTE", "value": "1min WALKING"},
                 {"fact": "GROCERY_WALK", "value": "7min WALKING"},

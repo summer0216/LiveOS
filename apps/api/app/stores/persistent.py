@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -26,7 +28,6 @@ from app.models.property import (
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
-from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -439,6 +440,10 @@ class PropertyStore:
             rent_observed_at=row.get("rent_observed_at"),
             independent_kitchen=row.get("independent_kitchen"),
             independent_kitchen_source=row.get("independent_kitchen_source"),
+            tenancy_mode=row.get("tenancy_mode"),
+            tenancy_mode_source=row.get("tenancy_mode_source"),
+            independent_bathroom=row.get("independent_bathroom"),
+            independent_bathroom_source=row.get("independent_bathroom_source"),
             indoor_sound_observation=row.get("indoor_sound_observation"),
             indoor_sound_observation_source=row.get("indoor_sound_observation_source"),
             indoor_sound_observation_unknown=row.get("indoor_sound_observation_unknown"),
@@ -449,6 +454,7 @@ class PropertyStore:
             grocery_lat=row.get("grocery_lat"),
             grocery_walking_minutes=row.get("grocery_walking_minutes"),
             place_context=row.get("place_context"),
+            place_understanding=row.get("place_understanding"),
             living_meaning=row.get("living_meaning"),
             living_meaning_reality_hash=row.get("living_meaning_reality_hash"),
             current_judgment=row.get("current_judgment"),
@@ -721,6 +727,88 @@ class PropertyStore:
             ).fetchone()
         return self._from(row) if row is not None else None
 
+    def admit_user_bathroom_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, independent_bathroom: bool,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if (
+            owner_id is None or property_uuid is None or conversation_uuid is None
+            or type(independent_bathroom) is not bool
+        ):
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET independent_bathroom = %s, independent_bathroom_source = 'USER_PROVIDED',
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND meaningful_unknown_state_hash = %s
+                  AND meaningful_unknown IS NOT NULL
+                  AND geographic_status = 'GROUNDED'
+                  AND independent_bathroom IS NULL
+                RETURNING *
+                """,
+                (independent_bathroom, now(), property_uuid, owner_id,
+                 conversation_uuid, unknown_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def admit_user_tenancy_reality(
+        self, property_id: str, conversation_id: str, *,
+        unknown_hash: str, tenancy_mode: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if (
+            owner_id is None or property_uuid is None or conversation_uuid is None
+            or tenancy_mode not in {"ENTIRE_RENT", "SHARED_RENT"}
+        ):
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET tenancy_mode = %s, tenancy_mode_source = 'USER_PROVIDED',
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND meaningful_unknown_state_hash = %s
+                  AND meaningful_unknown IS NOT NULL
+                  AND geographic_status = 'GROUNDED'
+                  AND tenancy_mode IS NULL
+                RETURNING *
+                """,
+                (tenancy_mode, now(), property_uuid, owner_id,
+                 conversation_uuid, unknown_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
     def admit_user_kitchen_reality(
         self, property_id: str, conversation_id: str, *,
         unknown_hash: str, kitchen_present: bool,
@@ -869,7 +957,7 @@ class PropertyStore:
             row = connection.execute(
                 """
                 UPDATE properties
-                SET place_context = %s, updated_at = %s
+                SET place_context = %s, place_understanding = NULL, updated_at = %s
                 WHERE id = %s AND owner_id = %s AND conversation_id = %s
                 RETURNING *
                 """,
@@ -877,6 +965,26 @@ class PropertyStore:
                     Jsonb(items), now(), property_uuid, owner_id,
                     conversation_uuid,
                 ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_place_understanding(
+        self, property_id: str, conversation_id: str, understanding: dict,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET place_understanding = %s, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (Jsonb(understanding), now(), property_uuid, owner_id, conversation_uuid),
             ).fetchone()
         return self._from(row) if row is not None else None
 

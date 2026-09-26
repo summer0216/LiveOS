@@ -288,3 +288,84 @@ def test_grounded_home_with_user_rent_and_budget_forms_meaning_without_work():
     assert restored.rent == 2500
     assert restored.commute_minutes is None
     assert restored.grocery_walking_minutes is None
+
+
+def test_objective_grocery_and_rent_do_not_create_personal_tradeoff():
+    class ObjectiveOnlyIntelligence:
+        unknown_calls = 0
+
+        def generate_json(self, prompt: str, **_kwargs) -> str:
+            if "Identify the ONE unknown Reality" in prompt:
+                self.unknown_calls += 1
+                return "null"
+            assert "Grounded Personal Reality connections" in prompt
+            assert "RENT_REALITY ↔ BUDGET_REALITY" not in prompt
+            if "Audit whether EVERY claim" in prompt:
+                return json.dumps({"supported": True, "unsupported_claims": []})
+            if "Judge whether the CURRENT Possible Life" in prompt:
+                return json.dumps({
+                    "status": "DECISION_READY",
+                    "reason": "已知采购步行时间和月租，可以权衡便利与成本。",
+                    "meaning_reference": "采购步行7分钟且月租2200元，但这些事实对用户的个人意义尚未建立。",
+                    "judgment_reference": "当前只能确认采购距离与月租事实，尚不能形成用户取舍判断。",
+                    "grounding": [
+                        {"fact": "GROCERY_WALK", "value": "7min WALKING"},
+                        {"fact": "RENT_REALITY", "value": "2200 CNY/month"},
+                    ],
+                }, ensure_ascii=False)
+            if "Form one provisional Current Judgment" in prompt:
+                return json.dumps({
+                    "judgment": "当前只能确认采购距离与月租事实，尚不能形成用户取舍判断。",
+                    "meaning_reference": "采购步行7分钟且月租2200元，但这些事实对用户的个人意义尚未建立。",
+                    "grounding": [
+                        {"fact": "GROCERY_WALK", "value": "7min WALKING"},
+                        {"fact": "RENT_REALITY", "value": "2200 CNY/month"},
+                    ],
+                }, ensure_ascii=False)
+            return json.dumps({
+                "meaning": "采购步行7分钟且月租2200元，但这些事实对用户的个人意义尚未建立。",
+                "grounding": [
+                    {"fact": "GROCERY_WALK", "value": "7min WALKING"},
+                    {"fact": "RENT_REALITY", "value": "2200 CNY/month"},
+                ],
+            }, ensure_ascii=False)
+
+    conversation_id = uuid_for("objective-reality-needs-personal-reality")
+    client = TestClient(app)
+    create_owned_conversation(client, conversation_id)
+    profile_store.save(conversation_id, LivingProfile())
+    home = property_manager.create(conversation_id, Property(
+        title="龙湖时代天街",
+        geographic_identity="四川省成都市郫都区龙湖·时代天街",
+        geographic_precision=GeographicPrecision.PLACE,
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=103.920730,
+        lat=30.753792,
+        rent=2200,
+        rent_source=PropertyRentSource.USER_PROVIDED,
+        grocery_external_id="amap-grocery",
+        grocery_name="真实采购地点",
+        grocery_identity="成都市真实采购地点",
+        grocery_lng=103.921,
+        grocery_lat=30.754,
+        grocery_walking_minutes=7,
+        provenance=PropertyProvenance.USER_PROVIDED,
+    ))
+    intelligence = ObjectiveOnlyIntelligence()
+    result = LivingMeaningService(intelligence=intelligence).form(
+        conversation_id, home.id or "",
+    )
+
+    restored = property_manager.get_scoped(home.id or "", conversation_id)
+    assert restored is not None
+    assert restored.rent == 2200
+    assert restored.grocery_walking_minutes == 7
+    assert restored.living_meaning is not None
+    assert "便利" not in restored.living_meaning
+    assert "压力" not in restored.living_meaning
+    assert "权衡" not in restored.living_meaning
+    assert restored.current_judgment is not None
+    assert "权衡" not in restored.current_judgment
+    assert restored.decision_readiness == "NEED_MORE_REALITY"
+    assert result.status == "INVALID_UNKNOWN"
+    assert intelligence.unknown_calls == 1

@@ -133,6 +133,10 @@ Extraction rules:
 29. A new explicit geographic decision in the latest user turn replaces an
     earlier decision geography. Return the new identity even when it conflicts
     with an assistant message or earlier inference.
+30. budget is only a housing-spend target, limit, or constraint explicitly
+    stated by the user. A property's actual, quoted, observed, or historical
+    rent is Property Reality and must never populate budget. Ignore any
+    assistant message that relabels a user-stated rent as a budget.
 
 Return exactly this JSON structure:
 
