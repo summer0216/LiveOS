@@ -29,6 +29,7 @@ interface StreamMessageOptions {
   onChunk: (chunk: string) => void;
   onWorldStateReady?: () => void;
   onWorldConsequenceReady?: (focusPropertyId?: string) => void;
+  onPropertyGroundingResponse?: (message: string) => void;
   onDecisionRelevantFeedback?: () => void;
   onDecisionChange?: (change: DecisionChange) => void;
 }
@@ -83,6 +84,7 @@ export async function streamMessage({
   onChunk,
   onWorldStateReady,
   onWorldConsequenceReady,
+  onPropertyGroundingResponse,
   onDecisionRelevantFeedback,
   onDecisionChange,
 }: StreamMessageOptions): Promise<void> {
@@ -153,6 +155,13 @@ export async function streamMessage({
           continue;
         }
         throw new Error('Streaming API returned an invalid world consequence event.');
+      }
+      if (eventType === 'event: property-grounding-response') {
+        if (typeof chunk === 'string') {
+          onPropertyGroundingResponse?.(chunk);
+          continue;
+        }
+        throw new Error('Streaming API returned an invalid property grounding response.');
       }
       if (eventType === 'event: decision-change') {
         if (isDecisionChange(chunk)) {

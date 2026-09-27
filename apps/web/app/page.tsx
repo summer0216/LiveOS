@@ -10,6 +10,7 @@ import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
+import { applyGroundedConversationFocus } from '@/lib/conversationFocus';
 import {
   decisionGeographyZoom,
   geographicScaleZoom,
@@ -121,6 +122,7 @@ export default function HomePage() {
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
   const [rentAnswerPropertyId, setRentAnswerPropertyId] = useState<string | null>(null);
   const [rentFocusRequest, setRentFocusRequest] = useState(0);
+  const [propertyGroundingResponse, setPropertyGroundingResponse] = useState<string | null>(null);
   const [externalRentLookup, setExternalRentLookup] = useState<{
     propertyId: string;
     status: 'loading' | 'failed';
@@ -130,6 +132,10 @@ export default function HomePage() {
     status: 'loading' | 'failed';
   } | null>(null);
   const latestSubmitIdRef = useRef(0);
+  const pendingConversationFocusRef = useRef<{
+    submitId: number;
+    propertyId: string;
+  } | null>(null);
   const lastFocusedCameraRef = useRef<{
     key: string;
     reorient: NonNullable<typeof reorient>;
@@ -612,6 +618,7 @@ export default function HomePage() {
   ]);
 
   const handleSubmit = useCallback(async (message: string) => {
+    setPropertyGroundingResponse(null);
     const currentConversationId = conversationId || createClientId();
     const focusedUserReality = focusedChoiceIds.length === 1
       ? groundedChoices.find((choice) => choice.id === focusedChoiceIds[0])
@@ -619,6 +626,7 @@ export default function HomePage() {
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
     let consequenceRevision = 0;
+    pendingConversationFocusRef.current = null;
 
     setPhase('forming');
     setWorkVisible(false);
@@ -637,6 +645,10 @@ export default function HomePage() {
         if (latestSubmitIdRef.current !== submitId || revision !== consequenceRevision) return;
         setProfile(durableProfile);
         setProperties(durableProperties);
+        const pendingFocus = pendingConversationFocusRef.current;
+        if (pendingFocus?.submitId === submitId && applyGroundedConversationFocus(
+          pendingFocus.propertyId, currentConversationId, durableProperties, focusChoice,
+        )) pendingConversationFocusRef.current = null;
         setPhase(
           durableProfile?.geographic_status === 'GROUNDED' ? 'formed' : 'empty',
         );
@@ -660,11 +672,15 @@ export default function HomePage() {
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
-        onWorldConsequenceReady: () => {
+        onWorldConsequenceReady: (focusPropertyId) => {
+          if (focusPropertyId) {
+            pendingConversationFocusRef.current = { submitId, propertyId: focusPropertyId };
+          }
           void reconcileWorldConsequences().catch((error: unknown) => {
             console.error('Failed to reconcile persisted World consequence:', error);
           });
         },
+        onPropertyGroundingResponse: (response) => setPropertyGroundingResponse(response),
       });
       // The selected clarification belongs to this answer, not subsequent turns.
       setWorkPrecisionActionRequest(0);
@@ -763,6 +779,7 @@ export default function HomePage() {
     applyObservedDecisionGeography,
     conversationId,
     currentLocation,
+    focusChoice,
     reorient,
     restoredDecisionGeography,
     workPrecisionUnknown,
@@ -1227,6 +1244,9 @@ export default function HomePage() {
       )}
       <div className="absolute inset-x-0 bottom-0 z-20 px-5 pb-5 sm:px-10 sm:pb-8">
         <div className="mx-auto max-w-3xl">
+          {propertyGroundingResponse && (
+            <p role="status" className="mb-2 text-sm text-slate-700">{propertyGroundingResponse}</p>
+          )}
           <ConversationComposer
             disabled={phase === 'forming'}
             variant="ambient"

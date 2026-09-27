@@ -12,6 +12,7 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import (
     STREAM_KEEP_ALIVE,
     WORLD_STATE_READY,
+    PropertyGroundingResponse,
     StreamKeepAlive,
     WorldConsequenceReady,
     WorldStateReady,
@@ -39,7 +40,7 @@ STREAM_ERROR_MESSAGE = "抱歉，LiveOS 暂时无法完成回复，请稍后重�
 
 def _stream_events(
     chunks: Iterator[
-        str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive
+        str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse
     ],
     conversation_id: str | None = None,
 ) -> Iterator[str]:
@@ -91,6 +92,12 @@ def _stream_events(
                 yield (
                     "event: world-consequence-ready\n"
                     f"data: {json.dumps(payload)}\n\n"
+                )
+                continue
+            if isinstance(chunk, PropertyGroundingResponse):
+                yield (
+                    "event: property-grounding-response\n"
+                    f"data: {json.dumps(chunk.message, ensure_ascii=False)}\n\n"
                 )
                 continue
             if chunk is STREAM_KEEP_ALIVE:

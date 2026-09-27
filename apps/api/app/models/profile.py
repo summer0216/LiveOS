@@ -32,6 +32,7 @@ class LivingProfile:
     geographic_status: GeographicStatus = GeographicStatus.UNRESOLVED
     lng: float | None = None
     lat: float | None = None
+    layout_requirement: str | None = None
 
     def apply_patch(
         self,

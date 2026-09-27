@@ -243,6 +243,7 @@ class ProfileStore:
             row["has_pet"],
             list(row["latest_insights_json"]),
             dict(row["preference_tags_json"]),
+            layout_requirement=row.get("layout_requirement"),
             geographic_identity=row.get("geographic_identity"),
             geographic_precision=(
                 GeographicPrecision(row["geographic_precision"])
@@ -287,6 +288,7 @@ class ProfileStore:
             profile.geographic_status.value,
             profile.lng,
             profile.lat,
+            profile.layout_requirement,
             now(),
         )
         with self._database.connect() as connection:
@@ -296,9 +298,9 @@ class ProfileStore:
                     owner_id, conversation_id, work_location, budget, commute_minutes,
                     preferred_city, family_size, has_pet, latest_insights_json,
                     preference_tags_json, geographic_identity, geographic_precision,
-                    geographic_status, lng, lat, updated_at
+                    geographic_status, lng, lat, layout_requirement, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id) DO UPDATE SET
                     conversation_id = EXCLUDED.conversation_id,
                     work_location = EXCLUDED.work_location,
@@ -314,6 +316,7 @@ class ProfileStore:
                     geographic_status = EXCLUDED.geographic_status,
                     lng = EXCLUDED.lng,
                     lat = EXCLUDED.lat,
+                    layout_requirement = EXCLUDED.layout_requirement,
                     updated_at = EXCLUDED.updated_at
                 """,
                 (owner_uuid, *values),
@@ -438,6 +441,8 @@ class PropertyStore:
             ),
             rent_source_reference=row.get("rent_source_reference"),
             rent_observed_at=row.get("rent_observed_at"),
+            layout_expression=row.get("layout_expression"),
+            layout_source=row.get("layout_source"),
             independent_kitchen=row.get("independent_kitchen"),
             independent_kitchen_source=row.get("independent_kitchen_source"),
             tenancy_mode=row.get("tenancy_mode"),
@@ -724,6 +729,45 @@ class PropertyStore:
                     owner_id,
                     conversation_uuid,
                 ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def admit_user_layout_reality(
+        self, property_id: str, conversation_id: str, *,
+        expression: str,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if (
+            owner_id is None or property_uuid is None or conversation_uuid is None
+            or not expression.strip() or len(expression) > 60
+        ):
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET layout_expression = %s, layout_source = 'USER_PROVIDED',
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND geographic_status = 'GROUNDED'
+                  AND layout_expression IS DISTINCT FROM %s
+                RETURNING *
+                """,
+                (expression, now(), property_uuid, owner_id,
+                 conversation_uuid, expression),
             ).fetchone()
         return self._from(row) if row is not None else None
 

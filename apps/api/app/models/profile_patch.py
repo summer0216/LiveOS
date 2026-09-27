@@ -8,6 +8,7 @@ ProfileField = Literal[
     "preferred_city",
     "family_size",
     "has_pet",
+    "layout_requirement",
 ]
 
 PROFILE_FIELDS: tuple[ProfileField, ...] = (
@@ -17,6 +18,7 @@ PROFILE_FIELDS: tuple[ProfileField, ...] = (
     "preferred_city",
     "family_size",
     "has_pet",
+    "layout_requirement",
 )
 
 
@@ -29,3 +31,4 @@ class LivingProfilePatch:
     family_size: int | None = None
     has_pet: bool | None = None
     clear_fields: frozenset[ProfileField] = field(default_factory=frozenset)
+    layout_requirement: str | None = None

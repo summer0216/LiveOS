@@ -72,6 +72,7 @@ SCHEMA_STATEMENTS = (
         conversation_id UUID,
         work_location TEXT,
         budget INTEGER,
+        layout_requirement TEXT,
         commute_minutes INTEGER,
         commute_mode TEXT CHECK (
             commute_mode IS NULL OR commute_mode IN ('WALKING', 'PUBLIC_TRANSIT')
@@ -108,6 +109,8 @@ SCHEMA_STATEMENTS = (
         ),
         rent_source_reference TEXT,
         rent_observed_at TEXT,
+        layout_expression TEXT,
+        layout_source TEXT,
         independent_kitchen BOOLEAN,
         independent_kitchen_source TEXT,
         indoor_sound_observation TEXT,
@@ -265,6 +268,7 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS layout_requirement TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_identity TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_precision TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_status TEXT NOT NULL DEFAULT 'UNRESOLVED'",
@@ -276,6 +280,8 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_source TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_source_reference TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_observed_at TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS layout_expression TEXT",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS layout_source TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS independent_kitchen BOOLEAN",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenancy_mode TEXT CHECK (tenancy_mode IN ('ENTIRE_RENT', 'SHARED_RENT'))",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS tenancy_mode_source TEXT",

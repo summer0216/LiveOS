@@ -1,17 +1,229 @@
 import json
 
-from fastapi.testclient import TestClient
-
 from app.main import app
+from app.models.decision_geography import DecisionGeography
 from app.models.profile import LivingProfile
+from app.models.profile_analysis import ProfileAnalysis
+from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.services.chat_service import chat_service
+from app.services.conversation_manager import conversation_manager
+from app.services.decision_geography_service import decision_geography_service
+from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.living_meaning_service import living_meaning_service
+from app.services.profile_intelligence import BudgetRealityAudit, profile_intelligence
+from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 from app.services.user_reality_return import user_reality_return
 from app.stores.runtime import profile_store
+from fastapi.testclient import TestClient
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
+
+
+def test_expression_context_resolution_precedes_property_admission(monkeypatch):
+    client = TestClient(app)
+    requirement_cid = uuid_for("expression-requirement")
+    explicit_cid = uuid_for("expression-explicit-property")
+    continuity_cid = uuid_for("expression-continuity")
+    ambiguous_cid = uuid_for("expression-ambiguous")
+    focused_cid = uuid_for("expression-focused")
+    ids = (requirement_cid, explicit_cid, continuity_cid, ambiguous_cid, focused_cid)
+    homes = {}
+    for cid in ids:
+        create_owned_conversation(client, cid)
+        profile_store.save(cid, LivingProfile())
+        homes[cid] = property_manager.create(cid, Property(
+            title="龙湖时代天街", geographic_identity="成都市龙湖时代天街",
+            geographic_precision=GeographicPrecision.PLACE,
+            geographic_status=GeographicStatus.GROUNDED,
+            lng=103.920730, lat=30.753792,
+        ))
+    for cid in (requirement_cid, continuity_cid):
+        conversation_manager.append_user_message(cid, "我想住龙湖时代天街")
+    conversation_manager.append_user_message(ambiguous_cid, "我想住龙湖时代天街和另一处住所")
+    property_manager.create(ambiguous_cid, Property(
+        title="另一处住所", geographic_identity="成都市另一处住所",
+        geographic_precision=GeographicPrecision.PLACE,
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=103.921, lat=30.754,
+    ))
+
+    class Intelligence:
+        def generate_json(self, prompt, **_kwargs):
+            if "Grounded residences:" in prompt:
+                current = prompt.split("Current message: ", 1)[1].split("\n", 1)[0]
+                requirement = "预算2000，两室一厅" in current
+                focus = 'Focused residence id (context evidence only): "' in prompt
+                explicit = "龙湖时代天街这个住所" in current
+                continuity = "我想住龙湖时代天街" in prompt
+                ambiguous = "另一处住所" in prompt
+                evidence = (
+                    "龙湖时代天街这个住所" if explicit else
+                    "我想住龙湖时代天街" if continuity else None
+                )
+                return json.dumps({
+                    "claim_nature": "PERSONAL_REQUIREMENT" if requirement else "PROPERTY_REALITY",
+                    "layout_requirement": "两室一厅" if requirement else None,
+                    "reality_type": None if requirement else "LAYOUT",
+                    "claim_quote": None if requirement else "两室一厅",
+                    "property_id": None if requirement or (ambiguous and not focus) else (
+                        next(home.id for home in homes.values() if home.id in prompt)
+                        if focus else homes[explicit_cid].id if explicit else homes[continuity_cid].id
+                    ),
+                    "binding_evidence": None if requirement or focus else evidence,
+                    "binding_source": None if requirement else "FOCUS" if focus else "USER_EXPRESSION",
+                    "attention_property_id": (
+                        homes[requirement_cid].id if requirement else
+                        homes[ambiguous_cid].id if ambiguous else
+                        homes[explicit_cid].id if explicit else None
+                    ),
+                    "attention_evidence": (
+                        "我想住龙湖时代天街" if requirement else
+                        "我想住龙湖时代天街和另一处住所" if ambiguous else
+                        "龙湖时代天街这个住所" if explicit else None
+                    ),
+                }, ensure_ascii=False)
+            return json.dumps({
+                "unknown_reference": None, "reality_type": "LAYOUT", "value": "两室一厅",
+            }, ensure_ascii=False)
+
+    monkeypatch.setattr(user_reality_return, "_intelligence", Intelligence())
+    monkeypatch.setattr(profile_intelligence, "analyze", lambda *_args, **_kwargs:
+                        ProfileAnalysis(patch=LivingProfilePatch(budget=2000)))
+    monkeypatch.setattr(decision_signal_intelligence, "analyze", lambda *_args:
+                        DecisionGeography())
+    monkeypatch.setattr(decision_geography_service, "apply", lambda *args, **kwargs: None)
+    monkeypatch.setattr(chat_service, "_update_profile", lambda **kwargs:
+                        (profile_manager.merge(kwargs["conversation_id"], LivingProfilePatch(budget=2000), []), ())[1])
+    monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *a: iter(["reply"]))
+    reconsidered = []
+    monkeypatch.setattr(living_meaning_service, "form", lambda cid, property_id:
+                        reconsidered.append((cid, property_id)))
+
+    requirement = client.post("/api/chat/stream", json={
+        "conversation_id": requirement_cid, "message": "预算2000，两室一厅",
+    })
+    assert requirement.status_code == 200
+    assert f'"focus_property_id": "{homes[requirement_cid].id}"' in requirement.text
+    assert "property-grounding-response" not in requirement.text
+    assert property_manager.list(requirement_cid)[0].layout_expression is None
+    assert client.get(f"/api/profiles/{requirement_cid}").json()["budget"] == 2000
+    assert reconsidered == [(requirement_cid, homes[requirement_cid].id)]
+
+    explicit = client.post("/api/chat/stream", json={
+        "conversation_id": explicit_cid, "message": "龙湖时代天街这个住所是两室一厅",
+    })
+    assert explicit.status_code == 200
+    assert "focus_property_id" not in explicit.text
+    assert property_manager.list(explicit_cid)[0].layout_expression == "两室一厅"
+
+    continuity = client.post("/api/chat/stream", json={
+        "conversation_id": continuity_cid, "message": "这个住所是两室一厅",
+    })
+    assert continuity.status_code == 200
+    assert property_manager.list(continuity_cid)[0].layout_expression == "两室一厅"
+
+    ambiguous = client.post("/api/chat/stream", json={
+        "conversation_id": ambiguous_cid, "message": "这个住所是两室一厅",
+    })
+    assert ambiguous.status_code == 200
+    assert "focus_property_id" not in ambiguous.text
+    assert "event: property-grounding-response" in ambiguous.text
+    assert all(home.layout_expression is None for home in property_manager.list(ambiguous_cid))
+
+    focused_requirement = client.post("/api/chat/stream", json={
+        "conversation_id": focused_cid, "message": "预算2000，两室一厅",
+        "user_reality_property_id": homes[focused_cid].id,
+    })
+    assert focused_requirement.status_code == 200
+    assert property_manager.list(focused_cid)[0].layout_expression is None
+
+    focused = client.post("/api/chat/stream", json={
+        "conversation_id": focused_cid, "message": "这个住所是两室一厅",
+        "user_reality_property_id": homes[focused_cid].id,
+    })
+    assert focused.status_code == 200
+    assert property_manager.list(focused_cid)[0].layout_expression == "两室一厅"
+    assert len(reconsidered) == 5
+    assert all(property_manager.list(cid)[0].rent is None for cid in ids)
+
+
+def test_focused_layout_statement_persists_without_inventing_rent(monkeypatch):
+    client = TestClient(app)
+    cid = uuid_for("focused-layout-with-budget")
+    create_owned_conversation(client, cid)
+    profile_store.save(cid, LivingProfile())
+    home = property_manager.create(cid, Property(
+        title="龙湖时代天街", geographic_identity="成都市龙湖时代天街",
+        geographic_precision=GeographicPrecision.PLACE,
+        geographic_status=GeographicStatus.GROUNDED,
+        lng=103.920730, lat=30.753792,
+    ))
+    property_manager.update_living_meaning(
+        home.id, cid, meaning="stale meaning", reality_hash="old-layout",
+    )
+    property_manager.update_current_judgment(
+        home.id, cid, judgment="stale judgment", state_hash="old-layout",
+    )
+
+    class Intelligence:
+        def generate_json(self, prompt, **_kwargs):
+            assert "龙湖时代天街" in prompt
+            if "Grounded residences:" in prompt:
+                return json.dumps({
+                    "claim_nature": "PROPERTY_REALITY", "reality_type": "LAYOUT",
+                    "claim_quote": "两室一厅", "property_id": home.id,
+                    "binding_evidence": None, "binding_source": "FOCUS",
+                }, ensure_ascii=False)
+            if 'Current user message: "这个住所是两室一厅，预算2000"' in prompt:
+                return json.dumps({
+                    "unknown_reference": None, "reality_type": "LAYOUT",
+                    "value": "两室一厅",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "unknown_reference": None, "reality_type": "NONE", "value": None,
+            })
+
+    monkeypatch.setattr(user_reality_return, "_intelligence", Intelligence())
+    monkeypatch.setattr(
+        profile_intelligence, "audit_explicit_budget",
+        lambda _history: BudgetRealityAudit("CONFIRMED", 2000, "预算2000"),
+    )
+    monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *a: iter(["reply"]))
+    interpretation = []
+    original_form = living_meaning_service.form
+
+    def record_interpretation(conversation_id, property_id):
+        current = property_manager.get_scoped(property_id, conversation_id)
+        interpretation.append((
+            profile_store.get(conversation_id).budget,
+            current.layout_expression, current.living_meaning, current.current_judgment,
+        ))
+        return original_form(conversation_id, property_id)
+
+    monkeypatch.setattr(living_meaning_service, "form", record_interpretation)
+    assert user_reality_return.admit(cid, home.id, "我希望两室一厅") is None
+    assert property_manager.get_scoped(home.id, cid).layout_expression is None
+    response = client.post("/api/chat/stream", json={
+        "conversation_id": cid, "message": "这个住所是两室一厅，预算2000",
+        "user_reality_property_id": home.id,
+    })
+    assert response.status_code == 200
+    assert response.text.count("world-consequence-ready") == 2
+    assert interpretation == [(2000, "两室一厅", None, None)]
+    assert client.get(f"/api/profiles/{cid}").json()["budget"] == 2000
+    stored = property_manager.get_scoped(home.id, cid)
+    assert stored is not None and stored.id == home.id
+    assert stored.layout_expression == "两室一厅"
+    assert stored.layout_source == "USER_PROVIDED"
+    assert stored.rent is None and stored.rent_source is None
+    assert stored.living_meaning is None and stored.current_judgment is None
+    items = client.get(f"/api/properties?conversation_id={cid}").json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == home.id
+    assert items[0]["layout_expression"] == "两室一厅"
+    assert items[0]["layout_source"] == "USER_PROVIDED"
 
 
 def test_active_tenancy_unknown_answer_updates_world(monkeypatch):
@@ -37,6 +249,12 @@ def test_active_tenancy_unknown_answer_updates_world(monkeypatch):
 
     class Intelligence:
         def generate_json(self, prompt, **_kwargs):
+            if "Grounded residences:" in prompt:
+                return json.dumps({
+                    "claim_nature": "PROPERTY_REALITY", "reality_type": "TENANCY_MODE",
+                    "claim_quote": "整租", "property_id": home.id,
+                    "binding_evidence": None, "binding_source": "FOCUS",
+                }, ensure_ascii=False)
             if "Determine whether the CURRENT user message" in prompt:
                 assert question in prompt
                 assert 'Current user message: "整租"' in prompt
@@ -131,6 +349,13 @@ def test_active_bathroom_unknown_answer_updates_world(monkeypatch):
 
     class Intelligence:
         def generate_json(self, prompt, **_kwargs):
+            if "Grounded residences:" in prompt:
+                return json.dumps({
+                    "claim_nature": "PROPERTY_REALITY",
+                    "reality_type": "INDEPENDENT_BATHROOM",
+                    "claim_quote": "独立卫生间", "property_id": home.id,
+                    "binding_evidence": None, "binding_source": "FOCUS",
+                }, ensure_ascii=False)
             if "Determine whether the CURRENT user message" in prompt:
                 assert question in prompt
                 assert 'Current user message: "独立卫生间"' in prompt
@@ -219,6 +444,18 @@ def test_focused_user_reality_answer_admits_only_answered_unknown(monkeypatch):
     class Intelligence:
         def generate_json(self, prompt, **_kwargs):
             assert "融科·昆仑巢" in prompt or "另一住所" in prompt
+            if "Grounded residences:" in prompt:
+                sound = "路上的车声" in prompt
+                return json.dumps({
+                    "claim_nature": "PROPERTY_REALITY",
+                    "reality_type": "INDOOR_SOUND_OBSERVATION" if sound else "INDEPENDENT_KITCHEN",
+                    "claim_quote": (
+                        "晚上去看了，关窗以后还是能明显听到路上的车声。"
+                        if sound else "有独立厨房"
+                    ),
+                    "property_id": home.id,
+                    "binding_evidence": None, "binding_source": "FOCUS",
+                }, ensure_ascii=False)
             if "该住所室内噪音水平如何？" in prompt:
                 quote = "晚上去看了，关窗以后还是能明显听到路上的车声。"
                 answered = quote in prompt

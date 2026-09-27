@@ -25,6 +25,7 @@ def build_resume_response(
                 conversation_id=state.conversation_id,
                 work_location=profile.work_location,
                 budget=profile.budget,
+                layout_requirement=profile.layout_requirement,
                 commute_minutes=profile.commute_minutes,
                 preferred_city=profile.preferred_city,
                 family_size=profile.family_size,

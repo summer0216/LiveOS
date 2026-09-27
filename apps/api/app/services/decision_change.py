@@ -17,6 +17,7 @@ PROFILE_LABELS = {
     "preferred_city": "意向城市",
     "family_size": "居住人数",
     "has_pet": "宠物情况",
+    "layout_requirement": "户型要求",
 }
 
 

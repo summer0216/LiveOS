@@ -237,6 +237,12 @@ Grounded Personal Reality connections:
 {json.dumps(personal_connections, ensure_ascii=False)}
 Proposed interpretation: {json.dumps(interpretation, ensure_ascii=False)}
 
+LAYOUT_REQUIREMENT is an explicit user condition, not the home's actual layout.
+Only LAYOUT_REALITY supplies the actual layout. Without it, matching is UNKNOWN.
+When both exist, compare their supported room arrangement semantically: a
+mismatch cannot be called a match. Matching this one condition does not prove
+overall suitability, quality, privacy, affordability, or value.
+
 Objective facts may establish what is true, but their coexistence does not
 establish personal value, pressure, priority, or a trade-off. When Grounded
 Personal Reality connections is empty, reject any claim that convenience,
@@ -301,6 +307,9 @@ requires at least one grounded Personal Reality connection showing how known
 Reality relates to an explicit user constraint, preference, priority, or
 evaluation. If the connection list is empty, return NEED_MORE_REALITY. Do not
 turn objective-fact coexistence into a personal trade-off.
+An explicit LAYOUT_REQUIREMENT with no LAYOUT_REALITY is an unresolved user
+condition. Do not declare it satisfied or irrelevant merely because other
+facts are known; judge the missing actual layout against this stated condition.
 
 Return JSON only with exactly:
 {{"status": "NEED_MORE_REALITY or DECISION_READY",
@@ -485,6 +494,11 @@ housing-cost difference only. If this is the only grounded consequence, that
 precise difference is sufficient Personal Meaning; do not force a broader
 life, spending, or emotional implication.
 
+LAYOUT_REQUIREMENT is the user's desired layout. It does not establish the
+home's layout. If LAYOUT_REALITY is absent, express that this requirement's
+fit remains unknown. If present, interpret only the supported match or mismatch
+between actual and desired layout. Do not infer overall suitability or value.
+
 Allowed FACT_NAME values are exactly the keys in Grounded Reality.
 Every grounding value must exactly equal its supplied value.
 Ground the interpretation in at least two relevant facts, but do not
@@ -573,6 +587,10 @@ list is empty, preserve uncertainty about what these objective facts mean to
 the user. Do not synthesize their coexistence into convenience, pressure,
 priority, suitability, or a trade-off.
 
+LAYOUT_REQUIREMENT is a desired condition; only
+LAYOUT_REALITY establishes whether this home's room arrangement matches it.
+If actual layout is unknown, preserve that uncertainty. A known mismatch must
+remain a mismatch; a match supports this condition only, not overall suitability.
 The budget is a housing-rent target, not evidence about income or other
 spending. A judgment about a known rent/budget gap alone is sufficient when
 no other decision relationship is grounded.
@@ -707,6 +725,10 @@ or ease of acquisition. The reason must explain a direct causal path from the
 unknown answer to the current trade-off. It must not depend on future rent
 changes, negotiation, future availability, moving/leaving, unstated willingness
 or preferences, or any other intermediate event not established by Reality.
+Do not confuse LAYOUT_REQUIREMENT with LAYOUT_REALITY. When a user has explicitly
+required a layout and this home's actual layout is unknown, that missing fact
+can materially determine whether the stated condition is met. Consider it
+through the same relevance and sufficiency checks; do not invent an answer.
 Treat explicit user constraints such as Budget Reality as authoritative; do not
 replace or reinterpret them through hypothetical income, savings, assets, or
 ability to pay. Select an unknown Reality of this Possible Life or one of its
@@ -1006,11 +1028,15 @@ If uncertain, reject the candidate.
             home.rent is not None
             and home.rent_source is not None
         )
-        return has_work_and_daily_life or has_confirmed_rent
+        return has_work_and_daily_life or has_confirmed_rent or bool(profile.layout_requirement)
 
     @staticmethod
     def _basis(home: Property, profile: LivingProfile) -> dict[str, str]:
         basis = {"HOME_IDENTITY": home.title or ""}
+        if profile.layout_requirement:
+            basis["LAYOUT_REQUIREMENT"] = profile.layout_requirement
+        if home.layout_expression and home.layout_source == "USER_PROVIDED":
+            basis["LAYOUT_REALITY"] = home.layout_expression
         if home.independent_bathroom is not None and home.independent_bathroom_source == "USER_PROVIDED":
             basis["INDEPENDENT_BATHROOM_REALITY"] = (
                 "PRESENT" if home.independent_bathroom else "ABSENT"
@@ -1057,6 +1083,8 @@ If uncertain, reject the candidate.
             connections.append("RENT_REALITY ↔ BUDGET_REALITY")
         if "WORK_COMMUTE" in basis and "COMMUTE_CONSTRAINT" in basis:
             connections.append("WORK_COMMUTE ↔ COMMUTE_CONSTRAINT")
+        if "LAYOUT_REALITY" in basis and "LAYOUT_REQUIREMENT" in basis:
+            connections.append("LAYOUT_REALITY ↔ LAYOUT_REQUIREMENT")
         return connections
 
     @staticmethod

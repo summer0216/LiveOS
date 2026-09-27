@@ -167,6 +167,14 @@ class PropertyManager:
             property_id, conversation_id, understanding,
         )
 
+    def admit_user_layout_reality(
+        self, property_id: str, conversation_id: str, *,
+        expression: str,
+    ) -> Property | None:
+        return property_store.admit_user_layout_reality(
+            property_id, conversation_id, expression=expression,
+        )
+
     def admit_user_bathroom_reality(
         self, property_id: str, conversation_id: str, *,
         unknown_hash: str, independent_bathroom: bool,

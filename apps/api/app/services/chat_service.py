@@ -47,7 +47,10 @@ from app.services.property_reality_service import (
 )
 from app.services.transit_duration import transit_duration_service
 from app.services.user_decision_return import user_decision_return
-from app.services.user_reality_return import user_reality_return
+from app.services.user_reality_return import (
+    PropertyExpressionResolution,
+    user_reality_return,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +136,13 @@ class StreamKeepAlive:
 
 
 STREAM_KEEP_ALIVE = StreamKeepAlive()
+
+
+class PropertyGroundingResponse:
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
 DISCOVERY_KEEP_ALIVE_SECONDS = 15.0
 
 
@@ -523,7 +533,7 @@ class ChatService:
         rent_property_id: str | None = None,
         user_reality_property_id: str | None = None,
         user_decision_property_id: str | None = None,
-    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
+    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse]:
         _conversation, history = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
@@ -549,24 +559,45 @@ class ChatService:
                     yield from self._stream_assistant_reply(conversation_id, history)
                 return user_decision_consequence()
 
-        if user_reality_property_id:
+        property_resolution = (
+            user_reality_return.resolve_expression(
+                history, property_manager.list(conversation_id), message,
+                focused_property_id=user_reality_property_id,
+            ) if user_reality_property_id else None
+        )
+        if property_resolution and property_resolution.property_id:
             admitted = user_reality_return.admit(
-                conversation_id, user_reality_property_id, message,
+                conversation_id, property_resolution.property_id, message,
+                expected_reality_type=property_resolution.reality_type,
             )
             if admitted is not None:
                 def user_reality_consequence():
                     yield WORLD_CONSEQUENCE_READY
                     profile = profile_manager.get(conversation_id)
-                    if profile is not None and profile.budget is not None:
+                    if profile is not None:
                         budget_audit = profile_intelligence.audit_explicit_budget(history)
-                        if budget_audit.status == "ABSENT":
+                        if budget_audit.status == "ABSENT" and profile.budget is not None:
                             profile_manager.merge(
                                 conversation_id,
                                 LivingProfilePatch(clear_fields=frozenset({"budget"})),
                                 profile.latest_insights,
                             )
+                        elif (
+                            budget_audit.status == "CONFIRMED"
+                            and budget_audit.amount is not None
+                            and budget_audit.evidence is not None
+                            and budget_audit.evidence in message
+                            and profile.budget != budget_audit.amount
+                        ):
+                            profile_manager.merge(
+                                conversation_id,
+                                LivingProfilePatch(budget=budget_audit.amount),
+                                profile.latest_insights,
+                            )
                     try:
-                        living_meaning_service.form(conversation_id, user_reality_property_id)
+                        living_meaning_service.form(
+                            conversation_id, property_resolution.property_id,
+                        )
                     except Exception:
                         logger.exception(
                             "Failed to refresh Living Meaning after user Reality conversation_id=%s",
@@ -576,6 +607,7 @@ class ChatService:
                         yield WORLD_CONSEQUENCE_READY
                     yield from self._stream_assistant_reply(conversation_id, history)
                 return user_reality_consequence()
+            property_resolution = PropertyExpressionResolution()
 
         properties = property_manager.list(conversation_id)
         profile = profile_manager.get(conversation_id)
@@ -631,6 +663,7 @@ class ChatService:
             executor,
             world_state_ready,
             current_decision_geography,
+            property_resolution=property_resolution,
         )
 
     def _complete_stream_turn(
@@ -642,7 +675,8 @@ class ChatService:
         executor: ThreadPoolExecutor,
         world_state_ready: bool,
         current_decision_geography: DecisionGeography | None,
-    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive]:
+        property_resolution: PropertyExpressionResolution | None = None,
+    ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse]:
         try:
             if world_state_ready:
                 yield WORLD_STATE_READY
@@ -681,8 +715,61 @@ class ChatService:
                     yield STREAM_KEEP_ALIVE
             decision_change_context.set(conversation_id, change_causes)
 
+            resolution = property_resolution
+            if resolution is None:
+                resolution = user_reality_return.resolve_expression(
+                    history, property_manager.list(conversation_id), history[-1].content,
+                )
+            if resolution.layout_requirement is not None:
+                current_profile = profile_manager.get_or_create(conversation_id)
+                requirement_merge = profile_manager.merge(
+                    conversation_id,
+                    LivingProfilePatch(layout_requirement=resolution.layout_requirement),
+                    current_profile.latest_insights,
+                )
+                decision_change_context.set(
+                    conversation_id, (*change_causes, *requirement_merge.causes),
+                )
+                # A personal condition applies to the conversation's existing
+                # possible homes; this does not select or create a Property.
+                yield (
+                    WorldConsequenceReady(resolution.attention_property_id)
+                    if resolution.attention_property_id else WORLD_CONSEQUENCE_READY
+                )
+                for home in property_manager.list(conversation_id):
+                    if home.geographic_status != GeographicStatus.GROUNDED:
+                        continue
+                    try:
+                        living_meaning_service.form(conversation_id, home.id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to refresh interpretation after layout requirement conversation_id=%s",
+                            conversation_id,
+                        )
+            if resolution.property_id is not None:
+                property_id = resolution.property_id
+                admitted = user_reality_return.admit(
+                    conversation_id, property_id, history[-1].content,
+                    expected_reality_type=resolution.reality_type,
+                )
+                if admitted is not None:
+                    try:
+                        living_meaning_service.form(conversation_id, property_id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to refresh Living Meaning after bound Reality conversation_id=%s",
+                            conversation_id,
+                        )
+                    yield WORLD_CONSEQUENCE_READY
+            if resolution.needs_clarification:
+                yield PropertyGroundingResponse("你说的住所事实指哪一处？请说出住所名称和具体事实。")
+
             # The durable Work update is observable before residential routing finishes.
-            yield WORLD_CONSEQUENCE_READY
+            yield (
+                WorldConsequenceReady(resolution.attention_property_id)
+                if resolution.attention_property_id and resolution.layout_requirement is None
+                else WORLD_CONSEQUENCE_READY
+            )
 
             for discovery_future in discovery_futures:
                 while True:

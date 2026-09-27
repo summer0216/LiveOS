@@ -11,6 +11,7 @@ class LivingProfileResponse(BaseModel):
     conversation_id: str
     work_location: str | None = None
     budget: int | None = None
+    layout_requirement: str | None = None
     commute_minutes: int | None = None
     preferred_city: str | None = None
     family_size: int | None = None

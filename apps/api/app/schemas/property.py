@@ -73,6 +73,8 @@ class PropertyResponse(PropertyFields):
     rent_source: PropertyRentSource | None = None
     rent_source_reference: str | None = None
     rent_observed_at: str | None = None
+    layout_expression: str | None = None
+    layout_source: str | None = None
     independent_kitchen: bool | None = None
     independent_kitchen_source: str | None = None
     tenancy_mode: Literal["ENTIRE_RENT", "SHARED_RENT"] | None = None

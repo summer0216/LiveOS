@@ -22,6 +22,7 @@ export interface LivingProfile {
     conversation_id: string;
     work_location: string | null;
     budget: number | null;
+    layout_requirement?: string | null;
     commute_minutes: number | null;
     preferred_city: string | null;
     family_size: number | null;
