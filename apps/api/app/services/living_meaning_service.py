@@ -12,6 +12,8 @@ from app.models.property import GeographicStatus, Property
 from app.services.profile_manager import ProfileManager, profile_manager
 from app.services.property_manager import PropertyManager, property_manager
 
+_INVALID_UNKNOWN_PROPOSAL = object()
+
 
 @dataclass(frozen=True)
 class LivingMeaningResult:
@@ -749,10 +751,16 @@ Reality, even when the cited grounding keys are valid.
         current_judgment: str,
     ) -> tuple[str, str] | None:
         rejected_candidates: list[dict[str, str]] = []
-        for _ in range(4):
+        invalid_proposals = 0
+        while len(rejected_candidates) < 4:
             candidate = self._propose_meaningful_unknown(
                 basis, personal_meaning, current_judgment, rejected_candidates,
             )
+            if candidate is _INVALID_UNKNOWN_PROPOSAL:
+                invalid_proposals += 1
+                if invalid_proposals >= 2:
+                    return None
+                continue
             if candidate is None:
                 return None
             relevant, reason, sufficient_dimension = self._judge_decision_sufficiency(
@@ -773,7 +781,7 @@ Reality, even when the cited grounding keys are valid.
         personal_meaning: str,
         current_judgment: str,
         rejected_candidates: list[dict[str, str]],
-    ) -> tuple[str, str] | None:
+    ) -> tuple[str, str] | None | object:
         prompt = f"""
 Identify the ONE unknown Reality with the highest direct ability to materially
 change how this grounded Possible Life is currently understood or judged.
@@ -897,6 +905,8 @@ home is good or worth choosing.
                 )
             )
         except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return _INVALID_UNKNOWN_PROPOSAL
+        if interpretation is None:
             return None
         candidate = self._validate_meaningful_unknown(
             interpretation,
@@ -904,10 +914,10 @@ home is good or worth choosing.
             personal_meaning,
             current_judgment,
         )
-        if candidate is not None and candidate[0] in {
+        if candidate is None or candidate[0] in {
             item["question"] for item in rejected_candidates
         }:
-            return None
+            return _INVALID_UNKNOWN_PROPOSAL
         return candidate
 
     def _judge_decision_sufficiency(

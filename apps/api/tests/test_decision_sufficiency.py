@@ -71,3 +71,61 @@ def test_observed_reality_rejects_precision_only_unknown_and_selects_another():
     assert len(intelligence.calls) == 4
     assert precision_question in intelligence.calls[1]
     assert precision_question in intelligence.calls[2]
+
+
+def test_invalid_unknown_proposal_retries_without_forcing_an_unknown():
+    basis = {"HOME_IDENTITY": "龙湖时代天街", "LAYOUT_REQUIREMENT": "两室一厅"}
+    meaning = "所需户型已明确，实际户型未知。"
+    judgment = "实际户型是否满足要求仍待确认。"
+    question = "这套住所实际是几室几厅？"
+
+    class Intelligence:
+        def __init__(self, *, no_candidate=False):
+            self.proposals = 0
+            self.no_candidate = no_candidate
+
+        def generate_json(self, prompt, **_kwargs):
+            if "Judge whether this proposed Unknown" in prompt:
+                return json.dumps({
+                    "question_reference": question,
+                    "judgment_reference": judgment,
+                    "current_reality_sufficient": False,
+                    "material_decision_change": True,
+                    "single_observable_fact": True,
+                    "impact_without_unsupported_bridge": True,
+                    "sufficient_dimension": "",
+                    "plausible_answer_a": "两室一厅",
+                    "impact_a": "满足所需户型",
+                    "plausible_answer_b": "一室一厅",
+                    "impact_b": "不满足所需户型",
+                    "reason": "实际户型决定明确要求是否满足。",
+                }, ensure_ascii=False)
+            self.proposals += 1
+            if self.no_candidate:
+                return "null"
+            if self.proposals == 1:
+                return "{invalid json"
+            return json.dumps({
+                "unknown_fact": "ACTUAL_LAYOUT",
+                "question": question,
+                "why_it_matters": "实际户型决定明确要求是否满足。",
+                "meaning_reference": meaning,
+                "judgment_reference": judgment,
+                "grounding": [
+                    {"fact": "HOME_IDENTITY", "value": "龙湖时代天街"},
+                    {"fact": "LAYOUT_REQUIREMENT", "value": "两室一厅"},
+                ],
+            }, ensure_ascii=False)
+
+    intelligence = Intelligence()
+    service = LivingMeaningService(intelligence=intelligence)
+    assert service._generate_meaningful_unknown(basis, meaning, judgment) == (
+        question, "实际户型决定明确要求是否满足。",
+    )
+    assert intelligence.proposals == 2
+
+    no_candidate = Intelligence(no_candidate=True)
+    assert LivingMeaningService(intelligence=no_candidate)._generate_meaningful_unknown(
+        basis, meaning, judgment,
+    ) is None
+    assert no_candidate.proposals == 1
