@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from app.models.property import GeographicPrecision
+
 DecisionGeographyStatus = Literal["UNRESOLVED", "GROUNDED"]
 DecisionGeographyIdentitySource = Literal["USER", "INFERRED"]
 DecisionGeographyScope = Literal["REGION", "CITY", "LOCAL"]
@@ -13,6 +15,8 @@ class DecisionGeography:
     identity: str | None = None
     identity_source: DecisionGeographyIdentitySource | None = None
     geographic_scope: DecisionGeographyScope | None = None
+    geographic_identity: str | None = None
+    geographic_precision: GeographicPrecision | None = None
     status: DecisionGeographyStatus = "UNRESOLVED"
     lng: float | None = None
     lat: float | None = None

@@ -64,6 +64,8 @@ _HOUSING_INTENT_TYPES = frozenset(
     }
 )
 
+_WORK_REALITY_INTENT_TYPES = frozenset({"work", "work_location"})
+
 _CANONICAL_RENT_ESTIMATE = {
     "title": "龙湖时代天街",
     "geographic_identity": "四川省成都市郫都区龙湖·时代天街",
@@ -77,6 +79,19 @@ def _is_housing_intent(intent_type: str | None) -> bool:
         return False
     normalized = intent_type.strip().casefold().replace("-", "_").replace(" ", "_")
     return normalized in _HOUSING_INTENT_TYPES
+
+
+def _is_explicit_work_reality(geography: DecisionGeography | None) -> bool:
+    if geography is None or geography.intent_type is None:
+        return False
+    normalized = (
+        geography.intent_type.strip().casefold().replace("-", "_").replace(" ", "_")
+    )
+    return bool(
+        geography.intent_established
+        and geography.identity_source == "USER"
+        and normalized in _WORK_REALITY_INTENT_TYPES
+    )
 
 
 def _is_explicit_possible_home(
@@ -311,6 +326,11 @@ class ChatService:
                 latest_insights=analysis.insights,
             )
             merged_profile = getattr(merge_result, "profile", None)
+            if _is_explicit_work_reality(current_decision_geography):
+                merged_profile = profile_manager.apply_grounded_work_reality(
+                    conversation_id,
+                    current_decision_geography,
+                )
             decision_city_context = decision_geography_service.city_context(
                 current_decision_geography,
                 settings.AMAP_WEB_SERVICE_KEY,

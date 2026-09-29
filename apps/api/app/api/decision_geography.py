@@ -24,6 +24,8 @@ def get_decision_geography(
         identity=state.identity or "",
         identity_source=state.identity_source,
         geographic_scope=state.geographic_scope,
+        geographic_identity=state.geographic_identity,
+        geographic_precision=state.geographic_precision,
         status=state.status,
         lng=state.lng,
         lat=state.lat,

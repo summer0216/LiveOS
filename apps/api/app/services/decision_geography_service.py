@@ -212,6 +212,16 @@ class DecisionGeographyService:
                 if status == GeographicStatus.GROUNDED.value
                 else None
             ),
+            geographic_identity=(
+                result.geographic_identity
+                if status == GeographicStatus.GROUNDED.value
+                else None
+            ),
+            geographic_precision=(
+                result.geographic_precision
+                if status == GeographicStatus.GROUNDED.value
+                else None
+            ),
             status=status,
             lng=result.lng if status == GeographicStatus.GROUNDED.value else None,
             lat=result.lat if status == GeographicStatus.GROUNDED.value else None,

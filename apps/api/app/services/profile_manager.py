@@ -2,6 +2,7 @@ import re
 from dataclasses import replace
 
 from app.models.decision_change import ProfileMergeResult, profile_mutation_causes
+from app.models.decision_geography import DecisionGeography
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicStatus
@@ -159,6 +160,31 @@ class ProfileManager:
         profile.lat = result.lat
         profile_store.save(conversation_id, profile)
         return result
+
+    def apply_grounded_work_reality(
+        self,
+        conversation_id: str,
+        geography: DecisionGeography,
+    ) -> LivingProfile | None:
+        """Carry an already-grounded explicit Work identity into the Profile."""
+        if (
+            geography.status != GeographicStatus.GROUNDED.value
+            or not geography.identity
+            or not geography.geographic_identity
+            or geography.geographic_precision is None
+            or geography.lng is None
+            or geography.lat is None
+        ):
+            return self.get(conversation_id)
+
+        profile = self.get_or_create(conversation_id)
+        profile.work_location = geography.identity
+        profile.geographic_identity = geography.geographic_identity
+        profile.geographic_precision = geography.geographic_precision
+        profile.geographic_status = GeographicStatus.GROUNDED
+        profile.lng = geography.lng
+        profile.lat = geography.lat
+        return profile_store.save(conversation_id, profile)
 
     def update_tags(
         self,

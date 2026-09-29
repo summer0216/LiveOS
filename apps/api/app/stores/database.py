@@ -59,6 +59,12 @@ SCHEMA_STATEMENTS = (
         geographic_scope TEXT CHECK (
             geographic_scope IS NULL OR geographic_scope IN ('REGION', 'CITY', 'LOCAL')
         ),
+        geographic_identity TEXT,
+        geographic_precision TEXT CHECK (
+            geographic_precision IS NULL OR geographic_precision IN (
+                'PLACE', 'COMMUNITY', 'STREET', 'AREA'
+            )
+        ),
         status TEXT NOT NULL CHECK (status IN ('UNRESOLVED', 'GROUNDED')),
         lng DOUBLE PRECISION,
         lat DOUBLE PRECISION,
@@ -334,10 +340,14 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS feedback_state_hash TEXT",
     "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS identity_source TEXT",
     "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS geographic_scope TEXT",
+    "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS geographic_identity TEXT",
+    "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS geographic_precision TEXT",
     "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_identity_source_check",
     "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_identity_source_check CHECK (identity_source IS NULL OR identity_source IN ('USER', 'INFERRED'))",
     "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_geographic_scope_check",
     "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_geographic_scope_check CHECK (geographic_scope IS NULL OR geographic_scope IN ('REGION', 'CITY', 'LOCAL'))",
+    "ALTER TABLE decision_geographies DROP CONSTRAINT IF EXISTS decision_geographies_geographic_precision_check",
+    "ALTER TABLE decision_geographies ADD CONSTRAINT decision_geographies_geographic_precision_check CHECK (geographic_precision IS NULL OR geographic_precision IN ('PLACE', 'COMMUNITY', 'STREET', 'AREA'))",
     "ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_rent_source_check",
     "ALTER TABLE properties ADD CONSTRAINT properties_rent_source_check CHECK (rent_source IS NULL OR rent_source IN ('USER_CONFIRMED_REALITY', 'USER_PROVIDED', 'EXTERNAL_SOURCE'))",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_conversation_provenance_external_id ON properties(conversation_id, provenance, external_id) WHERE external_id IS NOT NULL",
