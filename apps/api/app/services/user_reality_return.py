@@ -74,6 +74,11 @@ PROPERTY_REALITY requires an explicit factual claim about an existing residence,
 or a factual answer to its active Unknown. Resolve which residence it concerns
 using the current expression, prior USER conversation, and Focus as context
 evidence. Focus is not proof that every sentence describes that residence.
+When the focused grounded residence has an active Unknown explicitly asking for
+its actual layout, a terse direct layout answer is PROPERTY_REALITY / LAYOUT and
+binds to that focused residence. Without that active answer context, the same
+terse layout expression remains a PERSONAL_REQUIREMENT unless the user otherwise
+states it as an actual fact about a reliably resolved residence.
 Prior user messages may establish an unambiguous referent. Mere candidate count
 or map visibility never establishes one. Ignore assistant claims.
 
@@ -135,6 +140,28 @@ establish a layout requirement. Return null when no layout requirement is stated
         )
         if result["claim_nature"] == "PERSONAL_REQUIREMENT":
             requirement = result.get("layout_requirement")
+            active_layout_property = self._focused_active_layout_property(
+                focused_property_id, candidates,
+            )
+            # The model has already isolated an explicit layout expression, but
+            # can still mislabel a terse answer as a new requirement. An active
+            # layout Unknown supplies the bounded answer context; admit() still
+            # independently validates the factual Reality before any write.
+            if (
+                active_layout_property is not None
+                and isinstance(requirement, str)
+                and requirement.strip()
+                and len(requirement) <= 60
+                and requirement in user_text
+                and result["property_id"] is None
+                and result["reality_type"] is None
+                and result["binding_source"] is None
+                and result["binding_evidence"] is None
+            ):
+                return PropertyExpressionResolution(
+                    property_id=active_layout_property.id,
+                    reality_type="LAYOUT",
+                )
             if (
                 isinstance(requirement, str) and requirement.strip()
                 and len(requirement) <= 60 and requirement in user_text
@@ -221,6 +248,27 @@ establish a layout requirement. Return null when no layout requirement is stated
             state_hash=state_hash,
         )
 
+    @staticmethod
+    def _focused_active_layout_property(
+        focused_property_id: str | None, candidates: list[Property],
+    ) -> Property | None:
+        if not focused_property_id:
+            return None
+        matches = [home for home in candidates if home.id == focused_property_id]
+        if len(matches) != 1:
+            return None
+        home = matches[0]
+        if not UserRealityReturn._has_active_layout_unknown(home):
+            return None
+        return home
+
+    @staticmethod
+    def _has_active_layout_unknown(home: Property) -> bool:
+        question = home.meaningful_unknown or ""
+        if not home.meaningful_unknown_state_hash or not isinstance(question, str):
+            return False
+        normalized = "".join(question.split())
+        return any(term in normalized for term in ("户型", "房型", "几室", "几厅"))
 
     @staticmethod
     def _grounded_attention_target(
@@ -349,8 +397,15 @@ assistant inference.
             )
         if result["reality_type"] == "LAYOUT":
             quote = result["value"]
+            layout_unknown_reference_valid = (
+                result["unknown_reference"] is None
+                or (
+                    self._has_active_layout_unknown(home)
+                    and result["unknown_reference"] == home.meaningful_unknown
+                )
+            )
             if (
-                result["unknown_reference"] is not None
+                not layout_unknown_reference_valid
                 or not isinstance(quote, str)
                 or not quote.strip()
                 or len(quote) > 60

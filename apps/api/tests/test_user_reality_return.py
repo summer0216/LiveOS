@@ -1,6 +1,8 @@
 import json
+from concurrent.futures import Future, ThreadPoolExecutor
 
 from app.main import app
+from app.models.conversation import ConversationMessage
 from app.models.decision_geography import DecisionGeography
 from app.models.profile import LivingProfile
 from app.models.profile_analysis import ProfileAnalysis
@@ -14,11 +16,131 @@ from app.services.living_meaning_service import living_meaning_service
 from app.services.profile_intelligence import BudgetRealityAudit, profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
-from app.services.user_reality_return import user_reality_return
+from app.services.user_reality_return import (
+    PropertyExpressionResolution,
+    UserRealityReturn,
+    user_reality_return,
+)
 from app.stores.runtime import profile_store
 from fastapi.testclient import TestClient
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
+
+
+def test_terse_layout_answer_uses_active_unknown_context_only():
+    home = Property(
+        id="home-1", conversation_id="conversation-1", title="龙湖时代天街",
+        geographic_status=GeographicStatus.GROUNDED,
+        meaningful_unknown="龙湖时代天街这套房的实际户型是几室几厅？",
+        meaningful_unknown_state_hash="unknown-hash",
+    )
+
+    class Intelligence:
+        def generate_json(self, prompt, **_kwargs):
+            assert "a terse direct layout answer is PROPERTY_REALITY / LAYOUT" in prompt
+            return json.dumps({
+                # Reproduce the live semantic misclassification: the boundary
+                # must route only the active layout answer to existing admission.
+                "claim_nature": "PERSONAL_REQUIREMENT",
+                "layout_requirement": "两室一厅。",
+                "reality_type": None,
+                "claim_quote": None,
+                "property_id": None,
+                "binding_evidence": None,
+                "binding_source": None,
+                "attention_property_id": None,
+                "attention_evidence": None,
+            }, ensure_ascii=False)
+
+    service = UserRealityReturn(intelligence=Intelligence())
+    history = [ConversationMessage("user", "两室一厅。")]
+    answer = service.resolve_expression(
+        history, [home], "两室一厅。", focused_property_id=home.id,
+    )
+    assert answer.property_id == home.id and answer.reality_type == "LAYOUT"
+    assert answer.layout_requirement is None
+
+    home.meaningful_unknown = None
+    home.meaningful_unknown_state_hash = None
+    requirement = service.resolve_expression(
+        history, [home], "两室一厅。", focused_property_id=home.id,
+    )
+    assert requirement.property_id is None and requirement.reality_type is None
+    assert requirement.layout_requirement == "两室一厅。"
+
+
+def test_layout_admission_accepts_only_matching_active_layout_unknown_reference():
+    client = TestClient(app)
+    matching_cid = uuid_for("matching-layout-unknown-reference")
+    mismatched_cid = uuid_for("mismatched-layout-unknown-reference")
+    question = "该房源实际是几室几厅？"
+
+    class Intelligence:
+        def __init__(self, unknown_reference):
+            self._unknown_reference = unknown_reference
+
+        def generate_json(self, _prompt, **_kwargs):
+            return json.dumps({
+                "unknown_reference": self._unknown_reference,
+                "reality_type": "LAYOUT",
+                "value": "两室一厅",
+            }, ensure_ascii=False)
+
+    for cid in (matching_cid, mismatched_cid):
+        create_owned_conversation(client, cid)
+    matching = property_manager.create(matching_cid, Property(
+        title="龙湖时代天街", geographic_status=GeographicStatus.GROUNDED,
+        meaningful_unknown=question, meaningful_unknown_state_hash="layout-question",
+    ))
+    mismatched = property_manager.create(mismatched_cid, Property(
+        title="另一处住所", geographic_status=GeographicStatus.GROUNDED,
+        meaningful_unknown=question, meaningful_unknown_state_hash="layout-question",
+    ))
+
+    admitted = UserRealityReturn(intelligence=Intelligence(question)).admit(
+        matching_cid, matching.id, "两室一厅。", expected_reality_type="LAYOUT",
+    )
+    assert admitted is not None
+    assert property_manager.get_scoped(matching.id, matching_cid).layout_expression == "两室一厅"
+
+    rejected = UserRealityReturn(intelligence=Intelligence("另一处房源实际是几室几厅？")).admit(
+        mismatched_cid, mismatched.id, "两室一厅。", expected_reality_type="LAYOUT",
+    )
+    assert rejected is None
+    assert property_manager.get_scoped(mismatched.id, mismatched_cid).layout_expression is None
+
+
+def test_stream_fallback_resolution_receives_focused_layout_context(monkeypatch):
+    """The deferred resolution path must retain the already-authoritative Focus."""
+    cid = uuid_for("focused-layout-stream-context")
+    create_owned_conversation(TestClient(app), cid)
+    home = property_manager.create(cid, Property(
+        title="龙湖时代天街", geographic_status=GeographicStatus.GROUNDED,
+        meaningful_unknown="该房源实际是几室几厅？",
+        meaningful_unknown_state_hash="layout-unknown-hash",
+    ))
+    history = [ConversationMessage("user", "两室一厅。")]
+    profile_future: Future[ProfileAnalysis] = Future()
+    profile_future.set_result(ProfileAnalysis(patch=LivingProfilePatch()))
+    executor = ThreadPoolExecutor(max_workers=1)
+    seen_focus_ids: list[str | None] = []
+
+    def resolve(_history, _properties, _message, *, focused_property_id=None):
+        seen_focus_ids.append(focused_property_id)
+        return PropertyExpressionResolution(home.id, "LAYOUT")
+
+    monkeypatch.setattr(user_reality_return, "resolve_expression", resolve)
+    monkeypatch.setattr(user_reality_return, "admit", lambda *_args, **_kwargs: home)
+    monkeypatch.setattr(chat_service, "_update_profile", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *_args: iter(["reply"]))
+    monkeypatch.setattr(living_meaning_service, "form", lambda *_args: home)
+
+    list(chat_service._complete_stream_turn(
+        cid, history, None, profile_future, executor, False, None,
+        focused_property_id=home.id,
+    ))
+
+    assert seen_focus_ids == [home.id]
 
 
 def test_expression_context_resolution_precedes_property_admission(monkeypatch):

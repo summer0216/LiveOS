@@ -764,6 +764,7 @@ class ChatService:
             world_state_ready,
             current_decision_geography,
             property_resolution=property_resolution,
+            focused_property_id=user_reality_property_id,
         )
 
     def _complete_stream_turn(
@@ -776,6 +777,7 @@ class ChatService:
         world_state_ready: bool,
         current_decision_geography: DecisionGeography | None,
         property_resolution: PropertyExpressionResolution | None = None,
+        focused_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse]:
         try:
             if world_state_ready:
@@ -819,6 +821,7 @@ class ChatService:
             if resolution is None:
                 resolution = user_reality_return.resolve_expression(
                     history, property_manager.list(conversation_id), history[-1].content,
+                    focused_property_id=focused_property_id,
                 )
             if resolution.layout_requirement is not None:
                 current_profile = profile_manager.get_or_create(conversation_id)
