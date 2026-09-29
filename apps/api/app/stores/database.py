@@ -110,6 +110,11 @@ SCHEMA_STATEMENTS = (
         rent_source_reference TEXT,
         rent_observed_at TEXT,
         admitted_rent_evidence JSONB,
+        estimated_rent_min INTEGER,
+        estimated_rent_max INTEGER,
+        rent_estimate_kind TEXT CHECK (
+            rent_estimate_kind IS NULL OR rent_estimate_kind = 'CONTROLLED_ESTIMATE'
+        ),
         layout_expression TEXT,
         layout_source TEXT,
         independent_kitchen BOOLEAN,
@@ -282,6 +287,9 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_source_reference TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_observed_at TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS admitted_rent_evidence JSONB",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS estimated_rent_min INTEGER",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS estimated_rent_max INTEGER",
+    "ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_estimate_kind TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS layout_expression TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS layout_source TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS independent_kitchen BOOLEAN",

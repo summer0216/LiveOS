@@ -18,6 +18,17 @@ class GeographicResolutionResult:
     ambiguous: bool = False
 
 
+@dataclass(frozen=True)
+class CurrentGeographicContext:
+    province: str
+    city: str
+    district: str
+
+    @property
+    def grounding_context(self) -> str:
+        return "".join(dict.fromkeys((self.province, self.city, self.district)))
+
+
 _LOCAL_RELATION_SUFFIXES = ("附近", "周边", "那边", "一带")
 _MUNICIPALITIES = ("北京", "上海", "天津", "重庆")
 
@@ -41,12 +52,53 @@ def normalize_local_geographic_identity(identity: str) -> str:
 
 
 class GeographicResolver:
+    def resolve_current_context(
+        self,
+        lng: float,
+        lat: float,
+        api_key: str | None,
+    ) -> CurrentGeographicContext | None:
+        """Reverse-ground a browser coordinate into transient local context."""
+        component = self._reverse_geographic_component(lng, lat, api_key)
+        if component is None:
+            return None
+
+        province = _administrative_component(component.get("province"))
+        city = _administrative_component(component.get("city"))
+        district = _administrative_component(component.get("district"))
+        if city is None and province and province.removesuffix("市") in _MUNICIPALITIES:
+            city = province
+        if province is None or city is None or district is None:
+            return None
+        return CurrentGeographicContext(
+            province=province,
+            city=city,
+            district=district,
+        )
+
     def resolve_city_context(
         self,
         lng: float,
         lat: float,
         api_key: str | None,
     ) -> str | None:
+        component = self._reverse_geographic_component(lng, lat, api_key)
+        if component is None:
+            return None
+        city = _administrative_component(component.get("city"))
+        if city is not None:
+            return city
+        province = _administrative_component(component.get("province"))
+        if province and province.removesuffix("市") in _MUNICIPALITIES:
+            return province
+        return None
+
+    def _reverse_geographic_component(
+        self,
+        lng: float,
+        lat: float,
+        api_key: str | None,
+    ) -> dict | None:
         if not api_key:
             return None
         try:
@@ -62,16 +114,7 @@ class GeographicResolver:
         if payload.get("status") != "1":
             return None
         component = (payload.get("regeocode") or {}).get("addressComponent") or {}
-        city = component.get("city")
-        if isinstance(city, str) and city.strip():
-            return city.strip()
-        province = component.get("province")
-        if (
-            isinstance(province, str)
-            and province.strip().removesuffix("市") in _MUNICIPALITIES
-        ):
-            return province.strip()
-        return None
+        return component if isinstance(component, dict) else None
 
     def resolve(
         self,
@@ -333,6 +376,10 @@ def _prefer_exact_city_identity(title: str, geocodes: list[dict]) -> dict | None
 
 def _normalize_administrative_text(value: str) -> str:
     return re.sub(r"[省市区县]", "", "".join(value.split()))
+
+
+def _administrative_component(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _poi_is_within_context(candidate: dict, context_location: str | None) -> bool:

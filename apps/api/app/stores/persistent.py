@@ -442,6 +442,9 @@ class PropertyStore:
             rent_source_reference=row.get("rent_source_reference"),
             rent_observed_at=row.get("rent_observed_at"),
             admitted_rent_evidence=row.get("admitted_rent_evidence"),
+            estimated_rent_min=row.get("estimated_rent_min"),
+            estimated_rent_max=row.get("estimated_rent_max"),
+            rent_estimate_kind=row.get("rent_estimate_kind"),
             layout_expression=row.get("layout_expression"),
             layout_source=row.get("layout_source"),
             independent_kitchen=row.get("independent_kitchen"),
@@ -656,7 +659,11 @@ class PropertyStore:
             row = connection.execute(
                 """
                 UPDATE properties
-                SET rent = %s, rent_source = %s, living_meaning = NULL,
+                SET rent = %s, rent_source = %s,
+                    rent_source_reference = NULL, rent_observed_at = NULL,
+                    admitted_rent_evidence = NULL,
+                    estimated_rent_min = NULL, estimated_rent_max = NULL,
+                    rent_estimate_kind = NULL, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
                     current_judgment_state_hash = NULL,
                     decision_readiness = NULL, decision_readiness_reason = NULL,
@@ -705,7 +712,8 @@ class PropertyStore:
                 UPDATE properties
                 SET rent = %s, rent_source = %s, rent_source_reference = %s,
                     rent_observed_at = %s, admitted_rent_evidence = %s,
-                    living_meaning = NULL,
+                    estimated_rent_min = NULL, estimated_rent_max = NULL,
+                    rent_estimate_kind = NULL, living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
                     current_judgment_state_hash = NULL,
                     decision_readiness = NULL, decision_readiness_reason = NULL,
@@ -728,6 +736,52 @@ class PropertyStore:
                     source_reference,
                     observed_at,
                     Jsonb(evidence),
+                    now(),
+                    property_uuid,
+                    owner_id,
+                    conversation_uuid,
+                ),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_controlled_rent_estimate(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        minimum_monthly: int,
+        maximum_monthly: int,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET estimated_rent_min = %s, estimated_rent_max = %s,
+                    rent_estimate_kind = 'CONTROLLED_ESTIMATE',
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL,
+                    meaningful_unknown = NULL, meaningful_unknown_why = NULL,
+                    meaningful_unknown_state_hash = NULL,
+                    reality_action_type = NULL, reality_action_label = NULL,
+                    reality_action_why = NULL, reality_action_state_hash = NULL,
+                    public_action_outcome = NULL,
+                    feedback_move_type = NULL, feedback_move_label = NULL,
+                    feedback_move_why = NULL, feedback_state_hash = NULL,
+                    updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND rent IS NULL
+                RETURNING *
+                """,
+                (
+                    minimum_monthly,
+                    maximum_monthly,
                     now(),
                     property_uuid,
                     owner_id,

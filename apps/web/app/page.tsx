@@ -1077,7 +1077,21 @@ export default function HomePage() {
                         {commuteMode ? ` · ${commuteMode}` : ''}
                       </span>
                     )}
-                    {singleFocused && property.rent === null && (
+                    {singleFocused
+                      && property.rent === null
+                      && property.rent_estimate_kind === 'CONTROLLED_ESTIMATE'
+                      && typeof property.estimated_rent_min === 'number'
+                      && typeof property.estimated_rent_max === 'number' && (
+                      <span className="choice-confirmed-reality mt-2">
+                        <span className="choice-confirmed-rent">
+                          预计租金 ¥{property.estimated_rent_min.toLocaleString('zh-CN')}–{property.estimated_rent_max.toLocaleString('zh-CN')} / 月
+                        </span>
+                        <span className="choice-unknown">实际租金仍需确认</span>
+                      </span>
+                    )}
+                    {singleFocused
+                      && property.rent === null
+                      && property.rent_estimate_kind !== 'CONTROLLED_ESTIMATE' && (
                       <span className="choice-unknown mt-2">
                         <span>租金 ?</span>
                         <span>仍需确认</span>
@@ -1166,6 +1180,7 @@ export default function HomePage() {
         || singleFocusedHome.decision_readiness === 'DECISION_READY'
         || Boolean(singleFocusedHome.meaningful_unknown)
         || Boolean(singleFocusedHome.place_context?.length)
+        || singleFocusedHome.rent_estimate_kind === 'CONTROLLED_ESTIMATE'
       ) && (
         <aside
           ref={setFocusedReadingElement}
@@ -1174,6 +1189,17 @@ export default function HomePage() {
           className="focused-world-reading pointer-events-auto"
         >
           <div className="text-xs font-semibold text-slate-800">{singleFocusedHome.title ?? '当前聚焦的家'}</div>
+          {singleFocusedHome.rent_estimate_kind === 'CONTROLLED_ESTIMATE'
+            && typeof singleFocusedHome.estimated_rent_min === 'number'
+            && typeof singleFocusedHome.estimated_rent_max === 'number' && (
+            <section className="mt-4" aria-label="预计租金">
+              <h2 className="text-xs font-semibold text-slate-700">预计租金</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-800">
+                ¥{singleFocusedHome.estimated_rent_min.toLocaleString('zh-CN')}–{singleFocusedHome.estimated_rent_max.toLocaleString('zh-CN')} / 月
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">估计范围 · 非已确认租金</p>
+            </section>
+          )}
           {singleFocusedHome.place_understanding?.claims.length ? (
             <section className="mt-4" aria-label="地方环境">
               <h2 className="text-xs font-semibold text-slate-700">地方环境</h2>

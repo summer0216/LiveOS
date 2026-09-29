@@ -134,6 +134,21 @@ class PropertyManager:
             evidence=evidence,
         )
 
+    def update_controlled_rent_estimate(
+        self,
+        property_id: str,
+        conversation_id: str,
+        *,
+        minimum_monthly: int,
+        maximum_monthly: int,
+    ) -> Property | None:
+        return property_store.update_controlled_rent_estimate(
+            property_id,
+            conversation_id,
+            minimum_monthly=minimum_monthly,
+            maximum_monthly=maximum_monthly,
+        )
+
     def update_daily_grocery(
         self,
         property_id: str,

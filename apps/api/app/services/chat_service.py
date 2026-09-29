@@ -22,6 +22,7 @@ from app.models.property import (
     GeographicPrecision,
     GeographicStatus,
     Property,
+    PropertyProvenance,
 )
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
@@ -62,6 +63,13 @@ _HOUSING_INTENT_TYPES = frozenset(
         "rental_search",
     }
 )
+
+_CANONICAL_RENT_ESTIMATE = {
+    "title": "龙湖时代天街",
+    "geographic_identity": "四川省成都市郫都区龙湖·时代天街",
+    "minimum_monthly": 1_500,
+    "maximum_monthly": 2_500,
+}
 
 
 def _is_housing_intent(intent_type: str | None) -> bool:
@@ -114,6 +122,47 @@ def _ground_explicit_possible_home(
             geographic_status=GeographicStatus.GROUNDED,
             lng=result.lng, lat=result.lat,
         )
+
+
+def _admit_canonical_rent_estimate(
+    conversation_id: str,
+    property_id: str,
+) -> Property | None:
+    """Admit the bounded validation estimate once the canonical Home is grounded."""
+    home = property_manager.get_scoped(property_id, conversation_id)
+    if (
+        home is None
+        or home.provenance != PropertyProvenance.USER_PROVIDED
+        or home.geographic_status != GeographicStatus.GROUNDED
+        or home.title != _CANONICAL_RENT_ESTIMATE["title"]
+        or home.geographic_identity
+        != _CANONICAL_RENT_ESTIMATE["geographic_identity"]
+        or home.rent is not None
+    ):
+        return home
+    if (
+        home.rent_estimate_kind is not None
+        or home.estimated_rent_min is not None
+        or home.estimated_rent_max is not None
+    ):
+        return home
+    estimated = property_manager.update_controlled_rent_estimate(
+        property_id,
+        conversation_id,
+        minimum_monthly=_CANONICAL_RENT_ESTIMATE["minimum_monthly"],
+        maximum_monthly=_CANONICAL_RENT_ESTIMATE["maximum_monthly"],
+    )
+    if estimated is not None:
+        try:
+            living_meaning_service.form(conversation_id, property_id)
+        except Exception:
+            logger.exception(
+                "Failed to refresh Living Meaning after controlled rent estimate "
+                "conversation_id=%s property_id=%s",
+                conversation_id,
+                property_id,
+            )
+    return property_manager.get_scoped(property_id, conversation_id)
 
 
 class WorldStateReady:
@@ -283,6 +332,21 @@ class ChatService:
                 or analysis.patch.preferred_city
             )
             if (
+                geographic_context is None
+                and current_geographic_reality is not None
+                and any(
+                    property_.geographic_status == GeographicStatus.UNRESOLVED
+                    for property_ in materialized_choices
+                )
+            ):
+                current_location_context = geographic_resolver.resolve_current_context(
+                    current_geographic_reality[0],
+                    current_geographic_reality[1],
+                    settings.AMAP_WEB_SERVICE_KEY,
+                )
+                if current_location_context is not None:
+                    geographic_context = current_location_context.grounding_context
+            if (
                 merged_profile is not None
                 and profile_manager.needs_work_geographic_resolution(merged_profile)
             ):
@@ -292,6 +356,9 @@ class ChatService:
                     api_key=settings.AMAP_WEB_SERVICE_KEY,
                 )
             for property_ in materialized_choices:
+                explicit_possible_home = _is_explicit_possible_home(
+                    analysis, current_decision_geography,
+                )
                 if property_.geographic_status == GeographicStatus.UNRESOLVED:
                     result = property_manager.resolve_geographic_grounding(
                         property_.id or "",
@@ -301,9 +368,7 @@ class ChatService:
                     )
                     if (
                         result.status != "GROUNDED"
-                        and _is_explicit_possible_home(
-                            analysis, current_decision_geography,
-                        )
+                        and explicit_possible_home
                         and property_.title == analysis.choices[0].title
                         and current_decision_geography is not None
                     ):
@@ -313,6 +378,11 @@ class ChatService:
                             geography=current_decision_geography,
                             city_context=decision_city_context,
                         )
+                if explicit_possible_home:
+                    _admit_canonical_rent_estimate(
+                        conversation_id,
+                        property_.id or "",
+                    )
             if analysis.geographic_clarification.relevant:
                 clarification = analysis.geographic_clarification
                 property_manager.update_geographic_grounding(

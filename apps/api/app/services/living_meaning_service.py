@@ -20,9 +20,9 @@ class LivingMeaningResult:
 
 
 class LivingMeaningService:
-    meaning_version = "v0.3-grounded-claims"
+    meaning_version = "v0.4-budget-grounded"
     judgment_version = "v0.4"
-    readiness_version = "v0.12"
+    readiness_version = "v0.13-rent-range"
     unknown_version = "v0.11-sufficiency"
     action_version = "v0.6"
 
@@ -36,6 +36,24 @@ class LivingMeaningService:
         self._properties = properties
         self._profiles = profiles
         self._intelligence = intelligence
+
+    def refresh_projection(
+        self,
+        conversation_id: str,
+        property_: Property,
+    ) -> Property:
+        """Refresh the one estimate-backed readiness state before projection.
+
+        ``form`` owns the fingerprint comparison and does not invoke generation
+        when Meaning, Judgment, Readiness, Unknown, and Action are current.
+        """
+        if (
+            property_.rent_estimate_kind != "CONTROLLED_ESTIMATE"
+            or property_.decision_readiness is None
+        ):
+            return property_
+        result = self.form(conversation_id, property_.id or "")
+        return result.property or property_
 
     def form(self, conversation_id: str, property_id: str) -> LivingMeaningResult:
         home = self._properties.get_scoped(property_id, conversation_id)
@@ -164,10 +182,13 @@ class LivingMeaningService:
         ):
             unknown = (home.meaningful_unknown, home.meaningful_unknown_why)
         else:
-            unknown = self._generate_meaningful_unknown(
-                basis,
-                home.living_meaning,
-                judgment,
+            unknown = (
+                self._actual_rent_unknown_for_crossing_estimate(basis)
+                or self._generate_meaningful_unknown(
+                    basis,
+                    home.living_meaning,
+                    judgment,
+                )
             )
             if unknown is None:
                 return LivingMeaningResult("INVALID_UNKNOWN", home)
@@ -227,12 +248,12 @@ class LivingMeaningService:
         personal_connections = self._personal_reality_connections(basis)
         prompt = f"""
 Audit whether EVERY claim in the proposed interpretation is supported by the
-supplied grounded Reality. Inspect the entire sentence, not only its cited
+supplied decision inputs. Inspect the entire sentence, not only its cited
 facts. A direct qualitative implication is allowed; a claim about a living
 condition absent from Reality is not. Missing evidence is UNKNOWN. If any
 clause introduces unsupported Reality, reject the whole sentence.
 
-Grounded Reality: {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
+Decision inputs: {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
 Grounded Personal Reality connections:
 {json.dumps(personal_connections, ensure_ascii=False)}
 Proposed interpretation: {json.dumps(interpretation, ensure_ascii=False)}
@@ -254,6 +275,12 @@ EXTERNAL_RENT_OBSERVATION represents one grounded listing observation only.
 It does not establish this Property's actual, average, typical, or market rent,
 and it cannot support a generalized rent range. It may support only what that
 observed rental possibility means relative to an explicit user budget.
+
+ESTIMATED_RENT_RANGE is explicitly non-grounded estimate input. It does not
+establish actual, verified, average, typical, or market rent. It may support
+only a range-bounded comparison with an explicit user budget while preserving
+that the actual rent remains unknown.
+
 Return JSON only with exactly:
 {{"supported": true or false, "unsupported_claims": ["unsupported clause"]}}
 Set supported=true and unsupported_claims=[] only if every clause is supported.
@@ -314,6 +341,9 @@ turn objective-fact coexistence into a personal trade-off.
 An explicit LAYOUT_REQUIREMENT with no LAYOUT_REALITY is an unresolved user
 condition. Do not declare it satisfied or irrelevant merely because other
 facts are known; judge the missing actual layout against this stated condition.
+ESTIMATED_RENT_RANGE is a non-grounded estimate. A budget connection to that
+range may advance the decision, but it does not establish actual rent or make
+missing actual rent irrelevant by itself.
 
 Return JSON only with exactly:
 {{"status": "NEED_MORE_REALITY or DECISION_READY",
@@ -371,7 +401,30 @@ DECISION_READY rather than an endless information-gathering loop.
                 "NEED_MORE_REALITY",
                 "现有客观事实尚未与用户明确的个人约束、偏好或评价建立联系。",
             )
+        if (
+            status == "DECISION_READY"
+            and self._actual_rent_unknown_for_crossing_estimate(basis)
+        ):
+            return (
+                "NEED_MORE_REALITY",
+                "预算落在预计租金区间内，实际月租仍会改变预算判断。",
+            )
         return status, reason.strip()
+
+    @staticmethod
+    def _actual_rent_unknown_for_crossing_estimate(
+        basis: dict[str, str],
+    ) -> tuple[str, str] | None:
+        if (
+            basis.get("ESTIMATED_RENT_BUDGET_RELATION")
+            == "BUDGET_WITHIN_ESTIMATED_RANGE"
+            and "RENT_REALITY" not in basis
+        ):
+            return (
+                "这处住所的实际月租是多少？",
+                "实际月租会决定住房成本落在预算哪一侧。",
+            )
+        return None
 
     def _generate_reality_action(
         self,
@@ -457,6 +510,19 @@ claim. Keep each Chinese text under 50 characters.
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
         has_external_rent_observation = "EXTERNAL_RENT_OBSERVATION" in basis
+        has_estimated_rent_range = "ESTIMATED_RENT_RANGE" in basis
+        has_budget_reality = "BUDGET_REALITY" in basis
+        budget_instruction = (
+            "The budget is the user's stated housing-rent target, not their "
+            "income, total spending capacity, or other expenses. A rent/budget "
+            "gap establishes a monthly housing-cost difference only. If this "
+            "is the only grounded consequence, that precise difference is "
+            "sufficient Personal Meaning; do not force a broader life, spending, "
+            "or emotional implication."
+            if has_budget_reality else
+            "No BUDGET_REALITY is supplied. Do not mention or imply a budget, "
+            "affordability, financial pressure, or any rent-to-budget comparison."
+        )
         scope_instruction = (
             "This input establishes the monthly housing cost but supplies no "
             "user budget or other personal constraint. Interpret that this "
@@ -478,6 +544,20 @@ claim. Keep each Chinese text under 50 characters.
                 "to the explicit budget, while preserving uncertainty about the "
                 "Property's overall rent level."
             )
+        if has_estimated_rent_range and has_budget_reality:
+            scope_instruction += (
+                " ESTIMATED_RENT_RANGE is a controlled estimate, not Grounded "
+                "Evidence and not this Property's actual or verified rent. "
+                "Interpret only the budget's position relative to that range, "
+                "and explicitly preserve uncertainty about actual rent."
+            )
+        elif has_estimated_rent_range:
+            scope_instruction += (
+                " ESTIMATED_RENT_RANGE is a controlled estimate, not Grounded "
+                "Evidence and not this Property's actual or verified rent. "
+                "Without BUDGET_REALITY, state only the estimated range and that "
+                "its personal significance and the actual rent remain unknown."
+            )
         prompt = f"""
 Interpret what one grounded Possible Life means for this user's daily life.
 Use only the supplied Reality. Synthesize implications and trade-offs instead
@@ -488,7 +568,7 @@ Return JSON only:
   "grounding": [{{"fact": "FACT_NAME", "value": "exact supplied value"}}]
 }}
 
-Grounded Reality:
+Decision inputs (Grounded Reality plus any explicitly labeled estimate):
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
 
 Grounded Personal Reality connections:
@@ -501,11 +581,7 @@ unknown, but must not call a fact convenient, burdensome, valuable, suitable,
 or part of a trade-off for this user. Two objective facts existing together do
 not establish competing consequences.
 
-The budget is the user's stated housing-rent target, not their income, total
-spending capacity, or other expenses. A rent/budget gap establishes a monthly
-housing-cost difference only. If this is the only grounded consequence, that
-precise difference is sufficient Personal Meaning; do not force a broader
-life, spending, or emotional implication.
+{budget_instruction}
 
 LAYOUT_REQUIREMENT is the user's desired layout. It does not establish the
 home's layout. If LAYOUT_REALITY is absent, express that this requirement's
@@ -563,6 +639,7 @@ Every claim must be supported by Reality, not merely by cited grounding keys.
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
         has_external_rent_observation = "EXTERNAL_RENT_OBSERVATION" in basis
+        has_estimated_rent_range = "ESTIMATED_RENT_RANGE" in basis
         scope_instruction = (
             "Only the confirmed monthly rent is grounded; no user budget or "
             "personal constraint is supplied. State that the housing cost is "
@@ -581,6 +658,12 @@ Every claim must be supported by Reality, not merely by cited grounding keys.
                 "uncertainty and judge only the observed possibility's relationship "
                 "to an explicit budget."
             )
+        if has_estimated_rent_range:
+            scope_instruction += (
+                " The rent range is explicitly an estimate, not verified or "
+                "actual Property rent. Judge only its range-bounded relation "
+                "to the explicit budget and preserve actual-rent uncertainty."
+            )
         prompt = f"""
 Form one provisional Current Judgment for a grounded Possible Life.
 Describe the choice only to the extent current Reality supports. If only one
@@ -594,7 +677,7 @@ Return JSON only:
   "grounding": [{{"fact": "FACT_NAME", "value": "exact supplied value"}}]
 }}
 
-Grounded Reality:
+Decision inputs (Grounded Reality plus any explicitly labeled estimate):
 {json.dumps(basis, ensure_ascii=False, sort_keys=True)}
 
 Grounded Personal Reality connections:
@@ -1055,10 +1138,16 @@ If uncertain, reject the candidate.
             and home.public_rent_evidence["understanding"].get("claim_type")
             == "SINGLE_OBSERVATION"
         )
+        has_controlled_rent_estimate = bool(
+            home.rent_estimate_kind == "CONTROLLED_ESTIMATE"
+            and home.estimated_rent_min is not None
+            and home.estimated_rent_max is not None
+        )
         return (
             has_work_and_daily_life
             or has_confirmed_rent
             or has_external_rent_understanding
+            or has_controlled_rent_estimate
             or bool(profile.layout_requirement)
         )
 
@@ -1087,6 +1176,19 @@ If uncertain, reject the candidate.
             basis["GROCERY_WALK"] = f"{home.grocery_walking_minutes}min WALKING"
         if home.rent is not None and home.rent_source is not None:
             basis["RENT_REALITY"] = f"{home.rent} CNY/month"
+        estimated_range = None
+        if (
+            home.rent_estimate_kind == "CONTROLLED_ESTIMATE"
+            and home.estimated_rent_min is not None
+            and home.estimated_rent_max is not None
+            and home.estimated_rent_min > 0
+            and home.estimated_rent_max >= home.estimated_rent_min
+        ):
+            estimated_range = (home.estimated_rent_min, home.estimated_rent_max)
+            basis["ESTIMATED_RENT_RANGE"] = (
+                f"{home.estimated_rent_min}-{home.estimated_rent_max} "
+                "CNY/month ESTIMATE"
+            )
         external_understanding = (
             home.public_rent_evidence.get("understanding")
             if isinstance(home.public_rent_evidence, dict)
@@ -1130,6 +1232,15 @@ If uncertain, reject the candidate.
                     if difference < 0
                     else "OBSERVED_OPTION_WITHIN_BUDGET"
                 )
+            elif estimated_range is not None:
+                minimum, maximum = estimated_range
+                basis["ESTIMATED_RENT_BUDGET_RELATION"] = (
+                    f"BUDGET_BELOW_ESTIMATED_RANGE {minimum - profile.budget} CNY"
+                    if profile.budget < minimum
+                    else f"BUDGET_ABOVE_ESTIMATED_RANGE {profile.budget - maximum} CNY"
+                    if profile.budget > maximum
+                    else "BUDGET_WITHIN_ESTIMATED_RANGE"
+                )
         if profile.commute_minutes is not None:
             basis["COMMUTE_CONSTRAINT"] = f"MAX {profile.commute_minutes}min"
         return basis
@@ -1148,6 +1259,8 @@ If uncertain, reject the candidate.
             and "BUDGET_REALITY" in basis
         ):
             connections.append("EXTERNAL_RENT_OBSERVATION ↔ BUDGET_REALITY")
+        if "ESTIMATED_RENT_RANGE" in basis and "BUDGET_REALITY" in basis:
+            connections.append("ESTIMATED_RENT_RANGE ↔ BUDGET_REALITY")
         return connections
 
     @staticmethod
@@ -1189,6 +1302,18 @@ If uncertain, reject the candidate.
         if any(number not in allowed_numbers for number in re.findall(r"\d+", meaning)):
             return None
         if any(term in meaning for term in ("菜市场", "超市", "商场", "便利店")):
+            return None
+        if "BUDGET_REALITY" not in basis and any(
+            term in meaning
+            for term in (
+                "预算",
+                "可负担",
+                "负担得起",
+                "经济压力",
+                "成本压力",
+                "affordab",
+            )
+        ):
             return None
         return meaning.strip()
 

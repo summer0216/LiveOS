@@ -11,6 +11,9 @@ export interface Property {
   rent_source: 'USER_CONFIRMED_REALITY' | 'USER_PROVIDED' | 'EXTERNAL_SOURCE' | null;
   rent_source_reference: string | null;
   rent_observed_at: string | null;
+  estimated_rent_min: number | null;
+  estimated_rent_max: number | null;
+  rent_estimate_kind: 'CONTROLLED_ESTIMATE' | null;
   independent_kitchen: boolean | null;
   independent_kitchen_source: 'USER_PROVIDED' | null;
   indoor_sound_observation: string | null;
@@ -93,6 +96,9 @@ export type PropertyInput = Omit<
   | 'rent_source'
   | 'rent_source_reference'
   | 'rent_observed_at'
+  | 'estimated_rent_min'
+  | 'estimated_rent_max'
+  | 'rent_estimate_kind'
   | 'independent_kitchen'
   | 'independent_kitchen_source'
   | 'indoor_sound_observation'

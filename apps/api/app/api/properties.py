@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.api.ownership import anonymous_user_id, require_conversation_owner
 from app.core.config import settings
@@ -104,6 +104,18 @@ class LivingMeaningResponse(BaseModel):
     property: PropertyResponse | None = None
 
 
+class ControlledRentEstimateRequest(BaseModel):
+    conversation_id: str = Field(min_length=1)
+    minimum_monthly: int = Field(gt=0)
+    maximum_monthly: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "ControlledRentEstimateRequest":
+        if self.maximum_monthly < self.minimum_monthly:
+            raise ValueError("maximum_monthly must be greater than or equal to minimum_monthly")
+        return self
+
+
 @router.post(
     "/analyze",
     response_model=PropertyResponse,
@@ -133,6 +145,10 @@ def list_properties(
 ) -> PropertyListResponse:
     require_conversation_owner(conversation_id, anonymous_user_id(request, response))
     properties = property_manager.list(conversation_id)
+    properties = [
+        living_meaning_service.refresh_projection(conversation_id, property_)
+        for property_ in properties
+    ]
     projections = project_candidate_decision_states(conversation_id, properties)
     open_unknowns = decision_unknown_service.list_open(conversation_id)
     unknowns_by_property = {
@@ -304,6 +320,39 @@ def form_living_meaning(
         request.conversation_id,
         anonymous_user_id(raw_request, response),
     )
+    result = living_meaning_service.form(request.conversation_id, property_id)
+    return LivingMeaningResponse(
+        status=result.status,
+        property=(
+            PropertyResponse.model_validate(result.property)
+            if result.property is not None
+            else None
+        ),
+    )
+
+
+@router.post(
+    "/{property_id}/controlled-rent-estimate",
+    response_model=LivingMeaningResponse,
+)
+def apply_controlled_rent_estimate(
+    property_id: str,
+    request: ControlledRentEstimateRequest,
+    raw_request: Request,
+    response: Response,
+) -> LivingMeaningResponse:
+    require_conversation_owner(
+        request.conversation_id,
+        anonymous_user_id(raw_request, response),
+    )
+    updated = property_manager.update_controlled_rent_estimate(
+        property_id,
+        request.conversation_id,
+        minimum_monthly=request.minimum_monthly,
+        maximum_monthly=request.maximum_monthly,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Property unavailable for rent estimate.")
     result = living_meaning_service.form(request.conversation_id, property_id)
     return LivingMeaningResponse(
         status=result.status,
