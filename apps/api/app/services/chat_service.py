@@ -565,6 +565,16 @@ class ChatService:
                 focused_property_id=user_reality_property_id,
             ) if user_reality_property_id else None
         )
+        if property_resolution and property_resolution.rent_verification_property_id:
+            action = user_reality_return.request_rent_verification(
+                conversation_id, property_resolution.rent_verification_property_id,
+                message,
+            )
+            if action is not None:
+                def rent_verification_consequence():
+                    yield WORLD_CONSEQUENCE_READY
+                    yield from self._stream_assistant_reply(conversation_id, history)
+                return rent_verification_consequence()
         if property_resolution and property_resolution.property_id:
             admitted = user_reality_return.admit(
                 conversation_id, property_resolution.property_id, message,

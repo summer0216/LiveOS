@@ -441,6 +441,7 @@ class PropertyStore:
             ),
             rent_source_reference=row.get("rent_source_reference"),
             rent_observed_at=row.get("rent_observed_at"),
+            admitted_rent_evidence=row.get("admitted_rent_evidence"),
             layout_expression=row.get("layout_expression"),
             layout_source=row.get("layout_source"),
             independent_kitchen=row.get("independent_kitchen"),
@@ -691,6 +692,7 @@ class PropertyStore:
         *,
         source_reference: str,
         observed_at: str,
+        evidence: dict,
     ) -> Property | None:
         owner_id = resolve_owner_id(self._database, conversation_id)
         property_uuid = optional_uuid(property_id)
@@ -702,7 +704,8 @@ class PropertyStore:
                 """
                 UPDATE properties
                 SET rent = %s, rent_source = %s, rent_source_reference = %s,
-                    rent_observed_at = %s, living_meaning = NULL,
+                    rent_observed_at = %s, admitted_rent_evidence = %s,
+                    living_meaning = NULL,
                     living_meaning_reality_hash = NULL, current_judgment = NULL,
                     current_judgment_state_hash = NULL,
                     decision_readiness = NULL, decision_readiness_reason = NULL,
@@ -724,6 +727,7 @@ class PropertyStore:
                     PropertyRentSource.EXTERNAL_SOURCE.value,
                     source_reference,
                     observed_at,
+                    Jsonb(evidence),
                     now(),
                     property_uuid,
                     owner_id,
@@ -1057,7 +1061,6 @@ class PropertyStore:
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
-                    public_rent_evidence = NULL,
                     public_action_outcome = NULL, feedback_move_type = NULL,
                     feedback_move_label = NULL, feedback_move_why = NULL,
                     feedback_state_hash = NULL,
@@ -1100,7 +1103,6 @@ class PropertyStore:
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
-                    public_rent_evidence = NULL,
                     public_action_outcome = NULL, feedback_move_type = NULL,
                     feedback_move_label = NULL, feedback_move_why = NULL,
                     feedback_state_hash = NULL,
@@ -1140,7 +1142,7 @@ class PropertyStore:
                     meaningful_unknown_state_hash = NULL,
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
-                    public_rent_evidence = NULL, public_action_outcome = NULL,
+                    public_action_outcome = NULL,
                     feedback_move_type = NULL, feedback_move_label = NULL,
                     feedback_move_why = NULL, feedback_state_hash = NULL,
                     updated_at = %s
@@ -1204,7 +1206,6 @@ class PropertyStore:
                     meaningful_unknown_state_hash = %s,
                     reality_action_type = NULL, reality_action_label = NULL,
                     reality_action_why = NULL, reality_action_state_hash = NULL,
-                    public_rent_evidence = NULL,
                     public_action_outcome = NULL, feedback_move_type = NULL,
                     feedback_move_label = NULL, feedback_move_why = NULL,
                     feedback_state_hash = NULL,
@@ -1245,7 +1246,6 @@ class PropertyStore:
                 UPDATE properties
                 SET reality_action_type = %s, reality_action_label = %s,
                     reality_action_why = %s, reality_action_state_hash = %s,
-                    public_rent_evidence = NULL,
                     public_action_outcome = NULL, feedback_move_type = NULL,
                     feedback_move_label = NULL, feedback_move_why = NULL,
                     feedback_state_hash = NULL,
@@ -1309,6 +1309,37 @@ class PropertyStore:
                 RETURNING *
                 """,
                 (now(), property_uuid, owner_id, conversation_uuid, action_hash),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def update_public_rent_understanding(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+        source_reference: str, understanding: dict,
+    ) -> Property | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(property_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or property_uuid is None or conversation_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET public_rent_evidence = public_rent_evidence || %s,
+                    living_meaning = NULL, living_meaning_reality_hash = NULL,
+                    current_judgment = NULL, current_judgment_state_hash = NULL,
+                    decision_readiness = NULL, decision_readiness_reason = NULL,
+                    decision_readiness_state_hash = NULL, updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                  AND reality_action_type = 'PUBLIC_EVIDENCE'
+                  AND reality_action_state_hash = %s AND rent IS NULL
+                  AND public_rent_evidence->>'source_reference' = %s
+                RETURNING *
+                """,
+                (
+                    Jsonb({"understanding": understanding}), now(), property_uuid,
+                    owner_id, conversation_uuid, action_hash, source_reference,
+                ),
             ).fetchone()
         return self._from(row) if row is not None else None
 

@@ -123,6 +123,7 @@ class PropertyManager:
         *,
         source_reference: str,
         observed_at: str,
+        evidence: dict,
     ) -> Property | None:
         return property_store.update_external_rent(
             property_id,
@@ -130,6 +131,7 @@ class PropertyManager:
             rent,
             source_reference=source_reference,
             observed_at=observed_at,
+            evidence=evidence,
         )
 
     def update_daily_grocery(
@@ -302,6 +304,18 @@ class PropertyManager:
         return property_store.update_public_rent_evidence(
             property_id, conversation_id, action_hash=action_hash,
             evidence=evidence,
+        )
+
+    def update_public_rent_understanding(
+        self, property_id: str, conversation_id: str, *, action_hash: str,
+        source_reference: str, understanding: dict,
+    ) -> Property | None:
+        return property_store.update_public_rent_understanding(
+            property_id,
+            conversation_id,
+            action_hash=action_hash,
+            source_reference=source_reference,
+            understanding=understanding,
         )
 
     def record_public_action_no_evidence(

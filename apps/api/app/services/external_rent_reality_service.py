@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from typing import Literal
+from uuid import uuid4
 
 from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
+from app.core.external_rent_observability import record_external_rent_search_trace
 from app.models.property import GeographicStatus, Property
-from app.services.living_meaning_service import LivingMeaningService
+from app.services.living_meaning_service import (
+    LivingMeaningService,
+    living_meaning_service,
+)
 from app.services.profile_manager import ProfileManager, profile_manager
 from app.services.property_manager import PropertyManager, property_manager
 from app.services.public_rental_evidence import (
@@ -19,6 +26,9 @@ from app.services.public_rental_evidence import (
 )
 
 ExternalRentStatus = Literal["UPDATED", "NO_RELIABLE_EVIDENCE", "NOT_FOUND"]
+logger = logging.getLogger(__name__)
+USER_INITIATED_RENT_ACTION_LABEL = "查询这处住所的公开租金信息"
+USER_INITIATED_RENT_ACTION_WHY = "用户明确请求核实这处住所的实际租金"
 
 
 @dataclass(frozen=True)
@@ -62,11 +72,13 @@ class ExternalRentRealityService:
         intelligence: AIClient = ai_client,
         evidence_search: PublicRentalEvidenceSearch = public_rental_evidence_search,
         profiles: ProfileManager = profile_manager,
+        meanings: LivingMeaningService = living_meaning_service,
     ) -> None:
         self._properties = properties
         self._intelligence = intelligence
         self._evidence_search = evidence_search
         self._profiles = profiles
+        self._meanings = meanings
 
     def feedback_from_no_evidence(
         self, conversation_id: str, property_id: str,
@@ -191,11 +203,12 @@ through a Composer. Each Chinese field must be at most 65 characters.
         self, conversation_id: str, property_id: str,
     ) -> PublicRentActionResult:
         target = self._properties.get_scoped(property_id, conversation_id)
+        user_initiated = self._is_user_initiated_rent_action(target)
         if (
             target is None
             or target.reality_action_type != "PUBLIC_EVIDENCE"
             or not target.reality_action_state_hash
-            or not target.meaningful_unknown
+            or (not target.meaningful_unknown and not user_initiated)
             or target.rent is not None
             or not target.title
             or target.geographic_status != GeographicStatus.GROUNDED
@@ -206,16 +219,44 @@ through a Composer. Each Chinese field must be at most 65 characters.
         if target.public_rent_evidence is not None:
             return PublicRentActionResult("EVIDENCE_READY", target)
 
+        execution_id = uuid4().hex
+        record_external_rent_search_trace(
+            execution_id, "public_action_execution_started",
+            property_id=property_id,
+        )
+        orchestration_stage = "not_started"
+
+        def record_orchestration_stage(stage: str) -> None:
+            nonlocal orchestration_stage
+            orchestration_stage = stage
+            record_external_rent_search_trace(
+                execution_id, "orchestration_stage", stage=stage,
+            )
+
+        def record_tool_arguments(arguments: str) -> None:
+            record_external_rent_search_trace(
+                execution_id, "tool_arguments", arguments=arguments,
+            )
+
         observed: list[PublicRentalEvidence] = []
 
         def dispatch(_arguments: dict) -> str:
-            observed.extend(self._evidence_search.search(
+            record_external_rent_search_trace(
+                execution_id, "search_tool_dispatched", tool="search_public_rental_evidence",
+            )
+            found = self._evidence_search.search(
                 property_name=target.title or "",
+                property_identity=target.geographic_identity or "",
                 city=target.district,
                 district=target.geographic_identity,
                 lng=target.lng,
                 lat=target.lat,
-            ))
+                trace_id=execution_id,
+            )
+            observed.extend(found)
+            record_external_rent_search_trace(
+                execution_id, "search_tool_returned", evidence_count=len(found),
+            )
             return self._evidence_search.as_tool_result(observed)
 
         prompt = f"""
@@ -230,24 +271,78 @@ Do not admit evidence as Rent Reality or answer the unresolved question.
         try:
             self._intelligence.generate_json_with_public_evidence_tool(
                 prompt, tool=PUBLIC_RENT_TOOL, dispatch=dispatch,
+                on_stage=record_orchestration_stage,
+                on_tool_arguments=record_tool_arguments,
             )
-        except (RuntimeError, TypeError, ValueError):
+        except (RuntimeError, TypeError, ValueError) as exc:
+            record_external_rent_search_trace(
+                execution_id, "public_action_execution_failed",
+                stage=orchestration_stage,
+                exception_type=type(exc).__name__,
+                exception_message=str(exc),
+                call_context={
+                    "method": "generate_json_with_public_evidence_tool",
+                    "tool": "search_public_rental_evidence",
+                    "property_id": property_id,
+                },
+            )
             return PublicRentActionResult("NOT_AVAILABLE")
-        if not observed:
+        grounded = self._ground_public_evidence(observed, target)
+        if not grounded:
+            record_external_rent_search_trace(
+                execution_id, "public_action_execution_complete",
+                outcome="NO_EVIDENCE", evidence_count=0,
+            )
             recorded = self._properties.record_public_action_no_evidence(
                 property_id, conversation_id,
                 action_hash=target.reality_action_state_hash,
             )
             if recorded is None:
                 return PublicRentActionResult("NOT_AVAILABLE")
+            if user_initiated:
+                return PublicRentActionResult("NO_EVIDENCE", recorded)
             return self.feedback_from_no_evidence(conversation_id, property_id)
         updated = self._properties.update_public_rent_evidence(
             property_id, conversation_id,
             action_hash=target.reality_action_state_hash,
-            evidence=asdict(observed[0]),
+            evidence=asdict(grounded[0]),
+        )
+        if updated is not None:
+            understanding = self._understand_grounded_public_evidence(grounded[0])
+            if understanding is not None:
+                updated = self._properties.update_public_rent_understanding(
+                    property_id,
+                    conversation_id,
+                    action_hash=target.reality_action_state_hash,
+                    source_reference=grounded[0].source_reference,
+                    understanding=understanding,
+                )
+                if updated is not None:
+                    try:
+                        consequence = self._meanings.form(conversation_id, property_id)
+                        if consequence.property is not None:
+                            updated = consequence.property
+                    except Exception:
+                        logger.exception(
+                            "Failed to refresh Living Meaning after public evidence understanding"
+                        )
+        record_external_rent_search_trace(
+            execution_id, "public_action_execution_complete",
+            outcome="EVIDENCE_READY" if updated else "NOT_AVAILABLE",
+            evidence_count=len(observed),
         )
         return PublicRentActionResult(
             "EVIDENCE_READY" if updated else "NOT_AVAILABLE", updated,
+        )
+
+    @staticmethod
+    def _is_user_initiated_rent_action(target: Property | None) -> bool:
+        return bool(
+            target is not None
+            and target.reality_action_type == "PUBLIC_EVIDENCE"
+            and target.meaningful_unknown is None
+            and target.reality_action_label == USER_INITIATED_RENT_ACTION_LABEL
+            and target.reality_action_why == USER_INITIATED_RENT_ACTION_WHY
         )
 
     def acquire(self, conversation_id: str, property_id: str) -> ExternalRentResult:
@@ -268,6 +363,7 @@ Do not admit evidence as Rent Reality or answer the unresolved question.
             # supplies the actual search boundary.
             observed.extend(self._evidence_search.search(
                 property_name=target.title or "",
+                property_identity=target.geographic_identity or "",
                 city=target.district,
                 district=target.geographic_identity,
                 lng=target.lng,
@@ -293,7 +389,10 @@ Return JSON only:
   "evidence_excerpt": string | null
 }}
 Use GROUNDED only when one fetched source clearly refers to this property and explicitly
-states one current monthly rent. Never estimate, average, or infer a missing amount.
+states one current monthly rent. evidence_excerpt must be a short exact
+contiguous passage from that source containing the property's full grounded
+geographic identity and its monthly rent. If the source cannot identify the
+same place, return UNRESOLVED. Never estimate, average, or infer a missing amount.
 """.strip()
         try:
             raw = self._intelligence.generate_json_with_public_evidence_tool(
@@ -305,32 +404,154 @@ states one current monthly rent. Never estimate, average, or infer a missing amo
         except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
             return ExternalRentResult("NO_RELIABLE_EVIDENCE")
 
-        admitted = self._admit(interpretation, observed)
+        admitted = self._admit(interpretation, observed, target)
         if admitted is None:
             return ExternalRentResult("NO_RELIABLE_EVIDENCE")
-        rent, source_reference, observed_at = admitted
+        rent, source, excerpt = admitted
         updated = self._properties.update_external_rent(
             property_id,
             conversation_id,
             rent,
-            source_reference=source_reference,
-            observed_at=observed_at,
+            source_reference=source.source_reference,
+            observed_at=source.observed_at,
+            evidence={
+                **asdict(source),
+                "admission": {
+                    "property_id": target.id,
+                    "property_identity": target.geographic_identity,
+                    "rent_monthly": rent,
+                    "evidence_excerpt": excerpt,
+                },
+            },
         )
+        if updated is not None:
+            try:
+                consequence = self._meanings.form(conversation_id, property_id)
+                if consequence.property is not None:
+                    updated = consequence.property
+            except Exception:
+                logger.exception(
+                    "Failed to refresh Living Meaning after external rent admission"
+                )
         return ExternalRentResult(
             "UPDATED" if updated else "NOT_FOUND",
             property=updated,
         )
 
     @staticmethod
+    def _ground_public_evidence(
+        evidence: list[PublicRentalEvidence], target: Property,
+    ) -> list[PublicRentalEvidence]:
+        if not target.geographic_identity:
+            return []
+        grounded: list[PublicRentalEvidence] = []
+        for item in evidence:
+            if (
+                not item.source_reference
+                or not item.source_provider
+                or item.grounded_property_identity != target.geographic_identity
+            ):
+                continue
+            try:
+                observed_time = datetime.fromisoformat(item.observed_at)
+            except ValueError:
+                continue
+            if (
+                observed_time.tzinfo is None
+                or observed_time.utcoffset() is None
+                or observed_time.astimezone(UTC) > datetime.now(UTC)
+            ):
+                continue
+            grounded.append(item)
+        return grounded
+
+    def _understand_grounded_public_evidence(
+        self, evidence: PublicRentalEvidence,
+    ) -> dict[str, object] | None:
+        prompt = f"""
+Interpret ONE admitted, identity-grounded public rental Evidence item.
+The Evidence proves only one observed rental possibility from one source at
+one observation time. It does not establish this Property's actual rent,
+market rent, average, typical value, or a rent range.
+
+Return JSON only with exactly:
+{{"claim_type":"SINGLE_OBSERVATION or INSUFFICIENT",
+  "rent_monthly":integer or null,
+  "source_reference":string or null,
+  "observed_at":string or null,
+  "evidence_excerpt":"short exact contiguous source passage" or null}}
+
+Grounded Evidence:
+{json.dumps(asdict(evidence), ensure_ascii=False, sort_keys=True)}
+
+Use SINGLE_OBSERVATION only when one exact monthly rent is explicitly present.
+Copy its source_reference and observed_at exactly. The excerpt must be a short
+contiguous passage from property_text containing exactly one monthly rent.
+Otherwise return INSUFFICIENT with all other fields null. Do not estimate,
+average, derive a range, generalize to the Property, or invent provenance.
+""".strip()
+        try:
+            interpretation = json.loads(self._intelligence.generate_json(
+                prompt,
+                model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
+                max_output_tokens=256,
+            ))
+        except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        return self._validate_rent_understanding(interpretation, evidence)
+
+    @staticmethod
+    def _validate_rent_understanding(
+        interpretation: object, evidence: PublicRentalEvidence,
+    ) -> dict[str, object] | None:
+        if not isinstance(interpretation, dict) or set(interpretation) != {
+            "claim_type", "rent_monthly", "source_reference", "observed_at",
+            "evidence_excerpt",
+        }:
+            return None
+        if interpretation.get("claim_type") != "SINGLE_OBSERVATION":
+            return None
+        amount = interpretation.get("rent_monthly")
+        excerpt = interpretation.get("evidence_excerpt")
+        if (
+            not isinstance(amount, int)
+            or isinstance(amount, bool)
+            or amount <= 0
+            or interpretation.get("source_reference") != evidence.source_reference
+            or interpretation.get("observed_at") != evidence.observed_at
+            or not isinstance(excerpt, str)
+            or not 1 <= len(excerpt) <= 300
+            or excerpt not in evidence.property_text
+        ):
+            return None
+        compact_excerpt = excerpt.replace(",", "").replace("，", "")
+        amounts = re.findall(
+            r"(?<!\d)(\d{1,8})\s*(?:元\s*/\s*月|元\s*每月|元\s*月租|元\s*一个月|元\s*每个月)",
+            compact_excerpt,
+        )
+        if len(amounts) != 1 or int(amounts[0]) != amount:
+            return None
+        return {
+            "claim_type": "SINGLE_OBSERVATION",
+            "rent_monthly": amount,
+            "understanding": f"当前发现一种约 ¥{amount:,}/月的真实租赁可能。",
+            "source_reference": evidence.source_reference,
+            "observed_at": evidence.observed_at,
+            "evidence_excerpt": excerpt,
+        }
+
+    @staticmethod
     def _admit(
         interpretation: object,
         evidence: list[PublicRentalEvidence],
-    ) -> tuple[int, str, str] | None:
+        target: Property,
+    ) -> tuple[int, PublicRentalEvidence, str] | None:
         if not isinstance(interpretation, dict):
             return None
         rent = interpretation.get("rent_monthly")
         source_reference = interpretation.get("source_reference")
         observed_at = interpretation.get("observed_at")
+        excerpt = interpretation.get("evidence_excerpt")
         if (
             interpretation.get("identity_status") != "GROUNDED"
             or not isinstance(rent, int)
@@ -338,6 +559,20 @@ states one current monthly rent. Never estimate, average, or infer a missing amo
             or rent <= 0
             or not isinstance(source_reference, str)
             or not isinstance(observed_at, str)
+            or not isinstance(excerpt, str)
+            or not 1 <= len(excerpt) <= 300
+            or not target.title
+            or not target.geographic_identity
+        ):
+            return None
+        try:
+            observed_time = datetime.fromisoformat(observed_at)
+        except ValueError:
+            return None
+        if (
+            observed_time.tzinfo is None
+            or observed_time.utcoffset() is None
+            or observed_time.astimezone(UTC) > datetime.now(UTC)
         ):
             return None
         source = next(
@@ -350,10 +585,21 @@ states one current monthly rent. Never estimate, average, or infer a missing amo
         )
         if source is None:
             return None
-        compact_text = source.property_text.replace(",", "")
-        if re.search(rf"(?<!\d){rent}(?!\d)", compact_text) is None:
+        normalized_identity = re.sub(
+            r"[\s·・•()（）-]", "", target.geographic_identity,
+        ).casefold()
+        normalized_excerpt = re.sub(r"[\s·・•()（）-]", "", excerpt).casefold()
+        if (
+            excerpt not in source.property_text
+            or not normalized_identity
+            or normalized_identity not in normalized_excerpt
+        ):
             return None
-        return rent, source_reference, observed_at
+        compact_excerpt = excerpt.replace(",", "").replace("，", "")
+        amounts = re.findall(r"(?<!\d)(\d{1,8})\s*(?:元\s*/\s*月|元\s*每月|元\s*月租|元\s*一个月|元\s*每个月)", compact_excerpt)
+        if len(amounts) != 1 or int(amounts[0]) != rent:
+            return None
+        return rent, source, excerpt
 
 
 external_rent_reality_service = ExternalRentRealityService()

@@ -250,6 +250,10 @@ cost, or another fact matters to this user or competes in their decision.
 Only factual interpretation plus explicit uncertainty about personal meaning
 is supported in that state.
 
+EXTERNAL_RENT_OBSERVATION represents one grounded listing observation only.
+It does not establish this Property's actual, average, typical, or market rent,
+and it cannot support a generalized rent range. It may support only what that
+observed rental possibility means relative to an explicit user budget.
 Return JSON only with exactly:
 {{"supported": true or false, "unsupported_claims": ["unsupported clause"]}}
 Set supported=true and unsupported_claims=[] only if every clause is supported.
@@ -452,6 +456,7 @@ claim. Keep each Chinese text under 50 characters.
         rent_budget_only = set(basis) == {
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
+        has_external_rent_observation = "EXTERNAL_RENT_OBSERVATION" in basis
         scope_instruction = (
             "This input establishes the monthly housing cost but supplies no "
             "user budget or other personal constraint. Interpret that this "
@@ -465,6 +470,14 @@ claim. Keep each Chinese text under 50 characters.
             "about other spending, or claim no other consequences exist."
             if rent_budget_only else ""
         )
+        if has_external_rent_observation:
+            scope_instruction += (
+                " EXTERNAL_RENT_OBSERVATION is one observed rental possibility, "
+                "not this Property's actual, average, typical, or market rent and "
+                "not a range. Interpret only how this observed possibility relates "
+                "to the explicit budget, while preserving uncertainty about the "
+                "Property's overall rent level."
+            )
         prompt = f"""
 Interpret what one grounded Possible Life means for this user's daily life.
 Use only the supplied Reality. Synthesize implications and trade-offs instead
@@ -549,6 +562,7 @@ Every claim must be supported by Reality, not merely by cited grounding keys.
         rent_budget_only = set(basis) == {
             "HOME_IDENTITY", "RENT_REALITY", "BUDGET_REALITY", "BUDGET_MEANING",
         }
+        has_external_rent_observation = "EXTERNAL_RENT_OBSERVATION" in basis
         scope_instruction = (
             "Only the confirmed monthly rent is grounded; no user budget or "
             "personal constraint is supplied. State that the housing cost is "
@@ -560,6 +574,13 @@ Every claim must be supported by Reality, not merely by cited grounding keys.
             "stated rent target. Do not infer other living consequences."
             if rent_budget_only else ""
         )
+        if has_external_rent_observation:
+            scope_instruction += (
+                " One external listing observation does not establish actual, "
+                "average, typical, market, or ranged Property rent. Preserve that "
+                "uncertainty and judge only the observed possibility's relationship "
+                "to an explicit budget."
+            )
         prompt = f"""
 Form one provisional Current Judgment for a grounded Possible Life.
 Describe the choice only to the extent current Reality supports. If only one
@@ -1028,7 +1049,18 @@ If uncertain, reject the candidate.
             home.rent is not None
             and home.rent_source is not None
         )
-        return has_work_and_daily_life or has_confirmed_rent or bool(profile.layout_requirement)
+        has_external_rent_understanding = bool(
+            isinstance(home.public_rent_evidence, dict)
+            and isinstance(home.public_rent_evidence.get("understanding"), dict)
+            and home.public_rent_evidence["understanding"].get("claim_type")
+            == "SINGLE_OBSERVATION"
+        )
+        return (
+            has_work_and_daily_life
+            or has_confirmed_rent
+            or has_external_rent_understanding
+            or bool(profile.layout_requirement)
+        )
 
     @staticmethod
     def _basis(home: Property, profile: LivingProfile) -> dict[str, str]:
@@ -1055,6 +1087,23 @@ If uncertain, reject the candidate.
             basis["GROCERY_WALK"] = f"{home.grocery_walking_minutes}min WALKING"
         if home.rent is not None and home.rent_source is not None:
             basis["RENT_REALITY"] = f"{home.rent} CNY/month"
+        external_understanding = (
+            home.public_rent_evidence.get("understanding")
+            if isinstance(home.public_rent_evidence, dict)
+            else None
+        )
+        external_amount = None
+        if (
+            isinstance(external_understanding, dict)
+            and external_understanding.get("claim_type") == "SINGLE_OBSERVATION"
+            and isinstance(external_understanding.get("rent_monthly"), int)
+            and not isinstance(external_understanding.get("rent_monthly"), bool)
+            and isinstance(external_understanding.get("understanding"), str)
+        ):
+            external_amount = external_understanding["rent_monthly"]
+            basis["EXTERNAL_RENT_OBSERVATION"] = external_understanding[
+                "understanding"
+            ]
         if home.independent_kitchen is not None and home.independent_kitchen_source == "USER_PROVIDED":
             basis["INDEPENDENT_KITCHEN_REALITY"] = (
                 "PRESENT" if home.independent_kitchen else "ABSENT"
@@ -1072,6 +1121,15 @@ If uncertain, reject the candidate.
                     if difference < 0
                     else "WITHIN_BUDGET"
                 )
+            elif external_amount is not None:
+                difference = external_amount - profile.budget
+                basis["EXTERNAL_RENT_BUDGET_RELATION"] = (
+                    f"OBSERVED_OPTION_OVER_BUDGET {difference} CNY"
+                    if difference > 0
+                    else f"OBSERVED_OPTION_UNDER_BUDGET {abs(difference)} CNY"
+                    if difference < 0
+                    else "OBSERVED_OPTION_WITHIN_BUDGET"
+                )
         if profile.commute_minutes is not None:
             basis["COMMUTE_CONSTRAINT"] = f"MAX {profile.commute_minutes}min"
         return basis
@@ -1085,6 +1143,11 @@ If uncertain, reject the candidate.
             connections.append("WORK_COMMUTE ↔ COMMUTE_CONSTRAINT")
         if "LAYOUT_REALITY" in basis and "LAYOUT_REQUIREMENT" in basis:
             connections.append("LAYOUT_REALITY ↔ LAYOUT_REQUIREMENT")
+        if (
+            "EXTERNAL_RENT_OBSERVATION" in basis
+            and "BUDGET_REALITY" in basis
+        ):
+            connections.append("EXTERNAL_RENT_OBSERVATION ↔ BUDGET_REALITY")
         return connections
 
     @staticmethod

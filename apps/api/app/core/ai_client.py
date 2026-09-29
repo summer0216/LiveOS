@@ -137,12 +137,16 @@ class AIClient:
         *,
         tool: dict[str, Any],
         dispatch: Callable[[dict[str, Any]], str],
+        on_stage: Callable[[str], None] | None = None,
+        on_tool_arguments: Callable[[str], None] | None = None,
         model: str | None = None,
         max_output_tokens: int = 384,
     ) -> str:
         """Run one bounded model -> tool -> model turn for public evidence."""
         try:
             messages: list[Any] = [{"role": "user", "content": prompt}]
+            if on_stage:
+                on_stage("initial_model_tool_request")
             first = self.client.with_options(
                 timeout=JSON_REQUEST_TIMEOUT_SECONDS,
             ).chat.completions.create(
@@ -151,28 +155,37 @@ class AIClient:
                 tools=[tool],
                 tool_choice="auto",
                 temperature=0,
-                max_tokens=192,
+                max_tokens=512,
             )
             assistant_message = first.choices[0].message
             tool_calls = assistant_message.tool_calls or []
+            if on_stage:
+                on_stage("tool_call_validation")
             if len(tool_calls) != 1:
                 raise RuntimeError("LLM did not request exactly one public evidence tool call.")
             tool_call = tool_calls[0]
             if tool_call.function.name != "search_public_rental_evidence":
                 raise RuntimeError("LLM requested an unsupported public evidence tool.")
+            raw_arguments = tool_call.function.arguments or "{}"
+            if on_tool_arguments:
+                on_tool_arguments(raw_arguments)
             try:
-                arguments = json.loads(tool_call.function.arguments or "{}")
+                arguments = json.loads(raw_arguments)
             except json.JSONDecodeError as error:
                 raise RuntimeError("LLM returned invalid tool arguments.") from error
-            if not isinstance(arguments, dict):
+            if not self._valid_public_rental_tool_arguments(arguments):
                 raise TypeError("LLM returned invalid tool arguments.")
 
             messages.append(assistant_message)
+            if on_stage:
+                on_stage("public_evidence_dispatch")
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "content": dispatch(arguments),
             })
+            if on_stage:
+                on_stage("final_model_interpretation")
             final = self.client.with_options(
                 timeout=JSON_REQUEST_TIMEOUT_SECONDS,
             ).chat.completions.create(
@@ -188,6 +201,29 @@ class AIClient:
             return content
         except OpenAIError as error:
             raise RuntimeError(f"LLM public evidence request failed: {error}") from error
+
+    @staticmethod
+    def _valid_public_rental_tool_arguments(arguments: object) -> bool:
+        if not isinstance(arguments, dict):
+            return False
+        if set(arguments) - {"property_name", "city", "district", "lng", "lat"}:
+            return False
+        property_name = arguments.get("property_name")
+        if not isinstance(property_name, str) or not property_name.strip():
+            return False
+        if any(
+            key in arguments and not isinstance(arguments[key], str)
+            for key in ("city", "district")
+        ):
+            return False
+        return all(
+            key not in arguments
+            or (
+                isinstance(arguments[key], (int, float))
+                and not isinstance(arguments[key], bool)
+            )
+            for key in ("lng", "lat")
+        )
 
 
 ai_client = AIClient()

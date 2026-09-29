@@ -1,5 +1,6 @@
 """Admit a focused user's answer to the active USER_REALITY Unknown."""
 
+import hashlib
 import json
 from dataclasses import dataclass
 
@@ -7,7 +8,12 @@ from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.models.conversation import ConversationMessage
 from app.models.property import GeographicStatus, Property, PropertyRentSource
+from app.services.external_rent_reality_service import (
+    USER_INITIATED_RENT_ACTION_LABEL,
+    USER_INITIATED_RENT_ACTION_WHY,
+)
 from app.services.property_manager import PropertyManager, property_manager
+
 
 
 def _amount_is_explicit(user_text: str, amount: int) -> bool:
@@ -31,6 +37,7 @@ class PropertyExpressionResolution:
     needs_clarification: bool = False
     layout_requirement: str | None = None
     attention_property_id: str | None = None
+    rent_verification_property_id: str | None = None
 
 
 class UserRealityReturn:
@@ -54,7 +61,12 @@ class UserRealityReturn:
         ]
         prompt = f"""
 Interpret the CURRENT user expression before any Property Reality admission.
-Classify its nature as PERSONAL_REQUIREMENT, PROPERTY_REALITY, or OTHER.
+Classify its nature as PERSONAL_REQUIREMENT, PROPERTY_REALITY, REALITY_ACTION,
+or OTHER.
+REALITY_ACTION applies only to an explicit user request to verify or acquire
+the actual RENT for the currently focused grounded residence. The request is
+not a statement of Rent Reality. A factual rent statement, desired rent,
+hypothetical, or unrelated question is not REALITY_ACTION.
 An unqualified room count in a housing-search context may describe a desired
 layout rather than an observed layout of a particular residence.
 Do not turn a wish, constraint, requirement, or hypothetical into Property Reality.
@@ -70,7 +82,7 @@ Current message: {json.dumps(user_text, ensure_ascii=False)}
 Focused residence id (context evidence only): {json.dumps(focused_property_id)}
 Grounded residences: {json.dumps([{"id": p.id, "title": p.title, "active_unknown": p.meaningful_unknown if p.meaningful_unknown_state_hash else None} for p in candidates], ensure_ascii=False)}
 
-Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or OTHER",
+Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or REALITY_ACTION or OTHER",
 "layout_requirement": "short exact current-user quote expressing their required room layout" or null,
 "reality_type": "LAYOUT or RENT or TENANCY_MODE or INDEPENDENT_BATHROOM or INDEPENDENT_KITCHEN or INDOOR_SOUND_OBSERVATION" or null,
 "claim_quote": "exact contiguous current-message quote" or null,
@@ -81,6 +93,9 @@ Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or
 "attention_evidence": "exact contiguous PRIOR user quote naming that residence" or null}}.
 For PROPERTY_REALITY without reliable referent, return null property_id and
 binding fields. For Focus binding, use FOCUS and null binding_evidence.
+For REALITY_ACTION, use reality_type RENT, an exact current-message request
+quote, and the same Property binding fields as PROPERTY_REALITY. Do not claim
+that Rent Reality has been established.
 For requirement/other, return null reality_type, property_id, binding fields.
 Attention is separate from Property Reality admission. Set attention_property_id
 only when the CURRENT expression continues unambiguous attention to a residence
@@ -131,10 +146,17 @@ establish a layout requirement. Return null when no layout requirement is stated
                     attention_property_id=attention_property_id,
                 )
             return PropertyExpressionResolution()
-        if result["claim_nature"] != "PROPERTY_REALITY":
+        claim_nature = result["claim_nature"]
+        if claim_nature not in {"PROPERTY_REALITY", "REALITY_ACTION"}:
             return PropertyExpressionResolution()
         reality_type = result["reality_type"]
-        if reality_type not in {
+        if claim_nature == "REALITY_ACTION":
+            if (
+                reality_type != "RENT" or not focused_property_id
+                or result.get("layout_requirement") is not None
+            ):
+                return PropertyExpressionResolution()
+        elif reality_type not in {
             "LAYOUT", "RENT", "TENANCY_MODE", "INDEPENDENT_BATHROOM",
             "INDEPENDENT_KITCHEN", "INDOOR_SOUND_OBSERVATION",
         }:
@@ -161,9 +183,44 @@ establish a layout requirement. Return null when no layout requirement is stated
                 return PropertyExpressionResolution(needs_clarification=True)
         else:
             return PropertyExpressionResolution(needs_clarification=True)
+        if claim_nature == "REALITY_ACTION":
+            if property_id != focused_property_id:
+                return PropertyExpressionResolution()
+            return PropertyExpressionResolution(
+                rent_verification_property_id=property_id,
+            )
         return PropertyExpressionResolution(
             property_id, reality_type, attention_property_id=attention_property_id,
         )
+
+    def request_rent_verification(
+        self, conversation_id: str, property_id: str, user_text: str,
+    ) -> Property | None:
+        home = self._properties.get_scoped(property_id, conversation_id)
+        if (
+            home is None or home.geographic_status != GeographicStatus.GROUNDED
+            or not home.title or home.lng is None or home.lat is None
+            or home.rent is not None or home.meaningful_unknown is not None
+        ):
+            return None
+        state_hash = hashlib.sha256(json.dumps({
+            "version": "user-rent-verification-v0.1",
+            "property_id": property_id,
+            "user_expression": user_text,
+        }, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        if (
+            home.reality_action_type == "PUBLIC_EVIDENCE"
+            and home.reality_action_state_hash == state_hash
+        ):
+            return home
+        return self._properties.update_reality_action(
+            property_id, conversation_id,
+            action_type="PUBLIC_EVIDENCE",
+            label=USER_INITIATED_RENT_ACTION_LABEL,
+            why=USER_INITIATED_RENT_ACTION_WHY,
+            state_hash=state_hash,
+        )
+
 
     @staticmethod
     def _grounded_attention_target(

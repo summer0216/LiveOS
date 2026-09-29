@@ -401,11 +401,16 @@ export default function HomePage() {
 
   const enterPossibleLifeFocus = useCallback(async (home: Property) => {
     let reality = home;
-    if (!reality.grocery_external_id) {
+    const presentedAction = Boolean(
+      home.meaningful_unknown && home.reality_action_type && home.reality_action_label,
+    );
+    if (!presentedAction && !reality.grocery_external_id) {
       const grounded = await handleDailyGrocery(home.id);
       if (grounded) reality = grounded;
     }
-    await handleLivingMeaning(reality.id);
+    if (!presentedAction) {
+      await handleLivingMeaning(reality.id);
+    }
     const groundedContext = await handlePlaceContext(reality.id);
     if (groundedContext?.place_context?.length) {
       await handlePlaceUnderstanding(reality.id);
@@ -1015,6 +1020,10 @@ export default function HomePage() {
           const rentActionPending = pendingAction?.propertyId === property.id
             && pendingAction.type === 'CONFIRM_RENT'
             && pendingAction.status === 'PENDING';
+          const userInitiatedPublicRentAction = singleFocused
+            && !property.meaningful_unknown
+            && property.reality_action_type === 'PUBLIC_EVIDENCE'
+            && Boolean(property.reality_action_label);
           const receded = focusedChoiceIds.length > 0 && !focused;
           const budgetMeaning = deriveBudgetMeaning(profile?.budget, property);
           const confirmedWithinBudget = budgetMeaning === '预算内';
@@ -1112,7 +1121,7 @@ export default function HomePage() {
                   </>
                 )}
               </button>
-              {singleFocused && property.rent === null && (
+              {singleFocused && property.rent === null && !userInitiatedPublicRentAction && (
                 <button
                   type="button"
                   className={`choice-reality-action pointer-events-auto ${rentActionPending ? 'choice-reality-action-pending' : ''}`}
@@ -1236,7 +1245,83 @@ export default function HomePage() {
               <p className="mt-2 text-xs leading-relaxed text-slate-700">{singleFocusedHome.meaningful_unknown}</p>
               {singleFocusedHome.meaningful_unknown_why && <p className="mt-1 text-xs text-slate-500">{singleFocusedHome.meaningful_unknown_why}</p>}
               {singleFocusedHome.reality_action_label && (
-                <p className="mt-2 text-xs text-slate-600">下一步 · {singleFocusedHome.reality_action_label}</p>
+                <div className="mt-2 text-xs text-slate-600">
+                  下一步 · {singleFocusedHome.reality_action_type === 'PUBLIC_EVIDENCE'
+                    && !singleFocusedHome.public_rent_evidence ? (
+                    <button
+                      type="button"
+                      disabled={publicActionExecution?.propertyId === singleFocusedHome.id
+                        && publicActionExecution.status === 'loading'}
+                      className="underline underline-offset-4 disabled:no-underline"
+                      onClick={() => { void handlePublicRentAction(singleFocusedHome.id); }}
+                    >
+                      {singleFocusedHome.reality_action_label}
+                    </button>
+                  ) : singleFocusedHome.reality_action_label}
+                  {publicActionExecution?.propertyId === singleFocusedHome.id
+                    && publicActionExecution.status === 'loading' && <p>正在获取公开证据…</p>}
+                  {publicActionExecution?.propertyId === singleFocusedHome.id
+                    && publicActionExecution.status === 'failed' && <p>暂未获得可追溯证据</p>}
+                </div>
+              )}
+              {singleFocusedHome.public_action_outcome === 'NO_EVIDENCE' && (
+                <p className="mt-2 text-xs text-slate-500">暂未获得可追溯证据</p>
+              )}
+              {singleFocusedHome.public_rent_evidence && (
+                <p className="mt-2 text-xs text-slate-600">
+                  公开证据 · 尚未确认为租金现实 ·{' '}
+                  <a href={singleFocusedHome.public_rent_evidence.source_reference}
+                    target="_blank" rel="noopener noreferrer" className="underline">
+                    {singleFocusedHome.public_rent_evidence.source_title}
+                  </a>
+                  {' · '}{singleFocusedHome.public_rent_evidence.property_text.slice(0, 240)}
+                  {' · 获取于 '}{singleFocusedHome.public_rent_evidence.observed_at}
+                </p>
+              )}
+            </section>
+          )}
+          {!singleFocusedHome.meaningful_unknown
+            && singleFocusedHome.reality_action_type === 'PUBLIC_EVIDENCE'
+            && singleFocusedHome.reality_action_label && (
+            <section className="mt-4" aria-label="现实行动">
+              <h2 className="text-xs font-semibold text-slate-700">下一步</h2>
+              {singleFocusedHome.public_rent_evidence ? (
+                <p className="mt-2 text-xs text-slate-600">{singleFocusedHome.reality_action_label}</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={publicActionExecution?.propertyId === singleFocusedHome.id
+                    && publicActionExecution.status === 'loading'}
+                  className="mt-2 text-left text-xs text-slate-700 underline underline-offset-4 disabled:no-underline"
+                  onClick={() => { void handlePublicRentAction(singleFocusedHome.id); }}
+                >
+                  {singleFocusedHome.reality_action_label}
+                </button>
+              )}
+              {singleFocusedHome.reality_action_why && (
+                <p className="mt-1 text-xs text-slate-500">{singleFocusedHome.reality_action_why}</p>
+              )}
+              {publicActionExecution?.propertyId === singleFocusedHome.id
+                && publicActionExecution.status === 'loading' && (
+                <p role="status" className="mt-2 text-xs text-slate-600">正在获取公开证据…</p>
+              )}
+              {publicActionExecution?.propertyId === singleFocusedHome.id
+                && publicActionExecution.status === 'failed' && (
+                <p role="status" className="mt-2 text-xs text-slate-500">暂未获得可追溯证据</p>
+              )}
+              {singleFocusedHome.public_action_outcome === 'NO_EVIDENCE' && (
+                <p className="mt-2 text-xs text-slate-500">暂未获得可追溯证据</p>
+              )}
+              {singleFocusedHome.public_rent_evidence && (
+                <p className="mt-2 text-xs text-slate-600">
+                  公开证据 · 尚未确认为租金现实 ·{' '}
+                  <a href={singleFocusedHome.public_rent_evidence.source_reference}
+                    target="_blank" rel="noopener noreferrer" className="underline">
+                    {singleFocusedHome.public_rent_evidence.source_title}
+                  </a>
+                  {' · '}{singleFocusedHome.public_rent_evidence.property_text.slice(0, 240)}
+                  {' · 获取于 '}{singleFocusedHome.public_rent_evidence.observed_at}
+                </p>
               )}
             </section>
           )}
