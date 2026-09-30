@@ -21,7 +21,7 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, userDecisionExpression, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, userDecisionExpression, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, workFocusSubjectIdentity, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
@@ -47,6 +47,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
   actionExecutionStatus?: 'idle' | 'loading' | 'failed';
   onExecutePublicAction: () => void;
   focused: boolean;
+  workFocusSubjectIdentity?: string;
   onToggle: () => void;
   rent: number | null;
   budget: number | null;
@@ -104,10 +105,10 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
           return <line key={i} x1={anchor.x} y1={anchor.y} x2={end.x} y2={end.y} stroke="currentColor" strokeWidth="0.75" className="text-slate-500/50" />;
         })}
       </svg>
-      <span data-world-anchor="work" className={`object-mark absolute -translate-x-1/2 -translate-y-1/2 ${focused ? 'opacity-50' : ''}`} style={{ left: work.x, top: work.y }} aria-hidden="true">●</span>
+      <span data-world-anchor="work" data-world-focus={workFocusSubjectIdentity ? 'subject' : undefined} data-focus-subject-identity={workFocusSubjectIdentity} className={`object-mark absolute -translate-x-1/2 -translate-y-1/2 ${focused ? 'opacity-50' : ''}`} style={{ left: work.x, top: work.y }} aria-hidden="true">●</span>
       <button data-world-anchor="home" type="button" className="object-mark pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0" style={{ left: home.x, top: home.y }} aria-label={`${focused ? '退出聚焦' : '聚焦'} ${home.name}锚点`} aria-pressed={focused} onClick={event => { event.stopPropagation(); onToggle(); }}>{focused ? '◉' : '●'}</button>
       {focused && grocery && <span className="object-mark absolute -translate-x-1/2 -translate-y-1/2 text-emerald-800" style={{ left: grocery.x, top: grocery.y }} aria-hidden="true">○</span>}
-      <div ref={workRef} data-world-label="work" className={`world-object absolute w-max whitespace-nowrap ${focused ? 'world-object-context' : ''}`} style={{ left: workBox.x, top: workBox.y }} aria-label={`${work.name}，工作`}>
+      <div ref={workRef} data-world-label="work" data-world-focus={workFocusSubjectIdentity ? 'subject' : undefined} data-focus-subject-identity={workFocusSubjectIdentity} className={`world-object absolute w-max whitespace-nowrap ${focused ? 'world-object-context' : ''}`} style={{ left: workBox.x, top: workBox.y }} aria-label={`${work.name}，工作`}>
         <span className="object-name">{work.name}</span><span className="object-kicker mt-1">工作</span>
       </div>
       <div ref={homeRef} data-world-label="home" className={`world-object pointer-events-auto absolute w-max whitespace-nowrap ${focused ? 'font-semibold' : ''}`} style={{ left: homeBox.x, top: homeBox.y }}>

@@ -10,7 +10,10 @@ import AMapGround, {
   type GeographicProjection,
 } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
-import { applyGroundedConversationFocus } from '@/lib/conversationFocus';
+import {
+  applyGroundedConversationFocus,
+  resolveWorkSubjectProjectionFocus,
+} from '@/lib/conversationFocus';
 import {
   decisionGeographyZoom,
   geographicScaleZoom,
@@ -22,6 +25,7 @@ import {
   shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
 import { streamMessage } from '@/services/chat';
+import type { WorkSubjectFocus } from '@/lib/worldConsequence';
 import {
   getDecisionGeography,
   type DecisionGeography,
@@ -117,6 +121,7 @@ export default function HomePage() {
     DecisionGeography | null
   >(null);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
+  const [focusedWorkSubject, setFocusedWorkSubject] = useState<WorkSubjectFocus | null>(null);
   const [focusedReadingElement, setFocusedReadingElement] = useState<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
@@ -244,6 +249,7 @@ export default function HomePage() {
   const clearChoiceFocus = useCallback(() => {
     setRentAnswerPropertyId(null);
     setFocusedChoiceIds([]);
+    setFocusedWorkSubject(null);
     setPendingAction(null);
   }, []);
 
@@ -279,6 +285,7 @@ export default function HomePage() {
   }, [reorient, restoredDecisionGeography]);
 
   const focusChoice = useCallback((propertyId: string) => {
+    setFocusedWorkSubject(null);
     setPendingAction((current) => current?.propertyId === propertyId ? current : null);
     setFocusedChoiceIds((current) => {
       if (current.includes(propertyId)) return current;
@@ -288,6 +295,7 @@ export default function HomePage() {
   }, []);
 
   const togglePossibleLifeFocus = useCallback((propertyId: string) => {
+    setFocusedWorkSubject(null);
     setRentAnswerPropertyId(null);
     setPendingAction(null);
     setFocusedChoiceIds((current) => (
@@ -443,6 +451,10 @@ export default function HomePage() {
     groundedWork
     && profile?.geographic_precision === 'AREA'
     && typeof profile.commute_minutes === 'number',
+  );
+  const projectedSubjectFocus = useMemo(
+    () => resolveWorkSubjectProjectionFocus(focusedWorkSubject, profile),
+    [focusedWorkSubject, profile],
   );
 
   useEffect(() => {
@@ -677,8 +689,13 @@ export default function HomePage() {
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
-        onWorldConsequenceReady: (focusPropertyId) => {
-          if (focusPropertyId) {
+        onWorldConsequenceReady: (focusPropertyId, focusSubject) => {
+          if (focusSubject) {
+            setFocusedWorkSubject(focusSubject);
+            setFocusedChoiceIds([]);
+            pendingConversationFocusRef.current = null;
+          } else if (focusPropertyId) {
+            setFocusedWorkSubject(null);
             pendingConversationFocusRef.current = { submitId, propertyId: focusPropertyId };
           }
           void reconcileWorldConsequences().catch((error: unknown) => {
@@ -914,6 +931,7 @@ export default function HomePage() {
                 ? publicActionExecution.status : 'idle'}
               onExecutePublicAction={() => { void handlePublicRentAction(home.id); }}
               focused={focused}
+              workFocusSubjectIdentity={projectedSubjectFocus?.identity}
               rent={home.rent_source === 'USER_PROVIDED' || home.rent_source === 'USER_CONFIRMED_REALITY' || home.rent_source === 'EXTERNAL_SOURCE'
                 ? home.rent : null}
               budget={profile?.budget ?? null}
@@ -942,6 +960,8 @@ export default function HomePage() {
             style={{ left: workPosition.x, top: workPosition.y }}
           >
             <div
+              data-world-focus={projectedSubjectFocus ? 'subject' : undefined}
+              data-focus-subject-identity={projectedSubjectFocus?.identity}
               className={`world-object work-anchor ${focusedChoiceIds.length > 0 ? 'world-object-context' : ''}`}
               aria-label={standaloneWorkReality
                 ? `${groundedWork.displayIdentity}，${workPrecisionUnknown ? '工作区域' : '工作'}`

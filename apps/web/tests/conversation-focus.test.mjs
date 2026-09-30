@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { applyGroundedConversationFocus } from '../lib/conversationFocus.ts';
+import {
+  applyGroundedConversationFocus,
+  resolveWorkSubjectProjectionFocus,
+} from '../lib/conversationFocus.ts';
 import { parseWorldConsequence } from '../lib/worldConsequence.ts';
 
 const home = {
@@ -57,4 +60,38 @@ test('stream transport preserves Subject Focus and existing Property Focus', () 
     focusSubject: undefined,
   });
   assert.deepEqual(parseWorldConsequence(true), {});
+});
+
+test('authoritative Work Subject becomes Projection Focus without replacing World objects', () => {
+  const subject = {
+    identity: '融科资讯中心',
+    geographic_identity: '北京市海淀区融科资讯中心',
+    geographic_precision: 'PLACE',
+    geographic_status: 'GROUNDED',
+    lng: 116.326178,
+    lat: 39.984098,
+    relationship: 'WORK',
+  };
+  const profileWork = {
+    work_location: '融科资讯中心',
+    geographic_identity: '北京市海淀区融科资讯中心',
+    geographic_precision: 'PLACE',
+    geographic_status: 'GROUNDED',
+    lng: 116.326178,
+    lat: 39.984098,
+  };
+  const surroundingWorld = [home];
+
+  assert.equal(resolveWorkSubjectProjectionFocus(subject, profileWork), subject);
+  assert.deepEqual(surroundingWorld, [home]);
+  assert.equal(resolveWorkSubjectProjectionFocus(
+    { ...subject, identity: 'synthetic-work' }, profileWork,
+  ), null);
+
+  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /onWorldConsequenceReady: \(focusPropertyId, focusSubject\)/);
+  assert.match(page, /setFocusedWorkSubject\(focusSubject\);\s*setFocusedChoiceIds\(\[\]\)/);
+  assert.match(page, /data-focus-subject-identity=\{projectedSubjectFocus\?\.identity\}/);
+  assert.match(page, /const focusChoice = useCallback\(\(propertyId: string\) => \{\s*setFocusedWorkSubject\(null\)/);
+  assert.match(page, /groundedChoices\.map\(\(property\) =>/);
 });
