@@ -20,6 +20,7 @@ REQUIRED_TABLES = {
     "decision_geographies",
     "work_subjects",
     "living_time_relationships",
+    "possible_lives",
 }
 
 SCHEMA_STATEMENTS = (
@@ -214,6 +215,23 @@ SCHEMA_STATEMENTS = (
         evidence_reference TEXT NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (owner_id, residence_property_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS possible_lives (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES work_subjects(owner_id) ON DELETE CASCADE,
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        residence_property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        living_time_residence_property_id UUID NOT NULL,
+        personal_meaning_reference TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        CHECK (residence_property_id = living_time_residence_property_id),
+        FOREIGN KEY (owner_id, living_time_residence_property_id)
+            REFERENCES living_time_relationships(owner_id, residence_property_id)
+            ON DELETE CASCADE,
+        UNIQUE (owner_id, residence_property_id)
     )
     """,
     """

@@ -117,7 +117,16 @@ class LivingTimeRelationshipService:
             and commute_requirement_minutes > 0
             else None
         )
-        return LivingTimeAdmission(relationship, requirement)
+        admission = LivingTimeAdmission(relationship, requirement)
+        if requirement is not None:
+            from app.services.possible_life_admission import (
+                possible_life_admission_service,
+            )
+
+            possible_life_admission_service.admit(
+                conversation_id, residence.id or "",
+            )
+        return admission
 
     def admit_for_authoritative_work(
         self,

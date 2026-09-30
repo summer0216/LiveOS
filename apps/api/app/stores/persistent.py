@@ -15,6 +15,7 @@ from app.models.conversation import Conversation, ConversationMessage
 from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.living_time import LivingTimeRelationship
+from app.models.possible_life import PossibleLife
 from app.models.profile import LivingProfile
 from app.models.property import (
     CommuteMode,
@@ -495,6 +496,89 @@ class LivingTimeRelationshipStore:
         if row is None:
             raise RuntimeError("Living Time relationship could not be persisted.")
         return self._from(row)
+
+
+class PossibleLifeStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    def owner_id(self, conversation_id: str) -> str | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        return str(owner_id) if owner_id is not None else None
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> PossibleLife:
+        return PossibleLife(
+            id=str(row["id"]),
+            work_subject_owner_id=str(row["owner_id"]),
+            residence_property_id=str(row["residence_property_id"]),
+            living_time_residence_property_id=str(
+                row["living_time_residence_property_id"]
+            ),
+            personal_meaning_reference=row["personal_meaning_reference"],
+        )
+
+    def save(self, conversation_id: str, possible_life: PossibleLife) -> PossibleLife:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        residence_uuid = optional_uuid(possible_life.residence_property_id)
+        living_time_uuid = optional_uuid(
+            possible_life.living_time_residence_property_id
+        )
+        if (
+            owner_id is None
+            or conversation_uuid is None
+            or residence_uuid is None
+            or living_time_uuid is None
+            or str(owner_id) != possible_life.work_subject_owner_id
+        ):
+            raise ValueError("Possible Life references could not be resolved.")
+        timestamp = now()
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO possible_lives(
+                    id, owner_id, source_conversation_id, residence_property_id,
+                    living_time_residence_property_id,
+                    personal_meaning_reference, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, residence_property_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    living_time_residence_property_id =
+                        EXCLUDED.living_time_residence_property_id,
+                    personal_meaning_reference = EXCLUDED.personal_meaning_reference,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(possible_life.id),
+                    owner_id,
+                    conversation_uuid,
+                    residence_uuid,
+                    living_time_uuid,
+                    possible_life.personal_meaning_reference,
+                    timestamp,
+                    timestamp,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Possible Life could not be persisted.")
+        return self._from(row)
+
+    def list(self, conversation_id: str) -> list[PossibleLife]:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return []
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM possible_lives
+                WHERE owner_id = %s
+                ORDER BY created_at, id
+                """,
+                (owner_id,),
+            ).fetchall()
+        return [self._from(row) for row in rows]
 
 
 class DecisionGeographyStore:
