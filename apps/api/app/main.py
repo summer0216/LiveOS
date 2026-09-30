@@ -1,17 +1,17 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
 from app.api import chat_router
 from app.api.conversation import router as conversation_router
+from app.api.decision_geography import router as decision_geography_router
 from app.api.decision_history import router as decision_history_router
 from app.api.decisions import router as decisions_router
-from app.api.decision_geography import router as decision_geography_router
 from app.api.memories import router as memories_router
+from app.api.possible_lives import router as possible_lives_router
 from app.api.profile import router as profile_router
 from app.api.properties import router as properties_router
 from app.api.resume import router as resume_router
 from app.core.config import settings
 from app.stores.runtime import database
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="LiveOS API",
@@ -31,6 +31,7 @@ app.add_middleware(
 app.include_router(chat_router, prefix="/api")
 app.include_router(conversation_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(possible_lives_router, prefix="/api")
 app.include_router(properties_router, prefix="/api")
 app.include_router(decisions_router, prefix="/api")
 app.include_router(decision_geography_router, prefix="/api")

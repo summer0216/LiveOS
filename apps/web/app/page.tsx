@@ -24,6 +24,7 @@ import {
   isGroundedDecisionGeography,
   shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
+import { resolvePossibleLifeWorld } from '@/lib/possibleLifeWorld';
 import { streamMessage } from '@/services/chat';
 import type { WorkSubjectFocus } from '@/lib/worldConsequence';
 import {
@@ -41,6 +42,10 @@ import {
   type Property,
 } from '@/services/property';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
+import {
+  getPossibleLives,
+  type PossibleLifeWorldState,
+} from '@/services/possibleLife';
 
 type ScenePhase = 'empty' | 'forming' | 'formed';
 type LocationResolution = 'pending' | 'resolved' | 'unknown';
@@ -100,6 +105,7 @@ export default function HomePage() {
   );
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [possibleLives, setPossibleLives] = useState<PossibleLifeWorldState[]>([]);
   const [projection, setProjection] = useState<GeographicProjection | null>(null);
   const [geographicGroundReady, setGeographicGroundReady] = useState(false);
   const [phase, setPhase] = useState<ScenePhase>('empty');
@@ -202,9 +208,11 @@ export default function HomePage() {
       getLivingProfile(conversationId),
       getProperties(conversationId),
       getDecisionGeography(conversationId),
-    ]).then(([nextProfile, nextProperties, decisionGeography]) => {
+      getPossibleLives(conversationId),
+    ]).then(([nextProfile, nextProperties, decisionGeography, nextPossibleLives]) => {
       if (!active) return;
       setProperties(nextProperties);
+      setPossibleLives(nextPossibleLives);
       setRestoredDecisionGeography(decisionGeography);
       if (isGroundedDecisionGeography(decisionGeography)) {
         setDecisionWorldActive(true);
@@ -462,6 +470,10 @@ export default function HomePage() {
     const frame = requestAnimationFrame(() => setWorkVisible(true));
     return () => cancelAnimationFrame(frame);
   }, [geographicGroundReady, groundedWork]);
+  const possibleLifeResidenceIds = useMemo(
+    () => new Set(possibleLives.map(item => item.residence_property_id)),
+    [possibleLives],
+  );
   const groundedChoices = useMemo(
     () => [
       ...properties.filter(
@@ -478,6 +490,7 @@ export default function HomePage() {
           property.geographic_status === 'GROUNDED'
           && property.conversation_id === conversationId
           && property.provenance === 'AMAP_RESIDENTIAL_POI'
+          && possibleLifeResidenceIds.has(property.id)
           && Boolean(property.external_id && property.title?.trim())
           && typeof property.commute_minutes === 'number'
           && Number.isFinite(property.commute_minutes)
@@ -487,12 +500,9 @@ export default function HomePage() {
           && Number.isFinite(property.lng) && Math.abs(property.lng) <= 180
           && typeof property.lat === 'number'
           && Number.isFinite(property.lat) && Math.abs(property.lat) <= 90,
-      ).slice(
-        0,
-        groundedWork && profile?.geographic_precision === 'PLACE' ? 1 : 0,
       ),
     ],
-    [conversationId, groundedWork, profile?.geographic_precision, properties],
+    [conversationId, possibleLifeResidenceIds, properties],
   );
   const standaloneWorkReality = true;
   const housingFitLocations = useMemo(
@@ -655,13 +665,15 @@ export default function HomePage() {
       });
       const reconcileWorldConsequences = async () => {
         const revision = ++consequenceRevision;
-        const [durableProfile, durableProperties] = await Promise.all([
+        const [durableProfile, durableProperties, durablePossibleLives] = await Promise.all([
           getLivingProfile(currentConversationId),
           getProperties(currentConversationId),
+          getPossibleLives(currentConversationId),
         ]);
         if (latestSubmitIdRef.current !== submitId || revision !== consequenceRevision) return;
         setProfile(durableProfile);
         setProperties(durableProperties);
+        setPossibleLives(durablePossibleLives);
         const pendingFocus = pendingConversationFocusRef.current;
         if (pendingFocus?.submitId === submitId && applyGroundedConversationFocus(
           pendingFocus.propertyId, currentConversationId, durableProperties, focusChoice,
@@ -715,10 +727,11 @@ export default function HomePage() {
         chatCompletion.then(() => undefined),
       ]);
       const earlyRevision = consequenceRevision;
-      const [nextProfile, nextProperties, decisionGeography] = await Promise.all([
+      const [nextProfile, nextProperties, decisionGeography, nextPossibleLives] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
         getDecisionGeography(currentConversationId),
+        getPossibleLives(currentConversationId),
       ]);
       if (!conversationId) {
         setConversationId(currentConversationId);
@@ -732,6 +745,7 @@ export default function HomePage() {
       if (earlyRevision === consequenceRevision) {
         if (nextProfile) setProfile(nextProfile);
         setProperties(nextProperties);
+        setPossibleLives(nextPossibleLives);
         setPendingAction((current) => {
           if (!current) return null;
           const target = nextProperties.find(({ id }) => id === current.propertyId);
@@ -751,9 +765,10 @@ export default function HomePage() {
         reorient?.(currentLocation, geographicScaleZoom('DISTRICT', 'SEE'));
       }
       await chatCompletion;
-      const [completedProfile, completedProperties] = await Promise.all([
+      const [completedProfile, completedProperties, completedPossibleLives] = await Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
+        getPossibleLives(currentConversationId),
       ]);
       if (latestSubmitIdRef.current !== submitId) return;
       if (completedProfile) {
@@ -767,6 +782,7 @@ export default function HomePage() {
         }
       }
       setProperties(completedProperties);
+      setPossibleLives(completedPossibleLives);
       setPendingAction((current) => {
         if (!current) return null;
         const target = completedProperties.find(({ id }) => id === current.propertyId);
@@ -776,13 +792,15 @@ export default function HomePage() {
       console.error('Failed to form First Reality:', error);
       if (latestSubmitIdRef.current === submitId) {
         try {
-          const [persistedProfile, persistedProperties] = await Promise.all([
+          const [persistedProfile, persistedProperties, persistedPossibleLives] = await Promise.all([
             getLivingProfile(currentConversationId),
             getProperties(currentConversationId),
+            getPossibleLives(currentConversationId),
           ]);
           if (latestSubmitIdRef.current !== submitId) return;
           setProfile(persistedProfile);
           setProperties(persistedProperties);
+          setPossibleLives(persistedPossibleLives);
           setPhase(
             persistedProfile?.geographic_status === 'GROUNDED'
               ? 'formed'
@@ -814,6 +832,10 @@ export default function HomePage() {
   const workPosition = useMemo(
     () => groundedWork && projection ? projection(groundedWork) : null,
     [groundedWork, projection],
+  );
+  const projectedPossibleLives = useMemo(
+    () => resolvePossibleLifeWorld(possibleLives, properties),
+    [possibleLives, properties],
   );
   const choicePositions = useMemo(
     () => groundedChoices.reduce<Record<string, { x: number; y: number }>>(
@@ -888,14 +910,17 @@ export default function HomePage() {
         aria-label="Living World"
         className={`relative z-10 min-h-screen ${decisionWorldActive ? 'pointer-events-none' : ''}`}
       >
-        {geographicGroundReady && workVisible && workPosition && groundedChoices.map((home) => {
+        {geographicGroundReady && workVisible && projection && projectedPossibleLives.map(({ possibleLife, residence: home }) => {
           if (home.provenance !== 'AMAP_RESIDENTIAL_POI') return null;
           const position = choicePositions[home.id];
           if (!position) return null;
+          const possibleLifeWorkPosition = projection({
+            lng: possibleLife.work_subject.lng,
+            lat: possibleLife.work_subject.lat,
+          });
           const focused = focusedChoiceIds.includes(home.id);
-          const meaning = `${home.commute_minutes}min · ${home.commute_mode === 'WALKING' ? '步行' : '公共交通'}`;
-          const groceryPosition = projection
-            && typeof home.grocery_lng === 'number'
+          const meaning = `${possibleLife.living_time.travel_minutes}min · ${possibleLife.living_time.travel_mode === 'WALKING' ? '步行' : '公共交通'}`;
+          const groceryPosition = typeof home.grocery_lng === 'number'
             && typeof home.grocery_lat === 'number'
             && typeof home.grocery_walking_minutes === 'number'
             ? {
@@ -905,8 +930,15 @@ export default function HomePage() {
             : undefined;
           return (
             <PossibleLifeProjection
-              key={home.id}
-              work={{ ...workPosition, name: groundedWork?.displayIdentity ?? '' }}
+              key={possibleLife.id}
+              possibleLifeId={possibleLife.id}
+              residencePropertyId={possibleLife.residence_property_id}
+              livingTimeResidencePropertyId={possibleLife.living_time_residence_property_id}
+              personalMeaningReference={possibleLife.personal_meaning_reference}
+              work={{
+                ...possibleLifeWorkPosition,
+                name: possibleLife.work_subject.identity,
+              }}
               home={{ ...position, name: home.title ?? '' }}
               grocery={groceryPosition}
               meaning={meaning}

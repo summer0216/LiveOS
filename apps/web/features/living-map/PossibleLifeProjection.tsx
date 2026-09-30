@@ -21,7 +21,11 @@ function positions(anchor: Point, size: Size): Box[] {
   ];
 }
 
-export default function PossibleLifeProjection({ work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, userDecisionExpression, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, workFocusSubjectIdentity, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+export default function PossibleLifeProjection({ possibleLifeId, residencePropertyId, livingTimeResidencePropertyId, personalMeaningReference, work, home, grocery, meaning, livingMeaning, currentJudgment, decisionReadiness, userDecisionExpression, independentKitchen, indoorSoundObservation, meaningfulUnknown, meaningfulUnknownWhy, realityActionLabel, realityActionWhy, realityActionType, publicRentEvidence, publicActionOutcome, feedbackMoveLabel, feedbackMoveWhy, actionExecutionStatus = 'idle', onExecutePublicAction, focused, workFocusSubjectIdentity, onToggle, rent, budget, onAskRent, rentSourceAvailable = false, rentLookupStatus = 'idle' }: {
+  possibleLifeId: string;
+  residencePropertyId: string;
+  livingTimeResidencePropertyId: string;
+  personalMeaningReference: string;
   work: Point & { name: string };
   home: Point & { name: string };
   grocery?: Point & { walkingMinutes: number };
@@ -96,7 +100,7 @@ export default function PossibleLifeProjection({ work, home, grocery, meaning, l
   });
 
   return (
-    <div className="pointer-events-none absolute inset-0" style={{ visibility: sizes ? 'visible' : 'hidden' }}>
+    <div data-possible-life-id={possibleLifeId} data-residence-property-id={residencePropertyId} data-living-time-residence-property-id={livingTimeResidencePropertyId} data-personal-meaning-reference={personalMeaningReference} className="pointer-events-none absolute inset-0" style={{ visibility: sizes ? 'visible' : 'hidden' }}>
       <svg className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
         <line x1={work.x} y1={work.y} x2={home.x} y2={home.y} stroke="currentColor" strokeWidth={focused ? 1.75 : 1} strokeDasharray="4 5" className={focused ? 'text-slate-800/80' : 'text-slate-500/60'} />
         {focused && grocery && <line x1={home.x} y1={home.y} x2={grocery.x} y2={grocery.y} stroke="currentColor" strokeWidth="1" strokeDasharray="2 5" className="text-emerald-800/60" />}
