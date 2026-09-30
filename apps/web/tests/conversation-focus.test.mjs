@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import { applyGroundedConversationFocus } from '../lib/conversationFocus.ts';
+import { parseWorldConsequence } from '../lib/worldConsequence.ts';
 
 const home = {
   id: 'home-1', conversation_id: 'conversation-1',
@@ -35,4 +36,25 @@ test('grounded Conversation consequence uses the existing manual Focus callback 
   const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
   assert.match(page, /applyGroundedConversationFocus\(\s*pendingFocus\.propertyId, currentConversationId, durableProperties, focusChoice/);
   assert.match(page, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*focusChoice\(property\.id\)/);
+});
+
+test('stream transport preserves Subject Focus and existing Property Focus', () => {
+  const subject = {
+    identity: '融科资讯中心',
+    geographic_identity: '北京市海淀区融科资讯中心',
+    geographic_precision: 'PLACE',
+    geographic_status: 'GROUNDED',
+    lng: 116.326178,
+    lat: 39.984098,
+    relationship: 'WORK',
+  };
+  assert.deepEqual(parseWorldConsequence({ focus_subject: subject }), {
+    focusPropertyId: undefined,
+    focusSubject: subject,
+  });
+  assert.deepEqual(parseWorldConsequence({ focus_property_id: 'property-1' }), {
+    focusPropertyId: 'property-1',
+    focusSubject: undefined,
+  });
+  assert.deepEqual(parseWorldConsequence(true), {});
 });

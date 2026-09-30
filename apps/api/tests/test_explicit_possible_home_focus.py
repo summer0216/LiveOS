@@ -1,11 +1,14 @@
 """A grounded user-named Home enters SEE without an automatic Focus command."""
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.api.chat import _stream_events
 from app.main import app
 from app.models.decision_geography import DecisionGeography
 from app.models.property import GeographicPrecision, Property
+from app.models.work_subject import WorkSubject
 from app.services.chat_service import (
     WorldConsequenceReady,
     _ground_explicit_possible_home,
@@ -47,3 +50,40 @@ def test_unique_grounded_user_home_remains_see_until_explicit_focus(monkeypatch)
     event = next(item for item in events if "event: world-consequence-ready" in item)
     assert "data: true" in event
     assert "focus_property_id" not in event
+
+
+def test_world_consequence_transport_preserves_subject_and_property_focus():
+    subject = WorkSubject(
+        identity="融科资讯中心",
+        geographic_identity="北京市海淀区融科资讯中心",
+        geographic_precision="PLACE",
+        geographic_status="GROUNDED",
+        lng=116.326178,
+        lat=39.984098,
+    )
+    subject_event = next(
+        item for item in _stream_events(iter([
+            WorldConsequenceReady(focus_subject=subject),
+        ]))
+        if "event: world-consequence-ready" in item
+    )
+    subject_payload = json.loads(subject_event.split("data: ", 1)[1])
+    assert subject_payload == {"focus_subject": {
+        "identity": "融科资讯中心",
+        "geographic_identity": "北京市海淀区融科资讯中心",
+        "geographic_precision": "PLACE",
+        "geographic_status": "GROUNDED",
+        "lng": 116.326178,
+        "lat": 39.984098,
+        "relationship": "WORK",
+    }}
+
+    property_event = next(
+        item for item in _stream_events(iter([
+            WorldConsequenceReady(focus_property_id="property-1"),
+        ]))
+        if "event: world-consequence-ready" in item
+    )
+    assert json.loads(property_event.split("data: ", 1)[1]) == {
+        "focus_property_id": "property-1",
+    }

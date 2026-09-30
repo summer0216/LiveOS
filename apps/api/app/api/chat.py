@@ -2,6 +2,7 @@ import json
 import logging
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from dataclasses import asdict
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
@@ -85,13 +86,16 @@ def _stream_events(
                 yield "event: world-state-ready\ndata: true\n\n"
                 continue
             if isinstance(chunk, WorldConsequenceReady):
-                payload = (
-                    {"focus_property_id": chunk.focus_property_id}
-                    if chunk.focus_property_id else True
-                )
+                payload: bool | dict[str, object] = {}
+                if chunk.focus_property_id:
+                    payload["focus_property_id"] = chunk.focus_property_id
+                if chunk.focus_subject is not None:
+                    payload["focus_subject"] = asdict(chunk.focus_subject)
+                if not payload:
+                    payload = True
                 yield (
                     "event: world-consequence-ready\n"
-                    f"data: {json.dumps(payload)}\n\n"
+                    f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                 )
                 continue
             if isinstance(chunk, PropertyGroundingResponse):
