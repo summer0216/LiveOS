@@ -4,10 +4,18 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from app.main import app
 from app.models.conversation import ConversationMessage
 from app.models.decision_geography import DecisionGeography
+from app.models.living_time import LivingTimeRelationship
+from app.models.possible_life import PossibleLife
+from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.profile import LivingProfile
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
-from app.models.property import GeographicPrecision, GeographicStatus, Property
+from app.models.property import (
+    CommuteMode,
+    GeographicPrecision,
+    GeographicStatus,
+    Property,
+)
 from app.models.work_subject import WorkSubject
 from app.services.chat_service import WorldConsequenceReady, chat_service
 from app.services.conversation_manager import conversation_manager
@@ -22,7 +30,13 @@ from app.services.user_reality_return import (
     UserRealityReturn,
     user_reality_return,
 )
-from app.stores.runtime import profile_store, work_subject_store
+from app.stores.runtime import (
+    living_time_relationship_store,
+    possible_life_personal_meaning_store,
+    possible_life_store,
+    profile_store,
+    work_subject_store,
+)
 from fastapi.testclient import TestClient
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
@@ -111,6 +125,174 @@ def test_authoritative_work_subject_can_become_attention_target():
 
     assert resolution.attention_subject == subject
     assert resolution.attention_property_id is None
+
+
+def test_authoritative_possible_life_meaning_can_become_attention_target():
+    cid = uuid_for("authoritative-possible-life-meaning-attention")
+    create_owned_conversation(TestClient(app), cid)
+    subject = work_subject_store.save(cid, WorkSubject(
+        identity="融科资讯中心",
+        geographic_identity="北京市海淀区融科资讯中心",
+        geographic_precision="PLACE",
+        geographic_status="GROUNDED",
+        lng=116.316176,
+        lat=39.982403,
+    ))
+    owner_id = possible_life_store.owner_id(cid)
+    assert owner_id is not None
+
+    possible_lives = []
+    meanings = []
+    homes = []
+    for index, (title, minutes) in enumerate((("融科·昆仑巢", 1), ("新科祥园", 5))):
+        home = property_manager.create(cid, Property(
+            title=title,
+            geographic_identity=f"北京市海淀区{title}",
+            geographic_precision=GeographicPrecision.COMMUNITY,
+            geographic_status=GeographicStatus.GROUNDED,
+            lng=116.31 + index * 0.01,
+            lat=39.98,
+        ))
+        assert home.id is not None
+        living_time_relationship_store.save(cid, LivingTimeRelationship(
+            residence_property_id=home.id,
+            residence_identity=home.title,
+            residence_geographic_identity=home.geographic_identity or "",
+            work_subject_identity=subject.identity,
+            work_geographic_identity=subject.geographic_identity,
+            travel_minutes=minutes,
+            travel_mode=CommuteMode.WALKING,
+            evidence_source="AMAP_DIRECTION_API",
+            evidence_reference=f"route-{index}",
+        ))
+        possible_life = possible_life_store.save(cid, PossibleLife(
+            id=uuid_for(f"possible-life-attention-{index}"),
+            work_subject_owner_id=owner_id,
+            residence_property_id=home.id,
+            living_time_residence_property_id=home.id,
+            personal_meaning_reference="living_profile.commute_minutes",
+        ))
+        meaning = possible_life_personal_meaning_store.save(
+            cid,
+            PossibleLifePersonalMeaning(
+                id=uuid_for(f"possible-life-attention-meaning-{index}"),
+                possible_life_id=possible_life.id,
+                meaning=f"{minutes}分钟步行通勤符合当前生活约束。",
+                living_time_residence_property_id=home.id,
+                actual_travel_minutes=minutes,
+                actual_travel_mode=CommuteMode.WALKING,
+                route_evidence_source="AMAP_DIRECTION_API",
+                route_evidence_reference=f"route-{index}",
+                requirement_reference="living_profile.commute_minutes",
+                maximum_commute_minutes=30,
+                requirement_satisfied=True,
+            ),
+        )
+        homes.append(home)
+        possible_lives.append(possible_life)
+        meanings.append(meaning)
+
+    before_lives = possible_life_store.list(cid)
+    before_meanings = possible_life_personal_meaning_store.list(cid)
+
+    class Intelligence:
+        def generate_json(self, prompt, **_kwargs):
+            assert possible_lives[0].id in prompt
+            assert possible_lives[1].id in prompt
+            assert meanings[0].meaning in prompt
+            assert meanings[1].meaning in prompt
+            assert "do not rank, score, recommend" in prompt
+            return json.dumps({
+                "claim_nature": "OTHER",
+                "layout_requirement": None,
+                "reality_type": None,
+                "claim_quote": None,
+                "property_id": None,
+                "binding_evidence": None,
+                "binding_source": None,
+                "attention_property_id": None,
+                "attention_evidence": None,
+                "attention_subject_identity": None,
+                "attention_subject_evidence": None,
+                "attention_possible_life_id": possible_lives[0].id,
+                "attention_possible_life_evidence": "最值得我现在关注",
+            }, ensure_ascii=False)
+
+    resolution = UserRealityReturn(intelligence=Intelligence()).resolve_expression(
+        [ConversationMessage("user", "这个1分钟通勤的生活最值得我现在关注")],
+        homes,
+        "这个1分钟通勤的生活最值得我现在关注",
+        conversation_id=cid,
+    )
+
+    target = resolution.attention_possible_life
+    assert target is not None
+    assert target.possible_life == possible_lives[0]
+    assert target.possible_life.id == possible_lives[0].id
+    assert target.personal_meaning == meanings[0]
+    assert not hasattr(target, "score")
+    assert not hasattr(target, "rank")
+
+    class NullPossibleLifeSelectionIntelligence:
+        def generate_json(self, _prompt, **_kwargs):
+            return json.dumps({
+                "claim_nature": "OTHER",
+                "layout_requirement": None,
+                "reality_type": None,
+                "claim_quote": None,
+                "property_id": None,
+                "binding_evidence": None,
+                "binding_source": None,
+                "attention_property_id": None,
+                "attention_evidence": None,
+                "attention_subject_identity": None,
+                "attention_subject_evidence": None,
+                "attention_possible_life_id": None,
+                "attention_possible_life_evidence": None,
+            }, ensure_ascii=False)
+
+    fallback_service = UserRealityReturn(
+        intelligence=NullPossibleLifeSelectionIntelligence(),
+    )
+    explicit_text = "我现在明确关注融科昆仑巢对应的可能生活。"
+    explicit = fallback_service.resolve_expression(
+        [ConversationMessage("user", explicit_text)],
+        homes,
+        explicit_text,
+        conversation_id=cid,
+    )
+    assert explicit.attention_possible_life is not None
+    assert explicit.attention_possible_life.possible_life.id == possible_lives[0].id
+    assert explicit.attention_possible_life.personal_meaning == meanings[0]
+
+    ambiguous_text = "我还在考虑融科·昆仑巢和新科祥园这两个可能生活。"
+    ambiguous = fallback_service.resolve_expression(
+        [ConversationMessage("user", ambiguous_text)],
+        homes,
+        ambiguous_text,
+        conversation_id=cid,
+    )
+    assert ambiguous.attention_possible_life is None
+
+    unrelated_text = "融科·昆仑巢今天附近天气不错。"
+    unrelated = fallback_service.resolve_expression(
+        [ConversationMessage("user", unrelated_text)],
+        homes,
+        unrelated_text,
+        conversation_id=cid,
+    )
+    assert unrelated.attention_possible_life is None
+
+    rejected_text = "我不关注融科·昆仑巢对应的可能生活。"
+    rejected = fallback_service.resolve_expression(
+        [ConversationMessage("user", rejected_text)],
+        homes,
+        rejected_text,
+        conversation_id=cid,
+    )
+    assert rejected.attention_possible_life is None
+    assert possible_life_store.list(cid) == before_lives
+    assert possible_life_personal_meaning_store.list(cid) == before_meanings
 
 
 def test_property_attention_remains_supported_with_subject_attention_fields():

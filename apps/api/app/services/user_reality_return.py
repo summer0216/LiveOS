@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.models.conversation import ConversationMessage
+from app.models.possible_life import PossibleLife
+from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.property import GeographicStatus, Property, PropertyRentSource
 from app.models.work_subject import WorkSubject
 from app.services.external_rent_reality_service import (
@@ -15,9 +17,16 @@ from app.services.external_rent_reality_service import (
     USER_INITIATED_RENT_ACTION_WHY,
 )
 from app.services.property_manager import PropertyManager, property_manager
-from app.stores.persistent import WorkSubjectStore
-from app.stores.runtime import work_subject_store
-
+from app.stores.persistent import (
+    PossibleLifePersonalMeaningStore,
+    PossibleLifeStore,
+    WorkSubjectStore,
+)
+from app.stores.runtime import (
+    possible_life_personal_meaning_store,
+    possible_life_store,
+    work_subject_store,
+)
 
 
 def _amount_is_explicit(user_text: str, amount: int) -> bool:
@@ -35,6 +44,12 @@ def _amount_is_explicit(user_text: str, amount: int) -> bool:
 
 
 @dataclass(frozen=True)
+class PossibleLifeAttentionTarget:
+    possible_life: PossibleLife
+    personal_meaning: PossibleLifePersonalMeaning
+
+
+@dataclass(frozen=True)
 class PropertyExpressionResolution:
     property_id: str | None = None
     reality_type: str | None = None
@@ -43,6 +58,7 @@ class PropertyExpressionResolution:
     attention_property_id: str | None = None
     rent_verification_property_id: str | None = None
     attention_subject: WorkSubject | None = None
+    attention_possible_life: PossibleLifeAttentionTarget | None = None
 
 
 class UserRealityReturn:
@@ -50,10 +66,16 @@ class UserRealityReturn:
         self, *, properties: PropertyManager = property_manager,
         intelligence: AIClient = ai_client,
         subjects: WorkSubjectStore = work_subject_store,
+        possible_lives: PossibleLifeStore = possible_life_store,
+        possible_life_meanings: PossibleLifePersonalMeaningStore = (
+            possible_life_personal_meaning_store
+        ),
     ) -> None:
         self._properties = properties
         self._intelligence = intelligence
         self._subjects = subjects
+        self._possible_lives = possible_lives
+        self._possible_life_meanings = possible_life_meanings
 
     def resolve_expression(
         self, history: list[ConversationMessage], properties: list[Property],
@@ -70,6 +92,16 @@ class UserRealityReturn:
         authoritative_subject = (
             self._subjects.get(conversation_id) if conversation_id else None
         )
+        authoritative_possible_lives = (
+            self._possible_lives.list(conversation_id) if conversation_id else []
+        )
+        possible_life_meanings = {
+            item.possible_life_id: item
+            for item in (
+                self._possible_life_meanings.list(conversation_id)
+                if conversation_id else []
+            )
+        }
         prompt = f"""
 Interpret the CURRENT user expression before any Property Reality admission.
 Classify its nature as PERSONAL_REQUIREMENT, PROPERTY_REALITY, REALITY_ACTION,
@@ -98,6 +130,7 @@ Current message: {json.dumps(user_text, ensure_ascii=False)}
 Focused residence id (context evidence only): {json.dumps(focused_property_id)}
 Grounded residences: {json.dumps([{"id": p.id, "title": p.title, "active_unknown": p.meaningful_unknown if p.meaningful_unknown_state_hash else None} for p in candidates], ensure_ascii=False)}
 Authoritative Work Subject: {json.dumps(self._subject_prompt_value(authoritative_subject), ensure_ascii=False)}
+Authoritative Possible Lives with Personal Meaning: {json.dumps(self._possible_life_prompt_values(authoritative_possible_lives, possible_life_meanings, candidates), ensure_ascii=False)}
 
 Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or REALITY_ACTION or OTHER",
 "layout_requirement": "short exact current-user quote expressing their required room layout" or null,
@@ -109,7 +142,9 @@ Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or
 "attention_property_id": "grounded residence id" or null,
 "attention_evidence": "exact contiguous PRIOR user quote naming that residence" or null,
 "attention_subject_identity": "exact authoritative Work Subject identity" or null,
-"attention_subject_evidence": "exact contiguous USER quote naming that Work Subject" or null}}.
+"attention_subject_evidence": "exact contiguous USER quote naming that Work Subject" or null,
+"attention_possible_life_id": "exact authoritative Possible Life ID" or null,
+"attention_possible_life_evidence": "exact contiguous USER quote selecting that Possible Life" or null}}.
 For PROPERTY_REALITY without reliable referent, return null property_id and
 binding fields. For Focus binding, use FOCUS and null binding_evidence.
 For REALITY_ACTION, use reality_type RENT, an exact current-message request
@@ -134,6 +169,17 @@ identity and cite an exact current or prior USER quote that names it. The Work
 Subject data is context only: never invent a Subject, identity, relationship,
 precision, or coordinates. Return null Subject attention fields when there is no
 authoritative Work Subject or the current expression concerns another subject.
+Set attention_possible_life_id only when the CURRENT expression unambiguously
+selects or continues attention to one authoritative Possible Life that has an
+associated Personal Meaning in the supplied context. Personal Meaning is
+foregrounding context, not a score: do not rank, score, recommend, create, or
+modify Possible Lives or Personal Meaning. Copy the exact Possible Life ID and
+cite an exact current or prior USER quote selecting it. Return null Possible
+Life attention fields when no single authoritative possibility is selected.
+When the CURRENT expression explicitly names one supplied residence_identity
+and speaks about attending to, considering, or foregrounding its possible life,
+select the Possible Life containing that residence and copy its exact ID. The
+user does not need to know or say the Possible Life ID.
 Retain an explicit desired room layout in layout_requirement only when it is
 the user's own requirement, including a terse requirement in a housing-search
 context. Use an exact contiguous current-message quote, at most 60 characters.
@@ -150,6 +196,7 @@ establish a layout requirement. Return null when no layout requirement is stated
         if not isinstance(result, dict) or set(result) - {
             "layout_requirement", "attention_property_id", "attention_evidence",
             "attention_subject_identity", "attention_subject_evidence",
+            "attention_possible_life_id", "attention_possible_life_evidence",
         } != {
             "claim_nature", "reality_type", "claim_quote", "property_id",
             "binding_evidence", "binding_source",
@@ -165,6 +212,27 @@ establish a layout requirement. Return null when no layout requirement is stated
             [*prior_user_texts, user_text],
             authoritative_subject,
         )
+        attention_possible_life = self._authoritative_possible_life_attention_target(
+            result.get("attention_possible_life_id"),
+            result.get("attention_possible_life_evidence"),
+            [*prior_user_texts, user_text],
+            authoritative_possible_lives,
+            possible_life_meanings,
+        )
+        if (
+            attention_possible_life is None
+            and result["claim_nature"] == "OTHER"
+            and result.get("attention_possible_life_id") is None
+            and result.get("attention_possible_life_evidence") is None
+        ):
+            attention_possible_life = (
+                self._explicit_possible_life_attention_target(
+                    user_text,
+                    authoritative_possible_lives,
+                    possible_life_meanings,
+                    candidates,
+                )
+            )
         if result["claim_nature"] == "PERSONAL_REQUIREMENT":
             requirement = result.get("layout_requirement")
             active_layout_property = self._focused_active_layout_property(
@@ -199,11 +267,18 @@ establish a layout requirement. Return null when no layout requirement is stated
                     layout_requirement=requirement,
                     attention_property_id=attention_property_id,
                     attention_subject=attention_subject,
+                    attention_possible_life=attention_possible_life,
                 )
-            return PropertyExpressionResolution(attention_subject=attention_subject)
+            return PropertyExpressionResolution(
+                attention_subject=attention_subject,
+                attention_possible_life=attention_possible_life,
+            )
         claim_nature = result["claim_nature"]
         if claim_nature not in {"PROPERTY_REALITY", "REALITY_ACTION"}:
-            return PropertyExpressionResolution(attention_subject=attention_subject)
+            return PropertyExpressionResolution(
+                attention_subject=attention_subject,
+                attention_possible_life=attention_possible_life,
+            )
         reality_type = result["reality_type"]
         if claim_nature == "REALITY_ACTION":
             if (
@@ -247,7 +322,103 @@ establish a layout requirement. Return null when no layout requirement is stated
         return PropertyExpressionResolution(
             property_id, reality_type, attention_property_id=attention_property_id,
             attention_subject=attention_subject,
+            attention_possible_life=attention_possible_life,
         )
+
+    @staticmethod
+    def _possible_life_prompt_values(
+        possible_lives: list[PossibleLife],
+        meanings: dict[str, PossibleLifePersonalMeaning],
+        properties: list[Property],
+    ) -> list[dict[str, object]]:
+        residences = {home.id: home for home in properties}
+        values = []
+        for possible_life in possible_lives:
+            meaning = meanings.get(possible_life.id)
+            if meaning is None:
+                continue
+            residence = residences.get(possible_life.residence_property_id)
+            values.append({
+                "id": possible_life.id,
+                "residence_property_id": possible_life.residence_property_id,
+                "residence_identity": residence.title if residence else None,
+                "living_time_relationship_id": (
+                    possible_life.living_time_residence_property_id
+                ),
+                "personal_meaning": {
+                    "id": meaning.id,
+                    "meaning": meaning.meaning,
+                    "actual_travel_minutes": meaning.actual_travel_minutes,
+                    "actual_travel_mode": meaning.actual_travel_mode.value,
+                    "requirement_reference": meaning.requirement_reference,
+                    "maximum_commute_minutes": meaning.maximum_commute_minutes,
+                    "requirement_satisfied": meaning.requirement_satisfied,
+                },
+            })
+        return values
+
+    @staticmethod
+    def _authoritative_possible_life_attention_target(
+        possible_life_id: object,
+        evidence: object,
+        user_texts: list[str],
+        possible_lives: list[PossibleLife],
+        meanings: dict[str, PossibleLifePersonalMeaning],
+    ) -> PossibleLifeAttentionTarget | None:
+        if (
+            not isinstance(possible_life_id, str)
+            or not isinstance(evidence, str)
+            or not any(evidence in message for message in user_texts)
+        ):
+            return None
+        matches = [
+            possible_life for possible_life in possible_lives
+            if possible_life.id == possible_life_id
+        ]
+        if len(matches) != 1:
+            return None
+        meaning = meanings.get(possible_life_id)
+        if meaning is None or meaning.possible_life_id != possible_life_id:
+            return None
+        return PossibleLifeAttentionTarget(matches[0], meaning)
+
+    @staticmethod
+    def _explicit_possible_life_attention_target(
+        user_text: str,
+        possible_lives: list[PossibleLife],
+        meanings: dict[str, PossibleLifePersonalMeaning],
+        properties: list[Property],
+    ) -> PossibleLifeAttentionTarget | None:
+        normalize = lambda value: "".join(
+            char for char in value.casefold() if char.isalnum()
+        )
+        normalized_text = normalize(user_text)
+        negative_attention_markers = (
+            "不关注", "不考虑", "别关注", "不要关注", "无需关注", "不想考虑",
+        )
+        if any(marker in normalized_text for marker in negative_attention_markers):
+            return None
+        attention_markers = (
+            "关注", "考虑", "聚焦", "可能生活", "生活可能", "生活方案",
+            "这段生活", "这个生活", "attention",
+        )
+        if not any(marker in normalized_text for marker in attention_markers):
+            return None
+        residences = {home.id: home for home in properties}
+        matches = []
+        for possible_life in possible_lives:
+            meaning = meanings.get(possible_life.id)
+            residence = residences.get(possible_life.residence_property_id)
+            if (
+                meaning is None
+                or meaning.possible_life_id != possible_life.id
+                or residence is None
+                or not residence.title
+                or normalize(residence.title) not in normalized_text
+            ):
+                continue
+            matches.append(PossibleLifeAttentionTarget(possible_life, meaning))
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def _subject_prompt_value(subject: WorkSubject | None) -> dict[str, object] | None:
