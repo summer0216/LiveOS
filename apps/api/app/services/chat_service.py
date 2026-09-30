@@ -24,6 +24,7 @@ from app.models.property import (
     Property,
     PropertyProvenance,
 )
+from app.models.work_subject import WorkSubject
 from app.runtime.runtime import ai_runtime
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_action_progress import decision_action_progress_service
@@ -188,8 +189,12 @@ WORLD_STATE_READY = WorldStateReady()
 
 
 class WorldConsequenceReady:
-    def __init__(self, focus_property_id: str | None = None) -> None:
+    def __init__(
+        self, focus_property_id: str | None = None,
+        focus_subject: WorkSubject | None = None,
+    ) -> None:
         self.focus_property_id = focus_property_id
+        self.focus_subject = focus_subject
 
 
 WORLD_CONSEQUENCE_READY = WorldConsequenceReady()
@@ -838,8 +843,12 @@ class ChatService:
                 # A personal condition applies to the conversation's existing
                 # possible homes; this does not select or create a Property.
                 yield (
-                    WorldConsequenceReady(resolution.attention_property_id)
-                    if resolution.attention_property_id else WORLD_CONSEQUENCE_READY
+                    WorldConsequenceReady(
+                        resolution.attention_property_id,
+                        resolution.attention_subject,
+                    )
+                    if resolution.attention_property_id or resolution.attention_subject
+                    else WORLD_CONSEQUENCE_READY
                 )
                 for home in property_manager.list(conversation_id):
                     if home.geographic_status != GeographicStatus.GROUNDED:
@@ -871,8 +880,14 @@ class ChatService:
 
             # The durable Work update is observable before residential routing finishes.
             yield (
-                WorldConsequenceReady(resolution.attention_property_id)
-                if resolution.attention_property_id and resolution.layout_requirement is None
+                WorldConsequenceReady(
+                    resolution.attention_property_id,
+                    resolution.attention_subject,
+                )
+                if (
+                    resolution.layout_requirement is None
+                    and (resolution.attention_property_id or resolution.attention_subject)
+                )
                 else WORLD_CONSEQUENCE_READY
             )
 

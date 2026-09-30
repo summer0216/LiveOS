@@ -9,7 +9,7 @@ from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus, Property
 from app.models.work_subject import WorkSubject
-from app.services.chat_service import chat_service
+from app.services.chat_service import WorldConsequenceReady, chat_service
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_geography_service import decision_geography_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
@@ -224,6 +224,55 @@ def test_stream_fallback_resolution_receives_focused_layout_context(monkeypatch)
     ))
 
     assert seen_focus_ids == [home.id]
+
+
+def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
+    cid = uuid_for("attention-target-focus-consequence")
+    create_owned_conversation(TestClient(app), cid)
+    authoritative_subject = work_subject_store.save(cid, WorkSubject(
+        identity="融科资讯中心",
+        geographic_identity="北京市海淀区融科资讯中心",
+        geographic_precision="PLACE",
+        geographic_status="GROUNDED",
+        lng=116.316176,
+        lat=39.982403,
+    ))
+    home = property_manager.create(cid, Property(
+        title="龙湖时代天街",
+        geographic_status=GeographicStatus.GROUNDED,
+    ))
+    history = [ConversationMessage("user", "继续考虑这个地方")]
+
+    monkeypatch.setattr(chat_service, "_update_profile", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *_args: iter(["reply"]))
+
+    def complete(resolution):
+        profile_future: Future[ProfileAnalysis] = Future()
+        profile_future.set_result(ProfileAnalysis(patch=LivingProfilePatch()))
+        return list(chat_service._complete_stream_turn(
+            cid, history, None, profile_future, ThreadPoolExecutor(max_workers=1),
+            False, None, property_resolution=resolution,
+        ))
+
+    subject_events = complete(PropertyExpressionResolution(
+        attention_subject=authoritative_subject,
+    ))
+    subject_focus = next(
+        event for event in subject_events
+        if isinstance(event, WorldConsequenceReady) and event.focus_subject is not None
+    )
+    assert subject_focus.focus_subject is authoritative_subject
+    assert subject_focus.focus_property_id is None
+
+    property_events = complete(PropertyExpressionResolution(
+        attention_property_id=home.id,
+    ))
+    property_focus = next(
+        event for event in property_events
+        if isinstance(event, WorldConsequenceReady) and event.focus_property_id is not None
+    )
+    assert property_focus.focus_property_id == home.id
+    assert property_focus.focus_subject is None
 
 
 def test_expression_context_resolution_precedes_property_admission(monkeypatch):
