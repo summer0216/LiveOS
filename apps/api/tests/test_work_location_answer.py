@@ -40,7 +40,7 @@ def test_stream_passes_selected_work_role_to_both_extractors(
         calls.append(("signal", options.get("work_location_answer", False)))
         return DecisionGeography()
 
-    def complete(*args):
+    def complete(*args, **kwargs):
         args[3].result()
         args[4].shutdown(wait=True)
         return iter(())
@@ -77,6 +77,25 @@ def test_work_answer_cannot_promote_a_place_absent_from_user_answer(
     )
     assert result.patch.work_location == expected
     assert "explicitly selected" in prompts[0]
+
+
+def test_explicit_workplace_sentence_refines_existing_work_area(monkeypatch):
+    prompts = []
+
+    def generate(prompt):
+        prompts.append(prompt)
+        return json.dumps({"work_location": "融科资讯中心"})
+
+    monkeypatch.setattr("app.services.profile_intelligence.ai_client.generate_json", generate)
+    message = "具体工作地点是融科资讯中心"
+    result = profile_intelligence.analyze(
+        [ConversationMessage(role="user", content=message)],
+        work_location_answer=True,
+    )
+
+    assert result.patch.work_location == "融科资讯中心"
+    assert "refines the already-grounded Work Reality" in prompts[0]
+    assert "具体工作地点是 X" in prompts[0]
 
 
 def test_work_role_does_not_bypass_decision_geography_truth_guard():

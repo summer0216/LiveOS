@@ -19,6 +19,10 @@ Rules:
 - An explicit statement that the user works, lives, or will live/work in a named
   place is world-changing geographic truth, including a local refinement such
   as "在雁塔区上班".
+- When WORK_LOCATION_ANSWER_CONTEXT is present, interpret the user's explicit
+  specific-workplace answer as a refinement of the existing Work Reality and
+  keep intent type work_location, including full sentences such as
+  "具体工作地点是 X". Extract only the place explicitly named in this turn.
 - A factual, weather, or incidental location mention is not a decision intent.
 - identity is only a place explicitly stated by the user.
 - For a city-qualified local place, return its explicit city and locality
@@ -34,11 +38,15 @@ Rules:
 
 WORK_LOCATION_ANSWER_CONTEXT = """
 The user explicitly selected the Work area's 'specific workplace?' action.
-The current turn is their answer about their own workplace. A bare place name
-can therefore supply work_location and a work_location decision intent.
-Extract the place only from this answer, never from prior suggestions. If the
-answer supplies no identifiable place (e.g. unknown or cancellation), leave it
-unset. The action supplies the role, not a location or grounding evidence.
+The current turn refines the already-grounded Work Reality from an area to a
+more specific workplace. Interpret a bare place name or an explicit workplace
+sentence (for example, "具体工作地点是 X") as the user's workplace identity.
+Preserve the existing Work relation and establish a work_location decision
+intent. Extract the place only from this answer, never from prior suggestions.
+If the answer supplies no identifiable place (e.g. unknown or cancellation),
+leave it unset. The action supplies the role and refinement context, not a
+location or grounding evidence. Reality must still be established by the
+geographic tool.
 """.strip()
 
 
