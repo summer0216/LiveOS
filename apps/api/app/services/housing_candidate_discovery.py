@@ -4,13 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import httpx
-
 from app.models.property import (
     GeographicPrecision,
     GeographicStatus,
     Property,
     PropertyProvenance,
 )
+from app.services.living_time_relationship import living_time_relationship_service
 from app.services.property_manager import PropertyManager, property_manager
 from app.services.transit_duration import (
     LivingTimeResult,
@@ -162,6 +162,12 @@ class HousingCandidateDiscovery:
                     living_time.mode,
                 )
                 property_ = updated or property_
+            living_time_relationship_service.admit_for_authoritative_work(
+                conversation_id=conversation_id,
+                residence=property_,
+                route=living_time,
+                commute_requirement_minutes=commute_limit_minutes,
+            )
             persisted.append(property_)
 
         return HousingDiscoveryResult(

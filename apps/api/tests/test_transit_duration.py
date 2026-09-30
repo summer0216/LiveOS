@@ -51,6 +51,8 @@ def test_walking_only_route_is_viable(monkeypatch) -> None:
     assert result is not None
     assert result.minutes == 20
     assert result.mode == CommuteMode.WALKING
+    assert result.evidence_source == "AMAP_DIRECTION_API"
+    assert result.evidence_reference == transit_duration_service.walking_endpoint
 
 
 def test_bus_only_public_transit_route_is_viable(monkeypatch) -> None:

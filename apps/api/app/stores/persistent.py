@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from psycopg.types.json import Jsonb
-
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -16,6 +14,7 @@ from app.models.action_progress import (
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
+from app.models.living_time import LivingTimeRelationship
 from app.models.profile import LivingProfile
 from app.models.property import (
     CommuteMode,
@@ -29,6 +28,7 @@ from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
+from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -410,6 +410,90 @@ class WorkSubjectStore:
             ).fetchone()
         if row is None:
             raise RuntimeError("Work Subject could not be persisted.")
+        return self._from(row)
+
+
+class LivingTimeRelationshipStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> LivingTimeRelationship:
+        return LivingTimeRelationship(
+            residence_property_id=str(row["residence_property_id"]),
+            residence_identity=row["residence_identity"],
+            residence_geographic_identity=row["residence_geographic_identity"],
+            work_subject_identity=row["work_subject_identity"],
+            work_geographic_identity=row["work_geographic_identity"],
+            travel_minutes=row["travel_minutes"],
+            travel_mode=CommuteMode(row["travel_mode"]),
+            evidence_source=row["evidence_source"],
+            evidence_reference=row["evidence_reference"],
+        )
+
+    def get(
+        self, conversation_id: str, residence_property_id: str,
+    ) -> LivingTimeRelationship | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        property_uuid = optional_uuid(residence_property_id)
+        if owner_id is None or property_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM living_time_relationships
+                WHERE owner_id = %s AND residence_property_id = %s
+                """,
+                (owner_id, property_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def save(
+        self, conversation_id: str, relationship: LivingTimeRelationship,
+    ) -> LivingTimeRelationship:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        property_uuid = optional_uuid(relationship.residence_property_id)
+        if owner_id is None or conversation_uuid is None or property_uuid is None:
+            raise ValueError("Living Time endpoints could not be resolved.")
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO living_time_relationships(
+                    owner_id, source_conversation_id, residence_property_id,
+                    residence_identity, residence_geographic_identity,
+                    work_subject_identity, work_geographic_identity,
+                    travel_minutes, travel_mode, evidence_source,
+                    evidence_reference, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, residence_property_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    residence_identity = EXCLUDED.residence_identity,
+                    residence_geographic_identity = EXCLUDED.residence_geographic_identity,
+                    work_subject_identity = EXCLUDED.work_subject_identity,
+                    work_geographic_identity = EXCLUDED.work_geographic_identity,
+                    travel_minutes = EXCLUDED.travel_minutes,
+                    travel_mode = EXCLUDED.travel_mode,
+                    evidence_source = EXCLUDED.evidence_source,
+                    evidence_reference = EXCLUDED.evidence_reference,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    owner_id, conversation_uuid, property_uuid,
+                    relationship.residence_identity,
+                    relationship.residence_geographic_identity,
+                    relationship.work_subject_identity,
+                    relationship.work_geographic_identity,
+                    relationship.travel_minutes,
+                    relationship.travel_mode.value,
+                    relationship.evidence_source,
+                    relationship.evidence_reference,
+                    now(),
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Living Time relationship could not be persisted.")
         return self._from(row)
 
 

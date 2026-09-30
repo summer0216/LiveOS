@@ -4,7 +4,6 @@ import math
 from dataclasses import dataclass
 
 import httpx
-
 from app.models.property import CommuteMode
 
 
@@ -12,6 +11,8 @@ from app.models.property import CommuteMode
 class LivingTimeResult:
     minutes: int
     mode: CommuteMode
+    evidence_source: str | None = None
+    evidence_reference: str | None = None
 
 
 class TransitDurationService:
@@ -46,10 +47,20 @@ class TransitDurationService:
         results = [
             result
             for result in (
-                LivingTimeResult(walking, CommuteMode.WALKING)
+                LivingTimeResult(
+                    walking,
+                    CommuteMode.WALKING,
+                    "AMAP_DIRECTION_API",
+                    self.walking_endpoint,
+                )
                 if walking is not None
                 else None,
-                LivingTimeResult(public_transit, CommuteMode.PUBLIC_TRANSIT)
+                LivingTimeResult(
+                    public_transit,
+                    CommuteMode.PUBLIC_TRANSIT,
+                    "AMAP_DIRECTION_API",
+                    self.transit_endpoint,
+                )
                 if public_transit is not None
                 else None,
             )

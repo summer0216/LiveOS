@@ -39,6 +39,7 @@ from app.services.decision_unknown_service import decision_unknown_service
 from app.services.geographic_resolution import geographic_resolver
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.living_meaning_service import living_meaning_service
+from app.services.living_time_relationship import living_time_relationship_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -53,6 +54,7 @@ from app.services.user_reality_return import (
     PropertyExpressionResolution,
     user_reality_return,
 )
+from app.stores.runtime import work_subject_store
 
 logger = logging.getLogger(__name__)
 
@@ -471,13 +473,32 @@ class ChatService:
                         or current_property.lat is None
                     ):
                         continue
-                    living_time = transit_duration_service.calculate_living_time(
-                        origin_lng=current_property.lng,
-                        origin_lat=current_property.lat,
-                        destination_lng=grounded_profile.lng,
-                        destination_lat=grounded_profile.lat,
-                        api_key=settings.AMAP_WEB_SERVICE_KEY,
-                    )
+                    work_subject = work_subject_store.get(conversation_id)
+                    if work_subject is not None:
+                        living_time = transit_duration_service.calculate_living_time(
+                            origin_lng=current_property.lng,
+                            origin_lat=current_property.lat,
+                            destination_lng=grounded_profile.lng,
+                            destination_lat=grounded_profile.lat,
+                            api_key=settings.AMAP_WEB_SERVICE_KEY,
+                        )
+                        living_time_relationship_service.admit_route_evidence(
+                            conversation_id=conversation_id,
+                            residence=current_property,
+                            work_subject=work_subject,
+                            route=living_time,
+                            commute_requirement_minutes=(
+                                grounded_profile.commute_minutes
+                            ),
+                        )
+                    else:
+                        living_time = transit_duration_service.calculate_living_time(
+                            origin_lng=current_property.lng,
+                            origin_lat=current_property.lat,
+                            destination_lng=grounded_profile.lng,
+                            destination_lat=grounded_profile.lat,
+                            api_key=settings.AMAP_WEB_SERVICE_KEY,
+                        )
                     property_manager.update_commute_minutes(
                         current_property.id or "",
                         conversation_id,

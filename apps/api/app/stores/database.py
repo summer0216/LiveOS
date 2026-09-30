@@ -19,6 +19,7 @@ REQUIRED_TABLES = {
     "decision_memories",
     "decision_geographies",
     "work_subjects",
+    "living_time_relationships",
 }
 
 SCHEMA_STATEMENTS = (
@@ -196,6 +197,23 @@ SCHEMA_STATEMENTS = (
         external_id TEXT,
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS living_time_relationships (
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        residence_property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        residence_identity TEXT NOT NULL,
+        residence_geographic_identity TEXT NOT NULL,
+        work_subject_identity TEXT NOT NULL,
+        work_geographic_identity TEXT NOT NULL,
+        travel_minutes INTEGER NOT NULL CHECK (travel_minutes > 0),
+        travel_mode TEXT NOT NULL CHECK (travel_mode IN ('WALKING', 'PUBLIC_TRANSIT')),
+        evidence_source TEXT NOT NULL,
+        evidence_reference TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (owner_id, residence_property_id)
     )
     """,
     """
