@@ -653,6 +653,7 @@ class ChatService:
             user_reality_return.resolve_expression(
                 history, property_manager.list(conversation_id), message,
                 focused_property_id=user_reality_property_id,
+                conversation_id=conversation_id,
             ) if user_reality_property_id else None
         )
         if property_resolution and property_resolution.rent_verification_property_id:
@@ -822,6 +823,7 @@ class ChatService:
                 resolution = user_reality_return.resolve_expression(
                     history, property_manager.list(conversation_id), history[-1].content,
                     focused_property_id=focused_property_id,
+                    conversation_id=conversation_id,
                 )
             if resolution.layout_requirement is not None:
                 current_profile = profile_manager.get_or_create(conversation_id)

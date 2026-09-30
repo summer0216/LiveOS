@@ -2,17 +2,21 @@
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 
 from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.models.conversation import ConversationMessage
 from app.models.property import GeographicStatus, Property, PropertyRentSource
+from app.models.work_subject import WorkSubject
 from app.services.external_rent_reality_service import (
     USER_INITIATED_RENT_ACTION_LABEL,
     USER_INITIATED_RENT_ACTION_WHY,
 )
 from app.services.property_manager import PropertyManager, property_manager
+from app.stores.persistent import WorkSubjectStore
+from app.stores.runtime import work_subject_store
 
 
 
@@ -38,19 +42,23 @@ class PropertyExpressionResolution:
     layout_requirement: str | None = None
     attention_property_id: str | None = None
     rent_verification_property_id: str | None = None
+    attention_subject: WorkSubject | None = None
 
 
 class UserRealityReturn:
     def __init__(
         self, *, properties: PropertyManager = property_manager,
         intelligence: AIClient = ai_client,
+        subjects: WorkSubjectStore = work_subject_store,
     ) -> None:
         self._properties = properties
         self._intelligence = intelligence
+        self._subjects = subjects
 
     def resolve_expression(
         self, history: list[ConversationMessage], properties: list[Property],
         user_text: str, focused_property_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> PropertyExpressionResolution:
         """Understand claim nature and referent before Property admission."""
         candidates = [home for home in properties if (
@@ -59,6 +67,9 @@ class UserRealityReturn:
         prior_user_texts = [
             item.content for item in history[:-1] if item.role == "user"
         ]
+        authoritative_subject = (
+            self._subjects.get(conversation_id) if conversation_id else None
+        )
         prompt = f"""
 Interpret the CURRENT user expression before any Property Reality admission.
 Classify its nature as PERSONAL_REQUIREMENT, PROPERTY_REALITY, REALITY_ACTION,
@@ -86,6 +97,7 @@ Prior user messages: {json.dumps(prior_user_texts, ensure_ascii=False)}
 Current message: {json.dumps(user_text, ensure_ascii=False)}
 Focused residence id (context evidence only): {json.dumps(focused_property_id)}
 Grounded residences: {json.dumps([{"id": p.id, "title": p.title, "active_unknown": p.meaningful_unknown if p.meaningful_unknown_state_hash else None} for p in candidates], ensure_ascii=False)}
+Authoritative Work Subject: {json.dumps(self._subject_prompt_value(authoritative_subject), ensure_ascii=False)}
 
 Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or REALITY_ACTION or OTHER",
 "layout_requirement": "short exact current-user quote expressing their required room layout" or null,
@@ -95,7 +107,9 @@ Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or
 "binding_evidence": "exact contiguous user quote naming the residence" or null,
 "binding_source": "USER_EXPRESSION or FOCUS" or null,
 "attention_property_id": "grounded residence id" or null,
-"attention_evidence": "exact contiguous PRIOR user quote naming that residence" or null}}.
+"attention_evidence": "exact contiguous PRIOR user quote naming that residence" or null,
+"attention_subject_identity": "exact authoritative Work Subject identity" or null,
+"attention_subject_evidence": "exact contiguous USER quote naming that Work Subject" or null}}.
 For PROPERTY_REALITY without reliable referent, return null property_id and
 binding fields. For Focus binding, use FOCUS and null binding_evidence.
 For REALITY_ACTION, use reality_type RENT, an exact current-message request
@@ -114,6 +128,12 @@ Keep a personal condition in layout_requirement, never in Property Reality.
 Never set attention for an initial named-home grounding turn. If several homes
 remain plausible, return null attention fields. Quote the prior user evidence;
 do not use assistant text or a Property title from the candidate list alone.
+Set attention_subject_identity only when the CURRENT expression unambiguously
+selects or continues attention to the authoritative Work Subject. Copy its exact
+identity and cite an exact current or prior USER quote that names it. The Work
+Subject data is context only: never invent a Subject, identity, relationship,
+precision, or coordinates. Return null Subject attention fields when there is no
+authoritative Work Subject or the current expression concerns another subject.
 Retain an explicit desired room layout in layout_requirement only when it is
 the user's own requirement, including a terse requirement in a housing-search
 context. Use an exact contiguous current-message quote, at most 60 characters.
@@ -129,6 +149,7 @@ establish a layout requirement. Return null when no layout requirement is stated
             return PropertyExpressionResolution()
         if not isinstance(result, dict) or set(result) - {
             "layout_requirement", "attention_property_id", "attention_evidence",
+            "attention_subject_identity", "attention_subject_evidence",
         } != {
             "claim_nature", "reality_type", "claim_quote", "property_id",
             "binding_evidence", "binding_source",
@@ -137,6 +158,12 @@ establish a layout requirement. Return null when no layout requirement is stated
         attention_property_id = self._grounded_attention_target(
             result.get("attention_property_id"), result.get("attention_evidence"),
             prior_user_texts, user_text, candidates,
+        )
+        attention_subject = self._authoritative_subject_attention_target(
+            result.get("attention_subject_identity"),
+            result.get("attention_subject_evidence"),
+            [*prior_user_texts, user_text],
+            authoritative_subject,
         )
         if result["claim_nature"] == "PERSONAL_REQUIREMENT":
             requirement = result.get("layout_requirement")
@@ -171,11 +198,12 @@ establish a layout requirement. Return null when no layout requirement is stated
                 return PropertyExpressionResolution(
                     layout_requirement=requirement,
                     attention_property_id=attention_property_id,
+                    attention_subject=attention_subject,
                 )
-            return PropertyExpressionResolution()
+            return PropertyExpressionResolution(attention_subject=attention_subject)
         claim_nature = result["claim_nature"]
         if claim_nature not in {"PROPERTY_REALITY", "REALITY_ACTION"}:
-            return PropertyExpressionResolution()
+            return PropertyExpressionResolution(attention_subject=attention_subject)
         reality_type = result["reality_type"]
         if claim_nature == "REALITY_ACTION":
             if (
@@ -218,7 +246,48 @@ establish a layout requirement. Return null when no layout requirement is stated
             )
         return PropertyExpressionResolution(
             property_id, reality_type, attention_property_id=attention_property_id,
+            attention_subject=attention_subject,
         )
+
+    @staticmethod
+    def _subject_prompt_value(subject: WorkSubject | None) -> dict[str, object] | None:
+        if subject is None:
+            return None
+        return {
+            "identity": subject.identity,
+            "relationship": subject.relationship,
+            "geographic_identity": subject.geographic_identity,
+            "geographic_precision": subject.geographic_precision,
+            "geographic_status": subject.geographic_status,
+            "lng": subject.lng,
+            "lat": subject.lat,
+        }
+
+    @staticmethod
+    def _authoritative_subject_attention_target(
+        identity: object, evidence: object, user_texts: list[str],
+        subject: WorkSubject | None,
+    ) -> WorkSubject | None:
+        if (
+            subject is None
+            or not isinstance(identity, str)
+            or not isinstance(evidence, str)
+            or identity != subject.identity
+            or subject.relationship != "WORK"
+            or subject.geographic_status != "GROUNDED"
+            or subject.geographic_precision != "PLACE"
+            or not math.isfinite(subject.lng)
+            or not math.isfinite(subject.lat)
+        ):
+            return None
+        normalize = lambda value: "".join(
+            char for char in value.casefold() if char.isalnum()
+        )
+        if normalize(subject.identity) not in normalize(evidence):
+            return None
+        if not any(evidence in message for message in user_texts):
+            return None
+        return subject
 
     def request_rent_verification(
         self, conversation_id: str, property_id: str, user_text: str,

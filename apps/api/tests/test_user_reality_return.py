@@ -8,6 +8,7 @@ from app.models.profile import LivingProfile
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus, Property
+from app.models.work_subject import WorkSubject
 from app.services.chat_service import chat_service
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_geography_service import decision_geography_service
@@ -21,7 +22,7 @@ from app.services.user_reality_return import (
     UserRealityReturn,
     user_reality_return,
 )
-from app.stores.runtime import profile_store
+from app.stores.runtime import profile_store, work_subject_store
 from fastapi.testclient import TestClient
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
@@ -67,6 +68,84 @@ def test_terse_layout_answer_uses_active_unknown_context_only():
     )
     assert requirement.property_id is None and requirement.reality_type is None
     assert requirement.layout_requirement == "两室一厅。"
+
+
+def test_authoritative_work_subject_can_become_attention_target():
+    cid = uuid_for("authoritative-work-subject-attention")
+    create_owned_conversation(TestClient(app), cid)
+    subject = work_subject_store.save(cid, WorkSubject(
+        identity="融科资讯中心",
+        geographic_identity="北京市海淀区融科资讯中心",
+        geographic_precision="PLACE",
+        geographic_status="GROUNDED",
+        lng=116.316176,
+        lat=39.982403,
+    ))
+
+    class Intelligence:
+        def generate_json(self, prompt, **_kwargs):
+            assert '"identity": "融科资讯中心"' in prompt
+            return json.dumps({
+                "claim_nature": "OTHER",
+                "layout_requirement": None,
+                "reality_type": None,
+                "claim_quote": None,
+                "property_id": None,
+                "binding_evidence": None,
+                "binding_source": None,
+                "attention_property_id": None,
+                "attention_evidence": None,
+                "attention_subject_identity": "融科资讯中心",
+                "attention_subject_evidence": "具体工作地点是融科资讯中心",
+            }, ensure_ascii=False)
+
+    resolution = UserRealityReturn(intelligence=Intelligence()).resolve_expression(
+        [
+            ConversationMessage("user", "具体工作地点是融科资讯中心"),
+            ConversationMessage("user", "这里的通勤情况怎么样？"),
+        ],
+        [],
+        "这里的通勤情况怎么样？",
+        conversation_id=cid,
+    )
+
+    assert resolution.attention_subject == subject
+    assert resolution.attention_property_id is None
+
+
+def test_property_attention_remains_supported_with_subject_attention_fields():
+    home = Property(
+        id="home-attention-1", conversation_id="conversation-attention-1",
+        title="龙湖时代天街", geographic_status=GeographicStatus.GROUNDED,
+    )
+
+    class Intelligence:
+        def generate_json(self, _prompt, **_kwargs):
+            return json.dumps({
+                "claim_nature": "PERSONAL_REQUIREMENT",
+                "layout_requirement": "两室一厅",
+                "reality_type": None,
+                "claim_quote": None,
+                "property_id": None,
+                "binding_evidence": None,
+                "binding_source": None,
+                "attention_property_id": home.id,
+                "attention_evidence": "我想住龙湖时代天街",
+                "attention_subject_identity": None,
+                "attention_subject_evidence": None,
+            }, ensure_ascii=False)
+
+    resolution = UserRealityReturn(intelligence=Intelligence()).resolve_expression(
+        [
+            ConversationMessage("user", "我想住龙湖时代天街"),
+            ConversationMessage("user", "还要两室一厅"),
+        ],
+        [home],
+        "还要两室一厅",
+    )
+
+    assert resolution.attention_property_id == home.id
+    assert resolution.attention_subject is None
 
 
 def test_layout_admission_accepts_only_matching_active_layout_unknown_reference():
@@ -125,7 +204,11 @@ def test_stream_fallback_resolution_receives_focused_layout_context(monkeypatch)
     executor = ThreadPoolExecutor(max_workers=1)
     seen_focus_ids: list[str | None] = []
 
-    def resolve(_history, _properties, _message, *, focused_property_id=None):
+    def resolve(
+        _history, _properties, _message, *, focused_property_id=None,
+        conversation_id=None,
+    ):
+        assert conversation_id == cid
         seen_focus_ids.append(focused_property_id)
         return PropertyExpressionResolution(home.id, "LAYOUT")
 
