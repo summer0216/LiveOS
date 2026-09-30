@@ -25,6 +25,7 @@ from app.models.property import (
     PropertyProvenance,
     PropertyRentSource,
 )
+from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
@@ -340,6 +341,76 @@ class ProfileStore:
                 ).rowcount
                 > 0
             )
+
+
+class WorkSubjectStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> WorkSubject:
+        return WorkSubject(
+            identity=row["identity"],
+            geographic_identity=row["geographic_identity"],
+            geographic_precision="PLACE",
+            geographic_status="GROUNDED",
+            lng=row["lng"],
+            lat=row["lat"],
+            relationship="WORK",
+        )
+
+    def get(self, conversation_id: str) -> WorkSubject | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM work_subjects WHERE owner_id = %s",
+                (owner_id,),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def save(self, conversation_id: str, subject: WorkSubject) -> WorkSubject:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        if owner_id is None or conversation_uuid is None:
+            raise ValueError("Conversation owner could not be resolved.")
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO work_subjects(
+                    owner_id, source_conversation_id, relationship, identity,
+                    geographic_identity, geographic_precision, geographic_status,
+                    lng, lat, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    relationship = EXCLUDED.relationship,
+                    identity = EXCLUDED.identity,
+                    geographic_identity = EXCLUDED.geographic_identity,
+                    geographic_precision = EXCLUDED.geographic_precision,
+                    geographic_status = EXCLUDED.geographic_status,
+                    lng = EXCLUDED.lng,
+                    lat = EXCLUDED.lat,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    owner_id,
+                    conversation_uuid,
+                    subject.relationship,
+                    subject.identity,
+                    subject.geographic_identity,
+                    subject.geographic_precision,
+                    subject.geographic_status,
+                    subject.lng,
+                    subject.lat,
+                    now(),
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Work Subject could not be persisted.")
+        return self._from(row)
 
 
 class DecisionGeographyStore:

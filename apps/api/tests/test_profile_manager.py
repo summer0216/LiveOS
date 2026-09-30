@@ -1,12 +1,13 @@
 import pytest
 
+from app.models.decision_geography import DecisionGeography
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import GeographicPrecision, GeographicStatus
 from app.services.geographic_resolution import GeographicResolutionResult
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
-from app.stores.runtime import profile_store
+from app.stores.runtime import profile_store, work_subject_store
 from tests.ids import uuid_for
 
 
@@ -40,6 +41,36 @@ def test_latest_work_area_replaces_previous_place(monkeypatch):
     restored = profile_manager.get(cid)
     assert restored.geographic_precision == GeographicPrecision.AREA
     assert (restored.lng, restored.lat) == (116.321669, 39.985266)
+
+
+def test_grounded_work_place_is_admitted_as_authoritative_work_subject() -> None:
+    conversation_id = uuid_for("grounded-work-place-subject")
+    profile_manager.get_or_create(conversation_id)
+
+    profile_manager.apply_grounded_work_reality(
+        conversation_id,
+        DecisionGeography(
+            intent_established=True,
+            intent_type="work_location",
+            identity="融科资讯中心",
+            identity_source="USER",
+            geographic_scope="LOCAL",
+            geographic_identity="北京市海淀区融科资讯中心",
+            geographic_precision=GeographicPrecision.PLACE,
+            status="GROUNDED",
+            lng=116.326178,
+            lat=39.984098,
+        ),
+    )
+
+    subject = work_subject_store.get(conversation_id)
+    assert subject is not None
+    assert subject.relationship == "WORK"
+    assert subject.identity == "融科资讯中心"
+    assert subject.geographic_identity == "北京市海淀区融科资讯中心"
+    assert subject.geographic_precision == "PLACE"
+    assert subject.geographic_status == "GROUNDED"
+    assert (subject.lng, subject.lat) == (116.326178, 39.984098)
 
 
 def test_profile_merge_and_tag_update() -> None:

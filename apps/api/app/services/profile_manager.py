@@ -5,14 +5,15 @@ from app.models.decision_change import ProfileMergeResult, profile_mutation_caus
 from app.models.decision_geography import DecisionGeography
 from app.models.profile import LivingProfile
 from app.models.profile_patch import LivingProfilePatch
-from app.models.property import GeographicStatus
+from app.models.property import GeographicPrecision, GeographicStatus
+from app.models.work_subject import WorkSubject
 from app.services.conversation_manager import conversation_manager
 from app.services.geographic_resolution import (
     GeographicResolutionResult,
     geographic_resolver,
     identity_explicitly_names_city,
 )
-from app.stores.runtime import profile_store
+from app.stores.runtime import profile_store, work_subject_store
 
 _LEGACY_NANSHAN_WORK_GROUNDING = (
     "南山科技园",
@@ -184,7 +185,20 @@ class ProfileManager:
         profile.geographic_status = GeographicStatus.GROUNDED
         profile.lng = geography.lng
         profile.lat = geography.lat
-        return profile_store.save(conversation_id, profile)
+        saved_profile = profile_store.save(conversation_id, profile)
+        if geography.geographic_precision == GeographicPrecision.PLACE:
+            work_subject_store.save(
+                conversation_id,
+                WorkSubject(
+                    identity=geography.identity,
+                    geographic_identity=geography.geographic_identity,
+                    geographic_precision="PLACE",
+                    geographic_status="GROUNDED",
+                    lng=geography.lng,
+                    lat=geography.lat,
+                ),
+            )
+        return saved_profile
 
     def update_tags(
         self,

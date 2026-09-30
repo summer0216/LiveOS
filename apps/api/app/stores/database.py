@@ -18,6 +18,7 @@ REQUIRED_TABLES = {
     "decision_unknowns",
     "decision_memories",
     "decision_geographies",
+    "work_subjects",
 }
 
 SCHEMA_STATEMENTS = (
@@ -99,6 +100,20 @@ SCHEMA_STATEMENTS = (
         ),
         lng DOUBLE PRECISION,
         lat DOUBLE PRECISION,
+        updated_at TIMESTAMPTZ NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS work_subjects (
+        owner_id UUID PRIMARY KEY REFERENCES anonymous_users(id),
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        relationship TEXT NOT NULL CHECK (relationship = 'WORK'),
+        identity TEXT NOT NULL,
+        geographic_identity TEXT NOT NULL,
+        geographic_precision TEXT NOT NULL CHECK (geographic_precision = 'PLACE'),
+        geographic_status TEXT NOT NULL CHECK (geographic_status = 'GROUNDED'),
+        lng DOUBLE PRECISION NOT NULL,
+        lat DOUBLE PRECISION NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
     )
     """,
