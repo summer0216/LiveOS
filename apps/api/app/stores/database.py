@@ -21,6 +21,7 @@ REQUIRED_TABLES = {
     "work_subjects",
     "living_time_relationships",
     "possible_lives",
+    "possible_life_personal_meanings",
 }
 
 SCHEMA_STATEMENTS = (
@@ -232,6 +233,31 @@ SCHEMA_STATEMENTS = (
             REFERENCES living_time_relationships(owner_id, residence_property_id)
             ON DELETE CASCADE,
         UNIQUE (owner_id, residence_property_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS possible_life_personal_meanings (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        possible_life_id UUID NOT NULL REFERENCES possible_lives(id) ON DELETE CASCADE,
+        living_time_residence_property_id UUID NOT NULL,
+        meaning TEXT NOT NULL,
+        actual_travel_minutes INTEGER NOT NULL CHECK (actual_travel_minutes > 0),
+        actual_travel_mode TEXT NOT NULL CHECK (
+            actual_travel_mode IN ('WALKING', 'PUBLIC_TRANSIT')
+        ),
+        route_evidence_source TEXT NOT NULL,
+        route_evidence_reference TEXT NOT NULL,
+        requirement_reference TEXT NOT NULL,
+        maximum_commute_minutes INTEGER NOT NULL CHECK (maximum_commute_minutes > 0),
+        requirement_satisfied BOOLEAN NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        FOREIGN KEY (owner_id, living_time_residence_property_id)
+            REFERENCES living_time_relationships(owner_id, residence_property_id)
+            ON DELETE CASCADE,
+        UNIQUE (owner_id, possible_life_id)
     )
     """,
     """

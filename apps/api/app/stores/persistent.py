@@ -16,6 +16,7 @@ from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.living_time import LivingTimeRelationship
 from app.models.possible_life import PossibleLife
+from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.profile import LivingProfile
 from app.models.property import (
     CommuteMode,
@@ -573,6 +574,147 @@ class PossibleLifeStore:
             rows = connection.execute(
                 """
                 SELECT * FROM possible_lives
+                WHERE owner_id = %s
+                ORDER BY created_at, id
+                """,
+                (owner_id,),
+            ).fetchall()
+        return [self._from(row) for row in rows]
+
+    def get(
+        self, conversation_id: str, possible_life_id: str,
+    ) -> PossibleLife | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        possible_life_uuid = optional_uuid(possible_life_id)
+        if owner_id is None or possible_life_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM possible_lives
+                WHERE owner_id = %s AND id = %s
+                """,
+                (owner_id, possible_life_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+
+class PossibleLifePersonalMeaningStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> PossibleLifePersonalMeaning:
+        return PossibleLifePersonalMeaning(
+            id=str(row["id"]),
+            possible_life_id=str(row["possible_life_id"]),
+            meaning=row["meaning"],
+            living_time_residence_property_id=str(
+                row["living_time_residence_property_id"]
+            ),
+            actual_travel_minutes=row["actual_travel_minutes"],
+            actual_travel_mode=CommuteMode(row["actual_travel_mode"]),
+            route_evidence_source=row["route_evidence_source"],
+            route_evidence_reference=row["route_evidence_reference"],
+            requirement_reference=row["requirement_reference"],
+            maximum_commute_minutes=row["maximum_commute_minutes"],
+            requirement_satisfied=row["requirement_satisfied"],
+        )
+
+    def save(
+        self,
+        conversation_id: str,
+        personal_meaning: PossibleLifePersonalMeaning,
+    ) -> PossibleLifePersonalMeaning:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        possible_life_uuid = optional_uuid(personal_meaning.possible_life_id)
+        relationship_uuid = optional_uuid(
+            personal_meaning.living_time_residence_property_id
+        )
+        if (
+            owner_id is None
+            or conversation_uuid is None
+            or possible_life_uuid is None
+            or relationship_uuid is None
+        ):
+            raise ValueError("Possible Life Personal Meaning references are invalid.")
+        timestamp = now()
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO possible_life_personal_meanings(
+                    id, owner_id, source_conversation_id, possible_life_id,
+                    living_time_residence_property_id, meaning,
+                    actual_travel_minutes, actual_travel_mode,
+                    route_evidence_source, route_evidence_reference,
+                    requirement_reference, maximum_commute_minutes,
+                    requirement_satisfied, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (owner_id, possible_life_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    living_time_residence_property_id =
+                        EXCLUDED.living_time_residence_property_id,
+                    meaning = EXCLUDED.meaning,
+                    actual_travel_minutes = EXCLUDED.actual_travel_minutes,
+                    actual_travel_mode = EXCLUDED.actual_travel_mode,
+                    route_evidence_source = EXCLUDED.route_evidence_source,
+                    route_evidence_reference = EXCLUDED.route_evidence_reference,
+                    requirement_reference = EXCLUDED.requirement_reference,
+                    maximum_commute_minutes = EXCLUDED.maximum_commute_minutes,
+                    requirement_satisfied = EXCLUDED.requirement_satisfied,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(personal_meaning.id),
+                    owner_id,
+                    conversation_uuid,
+                    possible_life_uuid,
+                    relationship_uuid,
+                    personal_meaning.meaning,
+                    personal_meaning.actual_travel_minutes,
+                    personal_meaning.actual_travel_mode.value,
+                    personal_meaning.route_evidence_source,
+                    personal_meaning.route_evidence_reference,
+                    personal_meaning.requirement_reference,
+                    personal_meaning.maximum_commute_minutes,
+                    personal_meaning.requirement_satisfied,
+                    timestamp,
+                    timestamp,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Possible Life Personal Meaning could not be persisted.")
+        return self._from(row)
+
+    def get(
+        self, conversation_id: str, possible_life_id: str,
+    ) -> PossibleLifePersonalMeaning | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        possible_life_uuid = optional_uuid(possible_life_id)
+        if owner_id is None or possible_life_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM possible_life_personal_meanings
+                WHERE owner_id = %s AND possible_life_id = %s
+                """,
+                (owner_id, possible_life_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def list(self, conversation_id: str) -> list[PossibleLifePersonalMeaning]:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return []
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM possible_life_personal_meanings
                 WHERE owner_id = %s
                 ORDER BY created_at, id
                 """,
