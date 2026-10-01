@@ -91,6 +91,10 @@ def _stream_events(
                     payload["focus_property_id"] = chunk.focus_property_id
                 if chunk.focus_subject is not None:
                     payload["focus_subject"] = asdict(chunk.focus_subject)
+                if chunk.focus_possible_life is not None:
+                    payload["focus_possible_life"] = asdict(
+                        chunk.focus_possible_life
+                    )
                 if not payload:
                     payload = True
                 yield (

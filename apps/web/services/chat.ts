@@ -2,6 +2,7 @@ import { apiFetch, apiRequest } from './api';
 import type { ChatRequest, ChatResponse } from '@/types/chat';
 import {
   parseWorldConsequence,
+  type PossibleLifeFocus,
   type WorkSubjectFocus,
 } from '@/lib/worldConsequence';
 
@@ -35,6 +36,7 @@ interface StreamMessageOptions {
   onWorldConsequenceReady?: (
     focusPropertyId?: string,
     focusSubject?: WorkSubjectFocus,
+    focusPossibleLife?: PossibleLifeFocus,
   ) => void;
   onPropertyGroundingResponse?: (message: string) => void;
   onDecisionRelevantFeedback?: () => void;
@@ -156,6 +158,7 @@ export async function streamMessage({
           onWorldConsequenceReady?.(
             consequence.focusPropertyId,
             consequence.focusSubject,
+            consequence.focusPossibleLife,
           );
           continue;
         }

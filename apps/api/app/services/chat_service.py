@@ -51,6 +51,7 @@ from app.services.property_reality_service import (
 from app.services.transit_duration import transit_duration_service
 from app.services.user_decision_return import user_decision_return
 from app.services.user_reality_return import (
+    PossibleLifeAttentionTarget,
     PropertyExpressionResolution,
     user_reality_return,
 )
@@ -194,9 +195,11 @@ class WorldConsequenceReady:
     def __init__(
         self, focus_property_id: str | None = None,
         focus_subject: WorkSubject | None = None,
+        focus_possible_life: PossibleLifeAttentionTarget | None = None,
     ) -> None:
         self.focus_property_id = focus_property_id
         self.focus_subject = focus_subject
+        self.focus_possible_life = focus_possible_life
 
 
 WORLD_CONSEQUENCE_READY = WorldConsequenceReady()
@@ -867,8 +870,13 @@ class ChatService:
                     WorldConsequenceReady(
                         resolution.attention_property_id,
                         resolution.attention_subject,
+                        resolution.attention_possible_life,
                     )
-                    if resolution.attention_property_id or resolution.attention_subject
+                    if (
+                        resolution.attention_property_id
+                        or resolution.attention_subject
+                        or resolution.attention_possible_life
+                    )
                     else WORLD_CONSEQUENCE_READY
                 )
                 for home in property_manager.list(conversation_id):
@@ -904,10 +912,15 @@ class ChatService:
                 WorldConsequenceReady(
                     resolution.attention_property_id,
                     resolution.attention_subject,
+                    resolution.attention_possible_life,
                 )
                 if (
                     resolution.layout_requirement is None
-                    and (resolution.attention_property_id or resolution.attention_subject)
+                    and (
+                        resolution.attention_property_id
+                        or resolution.attention_subject
+                        or resolution.attention_possible_life
+                    )
                 )
                 else WORLD_CONSEQUENCE_READY
             )

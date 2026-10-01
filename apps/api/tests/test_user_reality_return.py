@@ -1,6 +1,8 @@
 import json
 from concurrent.futures import Future, ThreadPoolExecutor
 
+from fastapi.testclient import TestClient
+
 from app.main import app
 from app.models.conversation import ConversationMessage
 from app.models.decision_geography import DecisionGeography
@@ -26,6 +28,7 @@ from app.services.profile_intelligence import BudgetRealityAudit, profile_intell
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
 from app.services.user_reality_return import (
+    PossibleLifeAttentionTarget,
     PropertyExpressionResolution,
     UserRealityReturn,
     user_reality_return,
@@ -37,7 +40,6 @@ from app.stores.runtime import (
     profile_store,
     work_subject_store,
 )
-from fastapi.testclient import TestClient
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
@@ -421,8 +423,61 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     ))
     home = property_manager.create(cid, Property(
         title="龙湖时代天街",
+        geographic_identity="北京市龙湖时代天街",
+        geographic_precision=GeographicPrecision.COMMUNITY,
         geographic_status=GeographicStatus.GROUNDED,
+        lng=116.31,
+        lat=39.98,
     ))
+    assert home.id is not None
+    relationship = living_time_relationship_store.save(
+        cid,
+        LivingTimeRelationship(
+            residence_property_id=home.id,
+            residence_identity=home.title,
+            residence_geographic_identity=home.geographic_identity or "",
+            work_subject_identity=authoritative_subject.identity,
+            work_geographic_identity=authoritative_subject.geographic_identity,
+            travel_minutes=8,
+            travel_mode=CommuteMode.WALKING,
+            evidence_source="AMAP_DIRECTION_API",
+            evidence_reference="route-consequence",
+        ),
+    )
+    owner_id = possible_life_store.owner_id(cid)
+    assert owner_id is not None
+    possible_life = possible_life_store.save(
+        cid,
+        PossibleLife(
+            id=uuid_for("possible-life-focus-consequence"),
+            work_subject_owner_id=owner_id,
+            residence_property_id=home.id,
+            living_time_residence_property_id=relationship.residence_property_id,
+            personal_meaning_reference="living_profile.commute_minutes",
+        ),
+    )
+    personal_meaning = possible_life_personal_meaning_store.save(
+        cid,
+        PossibleLifePersonalMeaning(
+            id=uuid_for("possible-life-focus-consequence-meaning"),
+            possible_life_id=possible_life.id,
+            meaning="8分钟步行通勤让日常安排保持从容。",
+            living_time_residence_property_id=relationship.residence_property_id,
+            actual_travel_minutes=relationship.travel_minutes,
+            actual_travel_mode=relationship.travel_mode,
+            route_evidence_source=relationship.evidence_source,
+            route_evidence_reference=relationship.evidence_reference,
+            requirement_reference="living_profile.commute_minutes",
+            maximum_commute_minutes=30,
+            requirement_satisfied=True,
+        ),
+    )
+    possible_life_target = PossibleLifeAttentionTarget(
+        possible_life=possible_life,
+        personal_meaning=personal_meaning,
+    )
+    possible_lives_before = possible_life_store.list(cid)
+    meanings_before = possible_life_personal_meaning_store.list(cid)
     history = [ConversationMessage("user", "继续考虑这个地方")]
 
     monkeypatch.setattr(chat_service, "_update_profile", lambda *_args, **_kwargs: ())
@@ -455,6 +510,24 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     )
     assert property_focus.focus_property_id == home.id
     assert property_focus.focus_subject is None
+
+    possible_life_events = complete(PropertyExpressionResolution(
+        attention_possible_life=possible_life_target,
+    ))
+    possible_life_focus = next(
+        event for event in possible_life_events
+        if (
+            isinstance(event, WorldConsequenceReady)
+            and event.focus_possible_life is not None
+        )
+    )
+    assert possible_life_focus.focus_possible_life is possible_life_target
+    assert possible_life_focus.focus_possible_life.possible_life is possible_life
+    assert possible_life_focus.focus_possible_life.personal_meaning is personal_meaning
+    assert possible_life_focus.focus_property_id is None
+    assert possible_life_focus.focus_subject is None
+    assert possible_life_store.list(cid) == possible_lives_before
+    assert possible_life_personal_meaning_store.list(cid) == meanings_before
 
 
 def test_expression_context_resolution_precedes_property_admission(monkeypatch):

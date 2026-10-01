@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from app.api.chat import _stream_events
 from app.main import app
 from app.models.decision_geography import DecisionGeography
-from app.models.property import GeographicPrecision, Property
+from app.models.possible_life import PossibleLife
+from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
+from app.models.property import CommuteMode, GeographicPrecision, Property
 from app.models.work_subject import WorkSubject
 from app.services.chat_service import (
     WorldConsequenceReady,
@@ -15,6 +17,7 @@ from app.services.chat_service import (
 )
 from app.services.geographic_resolution import GeographicResolutionResult
 from app.services.property_manager import property_manager
+from app.services.user_reality_return import PossibleLifeAttentionTarget
 from tests.ids import uuid_for
 from tests.ownership import create_owned_conversation
 
@@ -87,3 +90,59 @@ def test_world_consequence_transport_preserves_subject_and_property_focus():
     assert json.loads(property_event.split("data: ", 1)[1]) == {
         "focus_property_id": "property-1",
     }
+
+    possible_life = PossibleLife(
+        id="possible-life-1",
+        work_subject_owner_id="owner-1",
+        residence_property_id="property-1",
+        living_time_residence_property_id="property-1",
+        personal_meaning_reference="living_profile.commute_minutes",
+    )
+    personal_meaning = PossibleLifePersonalMeaning(
+        id="meaning-1",
+        possible_life_id=possible_life.id,
+        meaning="步行8分钟让日常安排保持从容。",
+        living_time_residence_property_id="property-1",
+        actual_travel_minutes=8,
+        actual_travel_mode=CommuteMode.WALKING,
+        route_evidence_source="AMAP_DIRECTION_API",
+        route_evidence_reference="route-1",
+        requirement_reference="living_profile.commute_minutes",
+        maximum_commute_minutes=30,
+        requirement_satisfied=True,
+    )
+    target = PossibleLifeAttentionTarget(possible_life, personal_meaning)
+    possible_life_event = next(
+        item for item in _stream_events(iter([
+            WorldConsequenceReady(focus_possible_life=target),
+        ]))
+        if "event: world-consequence-ready" in item
+    )
+    possible_life_payload = json.loads(
+        possible_life_event.split("data: ", 1)[1]
+    )
+    assert possible_life_payload == {
+        "focus_possible_life": {
+            "possible_life": {
+                "id": "possible-life-1",
+                "work_subject_owner_id": "owner-1",
+                "residence_property_id": "property-1",
+                "living_time_residence_property_id": "property-1",
+                "personal_meaning_reference": "living_profile.commute_minutes",
+            },
+            "personal_meaning": {
+                "id": "meaning-1",
+                "possible_life_id": "possible-life-1",
+                "meaning": "步行8分钟让日常安排保持从容。",
+                "living_time_residence_property_id": "property-1",
+                "actual_travel_minutes": 8,
+                "actual_travel_mode": "WALKING",
+                "route_evidence_source": "AMAP_DIRECTION_API",
+                "route_evidence_reference": "route-1",
+                "requirement_reference": "living_profile.commute_minutes",
+                "maximum_commute_minutes": 30,
+                "requirement_satisfied": True,
+            },
+        },
+    }
+    assert "focus_property_id" not in possible_life_payload

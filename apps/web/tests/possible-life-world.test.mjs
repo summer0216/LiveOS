@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { resolvePossibleLifeWorld } from '../lib/possibleLifeWorld.ts';
+import {
+  resolvePossibleLifeProjectionFocus,
+  resolvePossibleLifeWorld,
+} from '../lib/possibleLifeWorld.ts';
 
 const work = {
   identity: '融科资讯中心',
@@ -74,4 +77,55 @@ test('Property existence alone does not create a projected Possible Life', () =>
     resolvePossibleLifeWorld([possibleLife('life-1', 'missing', 20)], [property]),
     [],
   );
+});
+
+test('Possible Life Focus foregrounds one authoritative projection without replacing World', () => {
+  const residences = [
+    { id: 'home-1', geographic_status: 'GROUNDED', lng: 116.28, lat: 39.98 },
+    { id: 'home-2', geographic_status: 'GROUNDED', lng: 116.29, lat: 39.99 },
+  ];
+  const lives = [possibleLife('life-1', 'home-1', 20), possibleLife('life-2', 'home-2', 25)];
+  const projected = resolvePossibleLifeWorld(lives, residences);
+  const personalMeaning = {
+    id: 'meaning-1',
+    possible_life_id: 'life-1',
+    meaning: '20分钟公共交通符合当前通勤约束。',
+    living_time_residence_property_id: 'home-1',
+    actual_travel_minutes: 20,
+    actual_travel_mode: 'PUBLIC_TRANSIT',
+    route_evidence_source: 'AMAP_DIRECTION_API',
+    route_evidence_reference: 'amap-route',
+    requirement_reference: 'living_profile.commute_minutes',
+    maximum_commute_minutes: 30,
+    requirement_satisfied: true,
+  };
+  const focus = {
+    possible_life: {
+      id: 'life-1',
+      work_subject_owner_id: 'owner-1',
+      residence_property_id: 'home-1',
+      living_time_residence_property_id: 'home-1',
+      personal_meaning_reference: 'living_profile.commute_minutes',
+    },
+    personal_meaning: personalMeaning,
+  };
+
+  const resolved = resolvePossibleLifeProjectionFocus(focus, projected);
+
+  assert.equal(resolved.projectedPossibleLife, projected[0]);
+  assert.equal(resolved.projectedPossibleLife.possibleLife, lives[0]);
+  assert.equal(resolved.personalMeaning, personalMeaning);
+  assert.deepEqual(projected.map(item => item.possibleLife.id), ['life-1', 'life-2']);
+  assert.equal(projected[1].possibleLife, lives[1]);
+  assert.equal(resolvePossibleLifeProjectionFocus({
+    ...focus,
+    possible_life: { ...focus.possible_life, residence_property_id: 'home-2' },
+  }, projected), null);
+
+  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /resolvePossibleLifeProjectionFocus\(/);
+  assert.match(page, /projectedPossibleLifeFocus\?\.projectedPossibleLife\.possibleLife\s*=== possibleLife/);
+  assert.match(page, /livingMeaning=\{authoritativePossibleLifeFocused/);
+  assert.match(page, /projectedPossibleLives\.map\(/);
+  assert.doesNotMatch(page, /projectedPossibleLives\.filter\(/);
 });

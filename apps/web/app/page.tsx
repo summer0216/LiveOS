@@ -24,9 +24,12 @@ import {
   isGroundedDecisionGeography,
   shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
-import { resolvePossibleLifeWorld } from '@/lib/possibleLifeWorld';
+import {
+  resolvePossibleLifeProjectionFocus,
+  resolvePossibleLifeWorld,
+} from '@/lib/possibleLifeWorld';
 import { streamMessage } from '@/services/chat';
-import type { WorkSubjectFocus } from '@/lib/worldConsequence';
+import type { PossibleLifeFocus, WorkSubjectFocus } from '@/lib/worldConsequence';
 import {
   getDecisionGeography,
   type DecisionGeography,
@@ -128,6 +131,7 @@ export default function HomePage() {
   >(null);
   const [focusedChoiceIds, setFocusedChoiceIds] = useState<string[]>([]);
   const [focusedWorkSubject, setFocusedWorkSubject] = useState<WorkSubjectFocus | null>(null);
+  const [focusedPossibleLife, setFocusedPossibleLife] = useState<PossibleLifeFocus | null>(null);
   const [focusedReadingElement, setFocusedReadingElement] = useState<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [workPrecisionActionRequest, setWorkPrecisionActionRequest] = useState(0);
@@ -258,6 +262,7 @@ export default function HomePage() {
     setRentAnswerPropertyId(null);
     setFocusedChoiceIds([]);
     setFocusedWorkSubject(null);
+    setFocusedPossibleLife(null);
     setPendingAction(null);
   }, []);
 
@@ -294,6 +299,7 @@ export default function HomePage() {
 
   const focusChoice = useCallback((propertyId: string) => {
     setFocusedWorkSubject(null);
+    setFocusedPossibleLife(null);
     setPendingAction((current) => current?.propertyId === propertyId ? current : null);
     setFocusedChoiceIds((current) => {
       if (current.includes(propertyId)) return current;
@@ -302,14 +308,17 @@ export default function HomePage() {
     });
   }, []);
 
-  const togglePossibleLifeFocus = useCallback((propertyId: string) => {
+  const togglePossibleLifeFocus = useCallback((propertyId: string, possibleLifeId: string) => {
+    const exitsAuthoritativeFocus = focusedPossibleLife?.possible_life.id === possibleLifeId;
     setFocusedWorkSubject(null);
+    setFocusedPossibleLife(null);
     setRentAnswerPropertyId(null);
     setPendingAction(null);
     setFocusedChoiceIds((current) => (
-      current.length === 1 && current[0] === propertyId ? [] : [propertyId]
+      exitsAuthoritativeFocus || (current.length === 1 && current[0] === propertyId)
+        ? [] : [propertyId]
     ));
-  }, []);
+  }, [focusedPossibleLife]);
 
   const handleExternalRent = useCallback(async (propertyId: string) => {
     if (!conversationId) return;
@@ -701,12 +710,19 @@ export default function HomePage() {
         currentGeographicReality: currentLocation,
         onChunk: () => {},
         onWorldStateReady: () => markWorldStateReady?.(),
-        onWorldConsequenceReady: (focusPropertyId, focusSubject) => {
-          if (focusSubject) {
+        onWorldConsequenceReady: (focusPropertyId, focusSubject, focusPossibleLife) => {
+          if (focusPossibleLife) {
+            setFocusedPossibleLife(focusPossibleLife);
+            setFocusedWorkSubject(null);
+            setFocusedChoiceIds([]);
+            pendingConversationFocusRef.current = null;
+          } else if (focusSubject) {
+            setFocusedPossibleLife(null);
             setFocusedWorkSubject(focusSubject);
             setFocusedChoiceIds([]);
             pendingConversationFocusRef.current = null;
           } else if (focusPropertyId) {
+            setFocusedPossibleLife(null);
             setFocusedWorkSubject(null);
             pendingConversationFocusRef.current = { submitId, propertyId: focusPropertyId };
           }
@@ -837,6 +853,13 @@ export default function HomePage() {
     () => resolvePossibleLifeWorld(possibleLives, properties),
     [possibleLives, properties],
   );
+  const projectedPossibleLifeFocus = useMemo(
+    () => resolvePossibleLifeProjectionFocus(
+      focusedPossibleLife,
+      projectedPossibleLives,
+    ),
+    [focusedPossibleLife, projectedPossibleLives],
+  );
   const choicePositions = useMemo(
     () => groundedChoices.reduce<Record<string, { x: number; y: number }>>(
       (positions, property) => {
@@ -918,7 +941,12 @@ export default function HomePage() {
             lng: possibleLife.work_subject.lng,
             lat: possibleLife.work_subject.lat,
           });
-          const focused = focusedChoiceIds.includes(home.id);
+          const authoritativePossibleLifeFocused = (
+            projectedPossibleLifeFocus?.projectedPossibleLife.possibleLife
+            === possibleLife
+          );
+          const focused = authoritativePossibleLifeFocused
+            || focusedChoiceIds.includes(home.id);
           const meaning = `${possibleLife.living_time.travel_minutes}min · ${possibleLife.living_time.travel_mode === 'WALKING' ? '步行' : '公共交通'}`;
           const groceryPosition = typeof home.grocery_lng === 'number'
             && typeof home.grocery_lat === 'number'
@@ -942,7 +970,8 @@ export default function HomePage() {
               home={{ ...position, name: home.title ?? '' }}
               grocery={groceryPosition}
               meaning={meaning}
-              livingMeaning={null}
+              livingMeaning={authoritativePossibleLifeFocused
+                ? projectedPossibleLifeFocus.personalMeaning.meaning : null}
               currentJudgment={null}
               decisionReadiness={null}
               userDecisionExpression={null}
@@ -975,7 +1004,7 @@ export default function HomePage() {
                 void handleExternalRent(home.id);
               }}
               onToggle={() => {
-                togglePossibleLifeFocus(home.id);
+                togglePossibleLifeFocus(home.id, possibleLife.id);
                 if (!focused) {
                   void enterPossibleLifeFocus(home);
                 }
