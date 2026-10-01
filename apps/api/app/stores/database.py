@@ -24,6 +24,7 @@ REQUIRED_TABLES = {
     "possible_life_personal_meanings",
     "possible_life_meaningful_unknowns",
     "reality_needs",
+    "possible_life_reality_actions",
 }
 
 SCHEMA_STATEMENTS = (
@@ -301,6 +302,24 @@ SCHEMA_STATEMENTS = (
             OR (resolution_mode <> 'ALREADY_KNOWN' AND known_reality_reference IS NULL)
         ),
         UNIQUE (owner_id, meaningful_unknown_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS possible_life_reality_actions (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        possible_life_id UUID NOT NULL REFERENCES possible_lives(id) ON DELETE CASCADE,
+        reality_need_id UUID NOT NULL REFERENCES reality_needs(id) ON DELETE CASCADE,
+        action_type TEXT NOT NULL CHECK (
+            action_type IN ('PUBLIC_EVIDENCE', 'USER_REALITY')
+        ),
+        label TEXT NOT NULL,
+        why TEXT NOT NULL,
+        state_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (owner_id, reality_need_id)
     )
     """,
     """

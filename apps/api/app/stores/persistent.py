@@ -20,6 +20,10 @@ from app.models.living_time import LivingTimeRelationship
 from app.models.possible_life import PossibleLife
 from app.models.possible_life_meaningful_unknown import PossibleLifeMeaningfulUnknown
 from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
+from app.models.possible_life_reality_action import (
+    PossibleLifeRealityAction,
+    PossibleLifeRealityActionType,
+)
 from app.models.profile import LivingProfile
 from app.models.property import (
     CommuteMode,
@@ -906,6 +910,17 @@ class RealityNeedStore:
                     timestamp,
                 ),
             ).fetchone()
+            if (
+                row is not None
+                and need.resolution_mode != RealityNeedResolutionMode.REAL_WORLD_CONTACT
+            ):
+                connection.execute(
+                    """
+                    DELETE FROM possible_life_reality_actions
+                    WHERE owner_id = %s AND reality_need_id = %s
+                    """,
+                    (owner_id, row["id"]),
+                )
         if row is None:
             raise RuntimeError("Reality Need could not be persisted.")
         return self._from(row)
@@ -924,6 +939,116 @@ class RealityNeedStore:
                 (owner_id, unknown_uuid),
             ).fetchone()
         return self._from(row) if row is not None else None
+
+
+class PossibleLifeRealityActionStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> PossibleLifeRealityAction:
+        return PossibleLifeRealityAction(
+            id=str(row["id"]),
+            possible_life_id=str(row["possible_life_id"]),
+            reality_need_id=str(row["reality_need_id"]),
+            action_type=PossibleLifeRealityActionType(row["action_type"]),
+            label=row["label"],
+            why=row["why"],
+            state_hash=row["state_hash"],
+        )
+
+    def save(
+        self, conversation_id: str, action: PossibleLifeRealityAction,
+    ) -> PossibleLifeRealityAction:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        possible_life_uuid = optional_uuid(action.possible_life_id)
+        need_uuid = optional_uuid(action.reality_need_id)
+        if (
+            owner_id is None
+            or conversation_uuid is None
+            or possible_life_uuid is None
+            or need_uuid is None
+            or not isinstance(action.action_type, PossibleLifeRealityActionType)
+            or not action.label.strip()
+            or not action.why.strip()
+        ):
+            raise ValueError("Possible Life Reality Action is invalid.")
+        timestamp = now()
+        with self._database.connect() as connection:
+            reference = connection.execute(
+                """
+                SELECT 1 FROM reality_needs AS need
+                JOIN possible_lives AS possible_life
+                  ON possible_life.id = need.possible_life_id
+                 AND possible_life.owner_id = need.owner_id
+                WHERE need.owner_id = %s AND need.id = %s
+                  AND possible_life.id = %s
+                  AND need.resolution_mode = 'REAL_WORLD_CONTACT'
+                """,
+                (owner_id, need_uuid, possible_life_uuid),
+            ).fetchone()
+            if reference is None:
+                raise ValueError(
+                    "Action requires a REAL_WORLD_CONTACT Need for the same Possible Life."
+                )
+            row = connection.execute(
+                """
+                INSERT INTO possible_life_reality_actions(
+                    id, owner_id, source_conversation_id, possible_life_id,
+                    reality_need_id, action_type, label, why, state_hash,
+                    created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, reality_need_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    action_type = EXCLUDED.action_type,
+                    label = EXCLUDED.label,
+                    why = EXCLUDED.why,
+                    state_hash = EXCLUDED.state_hash,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(action.id), owner_id, conversation_uuid,
+                    possible_life_uuid, need_uuid, action.action_type.value,
+                    action.label, action.why, action.state_hash,
+                    timestamp, timestamp,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Possible Life Reality Action could not be persisted.")
+        return self._from(row)
+
+    def get(
+        self, conversation_id: str, reality_need_id: str,
+    ) -> PossibleLifeRealityAction | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        need_uuid = optional_uuid(reality_need_id)
+        if owner_id is None or need_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM possible_life_reality_actions
+                WHERE owner_id = %s AND reality_need_id = %s
+                """,
+                (owner_id, need_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def delete(self, conversation_id: str, reality_need_id: str) -> None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        need_uuid = optional_uuid(reality_need_id)
+        if owner_id is None or need_uuid is None:
+            return
+        with self._database.connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM possible_life_reality_actions
+                WHERE owner_id = %s AND reality_need_id = %s
+                """,
+                (owner_id, need_uuid),
+            )
 
 
 class DecisionGeographyStore:
