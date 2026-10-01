@@ -743,6 +743,13 @@ class PossibleLifeMeaningfulUnknownStore:
             question=row["question"],
             why_it_matters=row["why_it_matters"],
             state_hash=row["state_hash"],
+            resolved_at=row["resolved_at"],
+            resolved_property_id=(
+                str(row["resolved_property_id"])
+                if row["resolved_property_id"] is not None else None
+            ),
+            resolved_layout_expression=row["resolved_layout_expression"],
+            resolved_reality_source=row["resolved_reality_source"],
         )
 
     def save(
@@ -787,7 +794,8 @@ class PossibleLifeMeaningfulUnknownStore:
                     personal_meaning_id, question, why_it_matters, state_hash,
                     created_at, updated_at
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (owner_id, possible_life_id) DO UPDATE SET
+                ON CONFLICT (owner_id, possible_life_id)
+                    WHERE resolved_at IS NULL DO UPDATE SET
                     source_conversation_id = EXCLUDED.source_conversation_id,
                     personal_meaning_id = EXCLUDED.personal_meaning_id,
                     question = EXCLUDED.question,
@@ -825,8 +833,84 @@ class PossibleLifeMeaningfulUnknownStore:
                 """
                 SELECT * FROM possible_life_meaningful_unknowns
                 WHERE owner_id = %s AND possible_life_id = %s
+                  AND resolved_at IS NULL
                 """,
                 (owner_id, possible_life_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def get_by_id(
+        self, conversation_id: str, unknown_id: str,
+    ) -> PossibleLifeMeaningfulUnknown | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        unknown_uuid = optional_uuid(unknown_id)
+        if owner_id is None or unknown_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM possible_life_meaningful_unknowns
+                WHERE owner_id = %s AND id = %s
+                """,
+                (owner_id, unknown_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+    def resolve_from_admitted_layout(
+        self, conversation_id: str, *, unknown_id: str,
+        possible_life_id: str, reality_need_id: str, action_id: str,
+        property_id: str, layout_expression: str,
+    ) -> PossibleLifeMeaningfulUnknown | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        ids = [optional_uuid(value) for value in (
+            unknown_id, possible_life_id, reality_need_id, action_id, property_id,
+        )]
+        if owner_id is None or any(value is None for value in ids):
+            return None
+        unknown_uuid, possible_life_uuid, need_uuid, action_uuid, property_uuid = ids
+        timestamp = now()
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE possible_life_meaningful_unknowns AS unknown
+                SET resolved_at = %s, resolved_property_id = %s,
+                    resolved_layout_expression = %s,
+                    resolved_reality_source = 'USER_PROVIDED',
+                    updated_at = %s
+                WHERE unknown.owner_id = %s AND unknown.id = %s
+                  AND unknown.possible_life_id = %s
+                  AND unknown.resolved_at IS NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM reality_needs AS need
+                      JOIN possible_life_reality_actions AS action
+                        ON action.owner_id = need.owner_id
+                       AND action.reality_need_id = need.id
+                      JOIN possible_lives AS possible_life
+                        ON possible_life.owner_id = need.owner_id
+                       AND possible_life.id = need.possible_life_id
+                      JOIN properties AS residence
+                        ON residence.owner_id = possible_life.owner_id
+                       AND residence.id = possible_life.residence_property_id
+                      WHERE need.owner_id = unknown.owner_id
+                        AND need.id = %s AND need.meaningful_unknown_id = unknown.id
+                        AND need.possible_life_id = unknown.possible_life_id
+                        AND need.resolution_mode = 'REAL_WORLD_CONTACT'
+                        AND action.id = %s AND action.action_type = 'USER_REALITY'
+                        AND action.possible_life_id = possible_life.id
+                        AND residence.id = %s AND residence.conversation_id = %s
+                        AND residence.geographic_status = 'GROUNDED'
+                        AND residence.layout_expression = %s
+                        AND residence.layout_source = 'USER_PROVIDED'
+                  )
+                RETURNING *
+                """,
+                (
+                    timestamp, property_uuid, layout_expression, timestamp,
+                    owner_id, unknown_uuid, possible_life_uuid,
+                    need_uuid, action_uuid, property_uuid,
+                    uuid_value(conversation_id), layout_expression,
+                ),
             ).fetchone()
         return self._from(row) if row is not None else None
 

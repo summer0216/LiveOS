@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 
 from app.core.ai_client import AIClient, ai_client
@@ -424,6 +425,42 @@ establish a layout requirement. Return null when no layout requirement is stated
             ))
         return matches[0] if len(matches) == 1 else None
 
+    def _resolve_bound_layout_unknown(
+        self, conversation_id: str, binding: ActionRealityReturnContext,
+        admitted: Property,
+    ) -> None:
+        unknown = self._possible_life_unknowns.get(
+            conversation_id, binding.possible_life_id,
+        )
+        if (
+            unknown is None
+            or not re.search(r"几[室居].*几厅|实际[户房]型", unknown.question)
+            or not isinstance(admitted.layout_expression, str)
+            or not re.search(
+                r"[一二三四五六七八九十两0-9]+室[一二三四五六七八九十两0-9]+厅",
+                admitted.layout_expression,
+            )
+            or admitted.id != binding.residence_property_id
+            or admitted.layout_source != "USER_PROVIDED"
+        ):
+            return
+        need = self._reality_needs.get(conversation_id, unknown.id)
+        if (
+            need is None
+            or need.id != binding.reality_need_id
+            or need.possible_life_id != binding.possible_life_id
+        ):
+            return
+        self._possible_life_unknowns.resolve_from_admitted_layout(
+            conversation_id,
+            unknown_id=unknown.id,
+            possible_life_id=binding.possible_life_id,
+            reality_need_id=binding.reality_need_id,
+            action_id=binding.action_id,
+            property_id=binding.residence_property_id,
+            layout_expression=admitted.layout_expression,
+        )
+
     @staticmethod
     def _possible_life_prompt_values(
         possible_lives: list[PossibleLife],
@@ -770,11 +807,18 @@ assistant inference.
                 )
             ):
                 return None
-            if home.layout_expression == quote and home.layout_source == "USER_PROVIDED":
-                return home
-            return self._properties.admit_user_layout_reality(
-                property_id, conversation_id, expression=quote,
+            admitted = (
+                home if home.layout_expression == quote
+                and home.layout_source == "USER_PROVIDED"
+                else self._properties.admit_user_layout_reality(
+                    property_id, conversation_id, expression=quote,
+                )
             )
+            if admitted is not None and action_reality_return is not None:
+                self._resolve_bound_layout_unknown(
+                    conversation_id, action_reality_return, admitted,
+                )
+            return admitted
         if not active_unknown or result["unknown_reference"] != home.meaningful_unknown:
             return None
         if result["reality_type"] == "TENANCY_MODE":

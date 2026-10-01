@@ -274,9 +274,12 @@ SCHEMA_STATEMENTS = (
         question TEXT NOT NULL,
         why_it_matters TEXT NOT NULL,
         state_hash TEXT NOT NULL,
+        resolved_at TIMESTAMPTZ,
+        resolved_property_id UUID REFERENCES properties(id) ON DELETE CASCADE,
+        resolved_layout_expression TEXT,
+        resolved_reality_source TEXT,
         created_at TIMESTAMPTZ NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL,
-        UNIQUE (owner_id, possible_life_id)
+        updated_at TIMESTAMPTZ NOT NULL
     )
     """,
     """
@@ -419,6 +422,10 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
+    "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_property_id UUID",
+    "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_layout_expression TEXT",
+    "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_reality_source TEXT",
     "ALTER TABLE living_profiles ADD COLUMN IF NOT EXISTS layout_requirement TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_identity TEXT",
     "ALTER TABLE properties ADD COLUMN IF NOT EXISTS geographic_precision TEXT",
@@ -539,6 +546,12 @@ OWNERSHIP_BACKFILL_STATEMENTS = (
 )
 
 OWNERSHIP_CONSTRAINT_STATEMENTS = (
+    "ALTER TABLE possible_life_meaningful_unknowns DROP CONSTRAINT IF EXISTS possible_life_meaningful_unknowns_resolved_property_id_fkey",
+    "ALTER TABLE possible_life_meaningful_unknowns ADD CONSTRAINT possible_life_meaningful_unknowns_resolved_property_id_fkey FOREIGN KEY (resolved_property_id) REFERENCES properties(id) ON DELETE CASCADE",
+    "ALTER TABLE possible_life_meaningful_unknowns DROP CONSTRAINT IF EXISTS possible_life_meaningful_unknowns_owner_id_possible_life_id_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_active_possible_life_unknown ON possible_life_meaningful_unknowns(owner_id, possible_life_id) WHERE resolved_at IS NULL",
+    "ALTER TABLE possible_life_meaningful_unknowns DROP CONSTRAINT IF EXISTS possible_life_unknown_resolution_check",
+    "ALTER TABLE possible_life_meaningful_unknowns ADD CONSTRAINT possible_life_unknown_resolution_check CHECK ((resolved_at IS NULL AND resolved_property_id IS NULL AND resolved_layout_expression IS NULL AND resolved_reality_source IS NULL) OR (resolved_at IS NOT NULL AND resolved_property_id IS NOT NULL AND resolved_layout_expression IS NOT NULL AND resolved_reality_source = 'USER_PROVIDED'))",
     "ALTER TABLE living_profiles ALTER COLUMN owner_id SET NOT NULL",
     "ALTER TABLE properties ALTER COLUMN owner_id SET NOT NULL",
     "ALTER TABLE decision_records ALTER COLUMN owner_id SET NOT NULL",

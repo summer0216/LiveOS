@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 
 import pytest
+
 from app.models.conversation import ConversationMessage
 from app.models.property import GeographicStatus, Property
 from app.models.reality_need import RealityNeedResolutionMode
@@ -76,7 +77,6 @@ def test_bound_user_reality_admits_only_possible_life_residence_layout() -> None
     ))
     before = (
         possible_life_store.get(cid, possible_life.id),
-        possible_life_meaningful_unknown_store.get(cid, possible_life.id),
         reality_need_store.get(cid, unknown.id),
         possible_life_reality_action_store.get(cid, need.id),
     )
@@ -90,9 +90,18 @@ def test_bound_user_reality_admits_only_possible_life_residence_layout() -> None
     assert admitted.layout_expression == "两室一厅"
     assert admitted.layout_source == "USER_PROVIDED"
     assert property_manager.get_scoped(other.id or "", cid).layout_expression is None
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) is None
+    resolved = possible_life_meaningful_unknown_store.get_by_id(cid, unknown.id)
+    assert resolved is not None
+    assert resolved.id == unknown.id
+    assert resolved.possible_life_id == possible_life.id
+    assert resolved.question == unknown.question
+    assert resolved.resolved_at is not None
+    assert resolved.resolved_property_id == residence.id
+    assert resolved.resolved_layout_expression == "两室一厅"
+    assert resolved.resolved_reality_source == "USER_PROVIDED"
     assert before == (
         possible_life_store.get(cid, possible_life.id),
-        possible_life_meaningful_unknown_store.get(cid, possible_life.id),
         reality_need_store.get(cid, unknown.id),
         possible_life_reality_action_store.get(cid, need.id),
     )
@@ -105,7 +114,7 @@ def test_bound_user_reality_admits_only_possible_life_residence_layout() -> None
 )
 def test_mismatched_authoritative_binding_cannot_admit(field: str) -> None:
     cid = uuid_for(f"bound-action-layout-mismatch-{field}")
-    residence, _, _, _, _, service, resolution = bound_layout_return(cid)
+    residence, possible_life, unknown, _, _, service, resolution = bound_layout_return(cid)
     forged = replace(
         resolution.action_reality_return,
         **{field: uuid_for(f"different-{field}")},
@@ -115,11 +124,12 @@ def test_mismatched_authoritative_binding_cannot_admit(field: str) -> None:
         expected_reality_type="LAYOUT", action_reality_return=forged,
     ) is None
     assert property_manager.get_scoped(residence.id or "", cid).layout_expression is None
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) == unknown
 
 
 def test_unrelated_or_ambiguous_return_does_not_admit() -> None:
     cid = uuid_for("bound-action-layout-unrelated")
-    residence, _, _, _, _, service, resolution = bound_layout_return(cid)
+    residence, possible_life, unknown, _, _, service, resolution = bound_layout_return(cid)
     binding = resolution.action_reality_return
     assert service.admit(
         cid, residence.id or "", "另一处住所实际是两室一厅。",
@@ -133,6 +143,71 @@ def test_unrelated_or_ambiguous_return_does_not_admit() -> None:
         expected_reality_type="LAYOUT", action_reality_return=binding,
     ) is None
     assert property_manager.get_scoped(residence.id or "", cid).layout_expression is None
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) == unknown
+
+
+def test_property_reality_without_action_binding_does_not_resolve_unknown() -> None:
+    cid = uuid_for("layout-without-action-binding")
+    residence, possible_life, unknown, _, _, service, _ = bound_layout_return(cid)
+    admitted = service.admit(
+        cid, residence.id or "", EXPRESSION, expected_reality_type="LAYOUT",
+    )
+    assert admitted is not None
+    assert admitted.layout_expression == "两室一厅"
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) == unknown
+
+
+def test_failed_property_admission_does_not_resolve_unknown(monkeypatch) -> None:
+    cid = uuid_for("failed-layout-admission-keeps-unknown")
+    residence, possible_life, unknown, _, _, service, resolution = bound_layout_return(cid)
+    monkeypatch.setattr(
+        service._properties, "admit_user_layout_reality",
+        lambda *_args, **_kwargs: None,
+    )
+    assert service.admit(
+        cid, residence.id or "", EXPRESSION, expected_reality_type="LAYOUT",
+        action_reality_return=resolution.action_reality_return,
+    ) is None
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) == unknown
+
+
+def test_resolving_one_possible_life_leaves_another_unknown_unchanged() -> None:
+    cid = uuid_for("resolve-one-possible-life")
+    other_cid = uuid_for("resolve-other-possible-life")
+    residence, _, _, _, _, service, resolution = bound_layout_return(cid)
+    other_residence, other_life, other_unknown, _, _, _, _ = bound_layout_return(
+        other_cid,
+    )
+    assert service.admit(
+        cid, residence.id or "", EXPRESSION, expected_reality_type="LAYOUT",
+        action_reality_return=resolution.action_reality_return,
+    ) is not None
+    assert possible_life_meaningful_unknown_store.get(
+        other_cid, other_life.id,
+    ) == other_unknown
+    assert property_manager.get_scoped(
+        other_residence.id or "", other_cid,
+    ).layout_expression is None
+
+
+def test_resolved_unknown_keeps_identity_when_later_unknown_is_admitted() -> None:
+    cid = uuid_for("resolved-layout-unknown-history")
+    residence, possible_life, unknown, _, _, service, resolution = bound_layout_return(cid)
+    assert service.admit(
+        cid, residence.id or "", EXPRESSION, expected_reality_type="LAYOUT",
+        action_reality_return=resolution.action_reality_return,
+    ) is not None
+    later = possible_life_meaningful_unknown_store.save(
+        cid, replace(
+            unknown, id=uuid_for("later-unknown-after-layout"),
+            question="这套住所夜间室内是否安静？", state_hash="later-state",
+        ),
+    )
+    assert later.id != unknown.id
+    assert possible_life_meaningful_unknown_store.get(cid, possible_life.id) == later
+    resolved = possible_life_meaningful_unknown_store.get_by_id(cid, unknown.id)
+    assert resolved is not None and resolved.resolved_at is not None
+    assert resolved.question == unknown.question
 
 
 def test_chat_path_passes_bound_context_to_existing_admission(monkeypatch) -> None:
