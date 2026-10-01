@@ -22,6 +22,7 @@ REQUIRED_TABLES = {
     "living_time_relationships",
     "possible_lives",
     "possible_life_personal_meanings",
+    "possible_life_meaningful_unknowns",
 }
 
 SCHEMA_STATEMENTS = (
@@ -257,6 +258,22 @@ SCHEMA_STATEMENTS = (
         FOREIGN KEY (owner_id, living_time_residence_property_id)
             REFERENCES living_time_relationships(owner_id, residence_property_id)
             ON DELETE CASCADE,
+        UNIQUE (owner_id, possible_life_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS possible_life_meaningful_unknowns (
+        id UUID PRIMARY KEY,
+        owner_id UUID NOT NULL REFERENCES anonymous_users(id),
+        source_conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        possible_life_id UUID NOT NULL REFERENCES possible_lives(id) ON DELETE CASCADE,
+        personal_meaning_id UUID NOT NULL
+            REFERENCES possible_life_personal_meanings(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        why_it_matters TEXT NOT NULL,
+        state_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL,
         UNIQUE (owner_id, possible_life_id)
     )
     """,

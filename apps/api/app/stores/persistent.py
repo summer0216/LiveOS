@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -16,6 +18,7 @@ from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.living_time import LivingTimeRelationship
 from app.models.possible_life import PossibleLife
+from app.models.possible_life_meaningful_unknown import PossibleLifeMeaningfulUnknown
 from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.profile import LivingProfile
 from app.models.property import (
@@ -30,7 +33,6 @@ from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
-from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -721,6 +723,107 @@ class PossibleLifePersonalMeaningStore:
                 (owner_id,),
             ).fetchall()
         return [self._from(row) for row in rows]
+
+
+class PossibleLifeMeaningfulUnknownStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> PossibleLifeMeaningfulUnknown:
+        return PossibleLifeMeaningfulUnknown(
+            id=str(row["id"]),
+            possible_life_id=str(row["possible_life_id"]),
+            personal_meaning_id=str(row["personal_meaning_id"]),
+            question=row["question"],
+            why_it_matters=row["why_it_matters"],
+            state_hash=row["state_hash"],
+        )
+
+    def save(
+        self,
+        conversation_id: str,
+        unknown: PossibleLifeMeaningfulUnknown,
+    ) -> PossibleLifeMeaningfulUnknown:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        possible_life_uuid = optional_uuid(unknown.possible_life_id)
+        personal_meaning_uuid = optional_uuid(unknown.personal_meaning_id)
+        if (
+            owner_id is None
+            or conversation_uuid is None
+            or possible_life_uuid is None
+            or personal_meaning_uuid is None
+        ):
+            raise ValueError("Possible Life Meaningful Unknown references are invalid.")
+        timestamp = now()
+        with self._database.connect() as connection:
+            references = connection.execute(
+                """
+                SELECT 1
+                FROM possible_lives AS possible_life
+                JOIN possible_life_personal_meanings AS personal_meaning
+                  ON personal_meaning.owner_id = possible_life.owner_id
+                 AND personal_meaning.possible_life_id = possible_life.id
+                WHERE possible_life.owner_id = %s
+                  AND possible_life.id = %s
+                  AND personal_meaning.id = %s
+                """,
+                (owner_id, possible_life_uuid, personal_meaning_uuid),
+            ).fetchone()
+            if references is None:
+                raise ValueError(
+                    "Possible Life Meaningful Unknown references are inconsistent."
+                )
+            row = connection.execute(
+                """
+                INSERT INTO possible_life_meaningful_unknowns(
+                    id, owner_id, source_conversation_id, possible_life_id,
+                    personal_meaning_id, question, why_it_matters, state_hash,
+                    created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, possible_life_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    personal_meaning_id = EXCLUDED.personal_meaning_id,
+                    question = EXCLUDED.question,
+                    why_it_matters = EXCLUDED.why_it_matters,
+                    state_hash = EXCLUDED.state_hash,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(unknown.id),
+                    owner_id,
+                    conversation_uuid,
+                    possible_life_uuid,
+                    personal_meaning_uuid,
+                    unknown.question,
+                    unknown.why_it_matters,
+                    unknown.state_hash,
+                    timestamp,
+                    timestamp,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Possible Life Meaningful Unknown could not be persisted.")
+        return self._from(row)
+
+    def get(
+        self, conversation_id: str, possible_life_id: str,
+    ) -> PossibleLifeMeaningfulUnknown | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        possible_life_uuid = optional_uuid(possible_life_id)
+        if owner_id is None or possible_life_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM possible_life_meaningful_unknowns
+                WHERE owner_id = %s AND possible_life_id = %s
+                """,
+                (owner_id, possible_life_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
 
 
 class DecisionGeographyStore:

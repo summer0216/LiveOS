@@ -24,6 +24,9 @@ from app.services.conversation_manager import conversation_manager
 from app.services.decision_geography_service import decision_geography_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.living_meaning_service import living_meaning_service
+from app.services.possible_life_meaningful_unknown import (
+    possible_life_meaningful_unknown_service,
+)
 from app.services.profile_intelligence import BudgetRealityAudit, profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -479,9 +482,15 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     possible_lives_before = possible_life_store.list(cid)
     meanings_before = possible_life_personal_meaning_store.list(cid)
     history = [ConversationMessage("user", "继续考虑这个地方")]
+    unknown_focus_ids: list[str] = []
 
     monkeypatch.setattr(chat_service, "_update_profile", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *_args: iter(["reply"]))
+    monkeypatch.setattr(
+        possible_life_meaningful_unknown_service,
+        "form",
+        lambda _cid, possible_life_id: unknown_focus_ids.append(possible_life_id),
+    )
 
     def complete(resolution):
         profile_future: Future[ProfileAnalysis] = Future()
@@ -526,6 +535,7 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     assert possible_life_focus.focus_possible_life.personal_meaning is personal_meaning
     assert possible_life_focus.focus_property_id is None
     assert possible_life_focus.focus_subject is None
+    assert unknown_focus_ids == [possible_life.id]
     assert possible_life_store.list(cid) == possible_lives_before
     assert possible_life_personal_meaning_store.list(cid) == meanings_before
 

@@ -40,6 +40,9 @@ from app.services.geographic_resolution import geographic_resolver
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.living_meaning_service import living_meaning_service
 from app.services.living_time_relationship import living_time_relationship_service
+from app.services.possible_life_meaningful_unknown import (
+    possible_life_meaningful_unknown_service,
+)
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -854,6 +857,19 @@ class ChatService:
                     focused_property_id=focused_property_id,
                     conversation_id=conversation_id,
                 )
+            if resolution.attention_possible_life is not None:
+                try:
+                    possible_life_meaningful_unknown_service.form(
+                        conversation_id,
+                        resolution.attention_possible_life.possible_life.id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to form Possible Life Meaningful Unknown "
+                        "conversation_id=%s possible_life_id=%s",
+                        conversation_id,
+                        resolution.attention_possible_life.possible_life.id,
+                    )
             if resolution.layout_requirement is not None:
                 current_profile = profile_manager.get_or_create(conversation_id)
                 requirement_merge = profile_manager.merge(

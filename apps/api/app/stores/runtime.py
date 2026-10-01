@@ -8,6 +8,7 @@ from app.stores.persistent import (
     DecisionUnknownStore,
     LatestVerifiedActionStore,
     LivingTimeRelationshipStore,
+    PossibleLifeMeaningfulUnknownStore,
     PossibleLifePersonalMeaningStore,
     PossibleLifeStore,
     ProfileStore,
@@ -24,6 +25,7 @@ work_subject_store = WorkSubjectStore(database)
 living_time_relationship_store = LivingTimeRelationshipStore(database)
 possible_life_store = PossibleLifeStore(database)
 possible_life_personal_meaning_store = PossibleLifePersonalMeaningStore(database)
+possible_life_meaningful_unknown_store = PossibleLifeMeaningfulUnknownStore(database)
 property_store = PropertyStore(database)
 decision_unknown_store = DecisionUnknownStore(database)
 decision_record_store = DecisionRecordStore(database)
