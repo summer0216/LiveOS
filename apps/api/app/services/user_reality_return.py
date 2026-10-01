@@ -10,7 +10,9 @@ from app.core.config import settings
 from app.models.conversation import ConversationMessage
 from app.models.possible_life import PossibleLife
 from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
+from app.models.possible_life_reality_action import PossibleLifeRealityActionType
 from app.models.property import GeographicStatus, Property, PropertyRentSource
+from app.models.reality_need import RealityNeedResolutionMode
 from app.models.work_subject import WorkSubject
 from app.services.external_rent_reality_service import (
     USER_INITIATED_RENT_ACTION_LABEL,
@@ -18,13 +20,19 @@ from app.services.external_rent_reality_service import (
 )
 from app.services.property_manager import PropertyManager, property_manager
 from app.stores.persistent import (
+    PossibleLifeMeaningfulUnknownStore,
     PossibleLifePersonalMeaningStore,
+    PossibleLifeRealityActionStore,
     PossibleLifeStore,
+    RealityNeedStore,
     WorkSubjectStore,
 )
 from app.stores.runtime import (
+    possible_life_meaningful_unknown_store,
     possible_life_personal_meaning_store,
+    possible_life_reality_action_store,
     possible_life_store,
+    reality_need_store,
     work_subject_store,
 )
 
@@ -50,6 +58,15 @@ class PossibleLifeAttentionTarget:
 
 
 @dataclass(frozen=True)
+class ActionRealityReturnContext:
+    action_id: str
+    reality_need_id: str
+    possible_life_id: str
+    residence_property_id: str
+    claim_quote: str
+
+
+@dataclass(frozen=True)
 class PropertyExpressionResolution:
     property_id: str | None = None
     reality_type: str | None = None
@@ -59,6 +76,7 @@ class PropertyExpressionResolution:
     rent_verification_property_id: str | None = None
     attention_subject: WorkSubject | None = None
     attention_possible_life: PossibleLifeAttentionTarget | None = None
+    action_reality_return: ActionRealityReturnContext | None = None
 
 
 class UserRealityReturn:
@@ -70,12 +88,22 @@ class UserRealityReturn:
         possible_life_meanings: PossibleLifePersonalMeaningStore = (
             possible_life_personal_meaning_store
         ),
+        possible_life_unknowns: PossibleLifeMeaningfulUnknownStore = (
+            possible_life_meaningful_unknown_store
+        ),
+        reality_needs: RealityNeedStore = reality_need_store,
+        possible_life_actions: PossibleLifeRealityActionStore = (
+            possible_life_reality_action_store
+        ),
     ) -> None:
         self._properties = properties
         self._intelligence = intelligence
         self._subjects = subjects
         self._possible_lives = possible_lives
         self._possible_life_meanings = possible_life_meanings
+        self._possible_life_unknowns = possible_life_unknowns
+        self._reality_needs = reality_needs
+        self._possible_life_actions = possible_life_actions
 
     def resolve_expression(
         self, history: list[ConversationMessage], properties: list[Property],
@@ -238,12 +266,25 @@ establish a layout requirement. Return null when no layout requirement is stated
             active_layout_property = self._focused_active_layout_property(
                 focused_property_id, candidates,
             )
+            focused_action_return = None
+            if (
+                conversation_id
+                and focused_property_id
+                and isinstance(requirement, str)
+                and requirement.strip()
+                and requirement in user_text
+                and any(home.id == focused_property_id for home in candidates)
+            ):
+                focused_action_return = self._action_reality_return_context(
+                    conversation_id, focused_property_id, "LAYOUT", requirement,
+                    authoritative_possible_lives,
+                )
             # The model has already isolated an explicit layout expression, but
             # can still mislabel a terse answer as a new requirement. An active
             # layout Unknown supplies the bounded answer context; admit() still
             # independently validates the factual Reality before any write.
             if (
-                active_layout_property is not None
+                (active_layout_property is not None or focused_action_return is not None)
                 and isinstance(requirement, str)
                 and requirement.strip()
                 and len(requirement) <= 60
@@ -254,8 +295,9 @@ establish a layout requirement. Return null when no layout requirement is stated
                 and result["binding_evidence"] is None
             ):
                 return PropertyExpressionResolution(
-                    property_id=active_layout_property.id,
+                    property_id=focused_property_id,
                     reality_type="LAYOUT",
+                    action_reality_return=focused_action_return,
                 )
             if (
                 isinstance(requirement, str) and requirement.strip()
@@ -323,7 +365,61 @@ establish a layout requirement. Return null when no layout requirement is stated
             property_id, reality_type, attention_property_id=attention_property_id,
             attention_subject=attention_subject,
             attention_possible_life=attention_possible_life,
+            action_reality_return=self._action_reality_return_context(
+                conversation_id, property_id, reality_type, quote,
+                authoritative_possible_lives,
+            ) if conversation_id else None,
         )
+
+    def _action_reality_return_context(
+        self,
+        conversation_id: str,
+        property_id: str,
+        reality_type: str,
+        claim_quote: str,
+        possible_lives: list[PossibleLife],
+    ) -> ActionRealityReturnContext | None:
+        # Bind only a factual layout claim already resolved to one grounded
+        # residence. This does not admit the claim as Reality.
+        if reality_type != "LAYOUT":
+            return None
+        matches: list[ActionRealityReturnContext] = []
+        for possible_life in possible_lives:
+            if possible_life.residence_property_id != property_id:
+                continue
+            unknown = self._possible_life_unknowns.get(
+                conversation_id, possible_life.id,
+            )
+            if unknown is None or unknown.possible_life_id != possible_life.id:
+                continue
+            if not any(term in unknown.question for term in (
+                "户型", "房型", "几室", "几厅",
+            )):
+                continue
+            need = self._reality_needs.get(conversation_id, unknown.id)
+            if (
+                need is None
+                or need.possible_life_id != possible_life.id
+                or need.meaningful_unknown_id != unknown.id
+                or need.resolution_mode != RealityNeedResolutionMode.REAL_WORLD_CONTACT
+            ):
+                continue
+            action = self._possible_life_actions.get(conversation_id, need.id)
+            if (
+                action is None
+                or action.action_type != PossibleLifeRealityActionType.USER_REALITY
+                or action.reality_need_id != need.id
+                or action.possible_life_id != possible_life.id
+            ):
+                continue
+            matches.append(ActionRealityReturnContext(
+                action_id=action.id,
+                reality_need_id=need.id,
+                possible_life_id=possible_life.id,
+                residence_property_id=property_id,
+                claim_quote=claim_quote,
+            ))
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def _possible_life_prompt_values(
