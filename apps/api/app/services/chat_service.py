@@ -706,6 +706,8 @@ class ChatService:
             admitted = user_reality_return.admit(
                 conversation_id, property_resolution.property_id, message,
                 expected_reality_type=property_resolution.reality_type,
+                **({"action_reality_return": property_resolution.action_reality_return}
+                   if property_resolution.action_reality_return is not None else {}),
             )
             if admitted is not None:
                 def user_reality_consequence():
@@ -943,6 +945,8 @@ class ChatService:
                 admitted = user_reality_return.admit(
                     conversation_id, property_id, history[-1].content,
                     expected_reality_type=resolution.reality_type,
+                    **({"action_reality_return": resolution.action_reality_return}
+                       if resolution.action_reality_return is not None else {}),
                 )
                 if admitted is not None:
                     try:

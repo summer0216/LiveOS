@@ -64,6 +64,7 @@ class ActionRealityReturnContext:
     possible_life_id: str
     residence_property_id: str
     claim_quote: str
+    user_expression: str
 
 
 @dataclass(frozen=True)
@@ -277,7 +278,7 @@ establish a layout requirement. Return null when no layout requirement is stated
             ):
                 focused_action_return = self._action_reality_return_context(
                     conversation_id, focused_property_id, "LAYOUT", requirement,
-                    authoritative_possible_lives,
+                    user_text, authoritative_possible_lives,
                 )
             # The model has already isolated an explicit layout expression, but
             # can still mislabel a terse answer as a new requirement. An active
@@ -367,7 +368,7 @@ establish a layout requirement. Return null when no layout requirement is stated
             attention_possible_life=attention_possible_life,
             action_reality_return=self._action_reality_return_context(
                 conversation_id, property_id, reality_type, quote,
-                authoritative_possible_lives,
+                user_text, authoritative_possible_lives,
             ) if conversation_id else None,
         )
 
@@ -377,6 +378,7 @@ establish a layout requirement. Return null when no layout requirement is stated
         property_id: str,
         reality_type: str,
         claim_quote: str,
+        user_text: str,
         possible_lives: list[PossibleLife],
     ) -> ActionRealityReturnContext | None:
         # Bind only a factual layout claim already resolved to one grounded
@@ -418,6 +420,7 @@ establish a layout requirement. Return null when no layout requirement is stated
                 possible_life_id=possible_life.id,
                 residence_property_id=property_id,
                 claim_quote=claim_quote,
+                user_expression=user_text,
             ))
         return matches[0] if len(matches) == 1 else None
 
@@ -641,9 +644,24 @@ establish a layout requirement. Return null when no layout requirement is stated
     def admit(
         self, conversation_id: str, property_id: str, user_text: str,
         *, expected_reality_type: str | None = None,
+        action_reality_return: ActionRealityReturnContext | None = None,
     ) -> Property | None:
         home = self._properties.get_scoped(property_id, conversation_id)
         if home is None or home.geographic_status != GeographicStatus.GROUNDED:
+            return None
+        if action_reality_return is not None and (
+            not isinstance(action_reality_return, ActionRealityReturnContext)
+            or expected_reality_type != "LAYOUT"
+            or action_reality_return.user_expression != user_text
+            or not action_reality_return.claim_quote.strip()
+            or action_reality_return.claim_quote not in user_text
+            or action_reality_return != self._action_reality_return_context(
+                conversation_id, property_id, "LAYOUT",
+                action_reality_return.claim_quote,
+                user_text,
+                self._possible_lives.list(conversation_id),
+            )
+        ):
             return None
 
         active_unknown = bool(
@@ -746,6 +764,10 @@ assistant inference.
                 or not quote.strip()
                 or len(quote) > 60
                 or quote not in user_text
+                or (
+                    action_reality_return is not None
+                    and quote not in action_reality_return.claim_quote
+                )
             ):
                 return None
             if home.layout_expression == quote and home.layout_source == "USER_PROVIDED":
