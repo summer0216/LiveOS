@@ -29,6 +29,7 @@ from app.models.property import (
     PropertyProvenance,
     PropertyRentSource,
 )
+from app.models.reality_need import RealityNeed, RealityNeedResolutionMode
 from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
@@ -822,6 +823,105 @@ class PossibleLifeMeaningfulUnknownStore:
                 WHERE owner_id = %s AND possible_life_id = %s
                 """,
                 (owner_id, possible_life_uuid),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
+
+class RealityNeedStore:
+    def __init__(self, database: Database) -> None:
+        self._database = database
+
+    @staticmethod
+    def _from(row: dict[str, Any]) -> RealityNeed:
+        return RealityNeed(
+            id=str(row["id"]),
+            possible_life_id=str(row["possible_life_id"]),
+            meaningful_unknown_id=str(row["meaningful_unknown_id"]),
+            needed_reality=row["needed_reality"],
+            resolution_mode=RealityNeedResolutionMode(row["resolution_mode"]),
+            known_reality_reference=row["known_reality_reference"],
+            state_hash=row["state_hash"],
+        )
+
+    def save(self, conversation_id: str, need: RealityNeed) -> RealityNeed:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        conversation_uuid = optional_uuid(conversation_id)
+        possible_life_uuid = optional_uuid(need.possible_life_id)
+        unknown_uuid = optional_uuid(need.meaningful_unknown_id)
+        if (
+            owner_id is None
+            or conversation_uuid is None
+            or possible_life_uuid is None
+            or unknown_uuid is None
+            or not need.needed_reality.strip()
+            or (
+                need.resolution_mode == RealityNeedResolutionMode.ALREADY_KNOWN
+            ) != (need.known_reality_reference is not None)
+        ):
+            raise ValueError("Reality Need references or resolution mode are invalid.")
+        timestamp = now()
+        with self._database.connect() as connection:
+            references = connection.execute(
+                """
+                SELECT 1
+                FROM possible_life_meaningful_unknowns AS unknown
+                JOIN possible_lives AS possible_life
+                  ON possible_life.id = unknown.possible_life_id
+                 AND possible_life.owner_id = unknown.owner_id
+                WHERE unknown.owner_id = %s
+                  AND unknown.id = %s
+                  AND possible_life.id = %s
+                """,
+                (owner_id, unknown_uuid, possible_life_uuid),
+            ).fetchone()
+            if references is None:
+                raise ValueError("Reality Need must reference the same Possible Life.")
+            row = connection.execute(
+                """
+                INSERT INTO reality_needs(
+                    id, owner_id, source_conversation_id, possible_life_id,
+                    meaningful_unknown_id, needed_reality, resolution_mode,
+                    known_reality_reference, state_hash, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (owner_id, meaningful_unknown_id) DO UPDATE SET
+                    source_conversation_id = EXCLUDED.source_conversation_id,
+                    needed_reality = EXCLUDED.needed_reality,
+                    resolution_mode = EXCLUDED.resolution_mode,
+                    known_reality_reference = EXCLUDED.known_reality_reference,
+                    state_hash = EXCLUDED.state_hash,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    uuid_value(need.id),
+                    owner_id,
+                    conversation_uuid,
+                    possible_life_uuid,
+                    unknown_uuid,
+                    need.needed_reality,
+                    need.resolution_mode.value,
+                    need.known_reality_reference,
+                    need.state_hash,
+                    timestamp,
+                    timestamp,
+                ),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Reality Need could not be persisted.")
+        return self._from(row)
+
+    def get(self, conversation_id: str, meaningful_unknown_id: str) -> RealityNeed | None:
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        unknown_uuid = optional_uuid(meaningful_unknown_id)
+        if owner_id is None or unknown_uuid is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM reality_needs
+                WHERE owner_id = %s AND meaningful_unknown_id = %s
+                """,
+                (owner_id, unknown_uuid),
             ).fetchone()
         return self._from(row) if row is not None else None
 

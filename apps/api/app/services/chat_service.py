@@ -43,6 +43,7 @@ from app.services.living_time_relationship import living_time_relationship_servi
 from app.services.possible_life_meaningful_unknown import (
     possible_life_meaningful_unknown_service,
 )
+from app.services.possible_life_reality_need import possible_life_reality_need_service
 from app.services.profile_intelligence import profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_intelligence import property_intelligence
@@ -859,7 +860,7 @@ class ChatService:
                 )
             if resolution.attention_possible_life is not None:
                 try:
-                    possible_life_meaningful_unknown_service.form(
+                    unknown = possible_life_meaningful_unknown_service.form(
                         conversation_id,
                         resolution.attention_possible_life.possible_life.id,
                     )
@@ -870,6 +871,22 @@ class ChatService:
                         conversation_id,
                         resolution.attention_possible_life.possible_life.id,
                     )
+                else:
+                    if unknown is not None:
+                        try:
+                            possible_life_reality_need_service.form(
+                                conversation_id,
+                                resolution.attention_possible_life.possible_life.id,
+                                unknown.id,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Failed to form Possible Life Reality Need "
+                                "conversation_id=%s possible_life_id=%s unknown_id=%s",
+                                conversation_id,
+                                resolution.attention_possible_life.possible_life.id,
+                                unknown.id,
+                            )
             if resolution.layout_requirement is not None:
                 current_profile = profile_manager.get_or_create(conversation_id)
                 requirement_merge = profile_manager.merge(

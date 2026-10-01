@@ -8,6 +8,7 @@ from app.models.conversation import ConversationMessage
 from app.models.decision_geography import DecisionGeography
 from app.models.living_time import LivingTimeRelationship
 from app.models.possible_life import PossibleLife
+from app.models.possible_life_meaningful_unknown import PossibleLifeMeaningfulUnknown
 from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.profile import LivingProfile
 from app.models.profile_analysis import ProfileAnalysis
@@ -27,6 +28,7 @@ from app.services.living_meaning_service import living_meaning_service
 from app.services.possible_life_meaningful_unknown import (
     possible_life_meaningful_unknown_service,
 )
+from app.services.possible_life_reality_need import possible_life_reality_need_service
 from app.services.profile_intelligence import BudgetRealityAudit, profile_intelligence
 from app.services.profile_manager import profile_manager
 from app.services.property_manager import property_manager
@@ -483,13 +485,31 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     meanings_before = possible_life_personal_meaning_store.list(cid)
     history = [ConversationMessage("user", "继续考虑这个地方")]
     unknown_focus_ids: list[str] = []
+    need_focus_ids: list[tuple[str, str]] = []
+    unknown = PossibleLifeMeaningfulUnknown(
+        id=uuid_for("possible-life-focus-consequence-unknown"),
+        possible_life_id=possible_life.id,
+        personal_meaning_id=personal_meaning.id,
+        question="这套住所实际是几室几厅？",
+        why_it_matters="户型会改变居住意义。",
+        state_hash="focused-unknown",
+    )
 
     monkeypatch.setattr(chat_service, "_update_profile", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(chat_service, "_stream_assistant_reply", lambda *_args: iter(["reply"]))
     monkeypatch.setattr(
         possible_life_meaningful_unknown_service,
         "form",
-        lambda _cid, possible_life_id: unknown_focus_ids.append(possible_life_id),
+        lambda _cid, possible_life_id: (
+            unknown_focus_ids.append(possible_life_id) or unknown
+        ),
+    )
+    monkeypatch.setattr(
+        possible_life_reality_need_service,
+        "form",
+        lambda _cid, possible_life_id, unknown_id: need_focus_ids.append(
+            (possible_life_id, unknown_id),
+        ),
     )
 
     def complete(resolution):
@@ -536,6 +556,7 @@ def test_attention_targets_produce_matching_focus_consequences(monkeypatch):
     assert possible_life_focus.focus_property_id is None
     assert possible_life_focus.focus_subject is None
     assert unknown_focus_ids == [possible_life.id]
+    assert need_focus_ids == [(possible_life.id, unknown.id)]
     assert possible_life_store.list(cid) == possible_lives_before
     assert possible_life_personal_meaning_store.list(cid) == meanings_before
 
