@@ -1,3 +1,3 @@
-import RouteLoading from '@/components/RouteLoading';
-
-export default RouteLoading;
+export default function Loading() {
+  return null;
+}

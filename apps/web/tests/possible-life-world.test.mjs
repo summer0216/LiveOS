@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
 
 import {
   resolvePossibleLifeProjectionFocus,
@@ -56,16 +55,6 @@ test('Possible Life identity resolves authoritative World references for project
   assert.equal(projected[0].possibleLife.living_time.travel_minutes, 20);
   assert.equal(projected[0].possibleLife.personal_meaning.satisfied, true);
 
-  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-  const component = readFileSync(
-    new URL('../features/living-map/PossibleLifeProjection.tsx', import.meta.url),
-    'utf8',
-  );
-  assert.match(page, /projectedPossibleLives\.map\(\(\{ possibleLife, residence: home \}\)/);
-  assert.match(page, /key=\{possibleLife\.id\}/);
-  assert.match(component, /data-possible-life-id=\{possibleLifeId\}/);
-  assert.match(component, /data-living-time-residence-property-id=\{livingTimeResidencePropertyId\}/);
-  assert.match(component, /data-personal-meaning-reference=\{personalMeaningReference\}/);
 });
 
 test('Property existence alone does not create a projected Possible Life', () => {
@@ -122,10 +111,4 @@ test('Possible Life Focus foregrounds one authoritative projection without repla
     possible_life: { ...focus.possible_life, residence_property_id: 'home-2' },
   }, projected), null);
 
-  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-  assert.match(page, /resolvePossibleLifeProjectionFocus\(/);
-  assert.match(page, /projectedPossibleLifeFocus\?\.projectedPossibleLife\.possibleLife\s*=== possibleLife/);
-  assert.match(page, /livingMeaning=\{authoritativePossibleLifeFocused/);
-  assert.match(page, /projectedPossibleLives\.map\(/);
-  assert.doesNotMatch(page, /projectedPossibleLives\.filter\(/);
 });

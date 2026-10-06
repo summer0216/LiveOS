@@ -14,7 +14,7 @@ const home = {
   lng: 103.920730, lat: 30.753792,
 };
 
-test('grounded Conversation consequence uses the existing manual Focus callback after reread', () => {
+test('grounded Conversation Focus capability remains available outside the retired root surface', () => {
   const focused = [];
   const focusChoice = (id) => focused.push(id);
   assert.equal(applyGroundedConversationFocus(
@@ -36,9 +36,6 @@ test('grounded Conversation consequence uses the existing manual Focus callback 
   }
   assert.deepEqual(focused, ['home-1']);
 
-  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-  assert.match(page, /applyGroundedConversationFocus\(\s*pendingFocus\.propertyId, currentConversationId, durableProperties, focusChoice/);
-  assert.match(page, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*focusChoice\(property\.id\)/);
 });
 
 test('stream transport preserves Possible Life, Subject, and Property Focus', () => {
@@ -108,7 +105,7 @@ test('stream transport preserves Possible Life, Subject, and Property Focus', ()
   assert.match(chatService, /consequence\.focusPossibleLife/);
 });
 
-test('authoritative Work Subject becomes Projection Focus without replacing World objects', () => {
+test('authoritative Work Subject projection capability remains reusable', () => {
   const subject = {
     identity: '融科资讯中心',
     geographic_identity: '北京市海淀区融科资讯中心',
@@ -134,13 +131,4 @@ test('authoritative Work Subject becomes Projection Focus without replacing Worl
     { ...subject, identity: 'synthetic-work' }, profileWork,
   ), null);
 
-  const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-  assert.match(
-    page,
-    /onWorldConsequenceReady: \(focusPropertyId, focusSubject, focusPossibleLife\)/,
-  );
-  assert.match(page, /setFocusedWorkSubject\(focusSubject\);\s*setFocusedChoiceIds\(\[\]\)/);
-  assert.match(page, /data-focus-subject-identity=\{projectedSubjectFocus\?\.identity\}/);
-  assert.match(page, /const focusChoice = useCallback\(\(propertyId: string\) => \{\s*setFocusedWorkSubject\(null\)/);
-  assert.match(page, /groundedChoices\.map\(\(property\) =>/);
 });

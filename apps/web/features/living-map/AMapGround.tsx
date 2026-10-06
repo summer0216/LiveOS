@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   geographicCameraCenterForViewport,
   geographicZoomForViewport,
@@ -31,7 +31,12 @@ type AMapInstance = {
     avoid: readonly [number, number, number, number],
     maxZoom?: number,
   ) => AMapFitResult;
-  setZoomAndCenter: (zoom: number, center: AMapLngLat, immediately?: boolean) => void;
+  setZoomAndCenter: (
+    zoom: number,
+    center: AMapLngLat,
+    immediately?: boolean,
+    duration?: number,
+  ) => void;
 };
 
 type AMapLngLat = {
@@ -78,6 +83,8 @@ interface AMapGroundProps {
   fitRequestKey?: string;
   initialCenter?: { lng: number; lat: number };
   initialZoom?: number;
+  initialScreenAnchorRef?: RefObject<HTMLElement | null>;
+  cameraTransitionDuration?: number;
   presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onGroundReadyChange?: (ready: boolean) => void;
@@ -85,6 +92,7 @@ interface AMapGroundProps {
     center: { lng: number; lat: number },
     target: GeographicCameraTarget,
     occlusion?: HTMLElement | null,
+    screenAnchor?: HTMLElement | null,
   ) => void) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
@@ -123,6 +131,8 @@ export default function AMapGround({
   fitRequestKey,
   initialCenter,
   initialZoom,
+  initialScreenAnchorRef,
+  cameraTransitionDuration,
   presentation = 'default',
   onProjectionReady,
   onGroundReadyChange,
@@ -135,6 +145,7 @@ export default function AMapGround({
   const containerRef = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef(initialCenter);
   const initialZoomRef = useRef(initialZoom);
+  const cameraTransitionDurationRef = useRef(cameraTransitionDuration);
   const fitLocationsRef = useRef(fitLocations);
   const refitForLocationsChangeRef = useRef<((force?: boolean) => void) | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing-config' | 'error'>(
@@ -177,14 +188,40 @@ export default function AMapGround({
     const mapInitialCenter = initialCenterRef.current;
     const mapInitialZoom = initialZoomRef.current;
 
+    const screenAnchorPoint = (element: HTMLElement | null | undefined) => {
+      const container = containerRef.current;
+      if (!container || !element?.isConnected) return null;
+      const containerRect = container.getBoundingClientRect();
+      const anchorRect = element.getBoundingClientRect();
+      return {
+        x: anchorRect.left + anchorRect.width / 2 - containerRect.left,
+        y: anchorRect.top + anchorRect.height / 2 - containerRect.top,
+      };
+    };
+
     void loadAMap(key, securityJsCode)
       .then(() => {
         if (!active || !containerRef.current || !window.AMap) return;
 
+        const initialViewport = {
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        };
+        const initialScreenAnchor = screenAnchorPoint(initialScreenAnchorRef?.current);
+        const mapInitialCameraCenter = mapInitialCenter && mapInitialZoom !== undefined
+          && initialScreenAnchor
+          ? geographicCameraCenterForViewport(
+              mapInitialCenter,
+              mapInitialZoom,
+              initialViewport,
+              initialScreenAnchor,
+            )
+          : mapInitialCenter;
+
         const mapInstance = new window.AMap.Map(containerRef.current, {
           viewMode: '2D',
-          ...(mapInitialCenter
-            ? { center: [mapInitialCenter.lng, mapInitialCenter.lat] }
+          ...(mapInitialCameraCenter
+            ? { center: [mapInitialCameraCenter.lng, mapInitialCameraCenter.lat] }
             : {}),
           ...(mapInitialZoom !== undefined ? { zoom: mapInitialZoom } : {}),
           showLabel: true,
@@ -192,17 +229,17 @@ export default function AMapGround({
           zoomEnable: true,
           doubleClickZoom: true,
           keyboardEnable: false,
-          jogEnable: false,
-          animateEnable: false,
+          jogEnable: cameraTransitionDurationRef.current !== undefined,
+          animateEnable: cameraTransitionDurationRef.current !== undefined,
         });
         map = mapInstance;
 
         // Keep prototype/world entry views anchored to their explicit current reality.
         // AMap may otherwise retain its default camera while the instance is settling.
-        if (mapInitialCenter && mapInitialZoom !== undefined) {
+        if (mapInitialCameraCenter && mapInitialZoom !== undefined) {
           mapInstance.setZoomAndCenter(
             mapInitialZoom,
-            new window.AMap!.LngLat(mapInitialCenter.lng, mapInitialCenter.lat),
+            new window.AMap!.LngLat(mapInitialCameraCenter.lng, mapInitialCameraCenter.lat),
             true,
           );
         }
@@ -246,6 +283,7 @@ export default function AMapGround({
           center: { lng: number; lat: number },
           target: GeographicCameraTarget,
           occlusion: HTMLElement | null = null,
+          screenAnchor: HTMLElement | null = null,
           immediately = false,
         ) => {
           programmaticCameraUpdateUntil = performance.now() + 1500;
@@ -257,12 +295,18 @@ export default function AMapGround({
             ? target
             : geographicZoomForViewport(target, viewport);
           const cameraCenter = typeof target === 'number'
-            ? center
+            ? geographicCameraCenterForViewport(
+                center,
+                zoom,
+                viewport,
+                screenAnchorPoint(screenAnchor) ?? undefined,
+              )
             : geographicCameraCenterForViewport(center, zoom, viewport);
           mapInstance.setZoomAndCenter(
             zoom,
             new window.AMap!.LngLat(cameraCenter.lng, cameraCenter.lat),
             immediately,
+            immediately ? undefined : cameraTransitionDurationRef.current,
           );
         };
         onCameraReady?.(applyCameraTarget);
@@ -369,6 +413,7 @@ export default function AMapGround({
               lastAdaptiveCameraRequest.center,
               lastAdaptiveCameraRequest.framing,
               lastAdaptiveCameraRequest.occlusion,
+              null,
               true,
             );
             refreshProjection();
@@ -398,6 +443,7 @@ export default function AMapGround({
       map?.destroy();
     };
   }, [
+    initialScreenAnchorRef,
     onProjectionReady,
     onGroundReadyChange,
     onCameraReady,

@@ -1,5 +1,18 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Sans, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  weight: ["300", "400", "500"],
+});
+
+const notoSansSC = Noto_Sans_SC({
+  preload: false,
+  variable: "--font-noto-sans-sc",
+  weight: ["300", "400", "500"],
+});
 
 export const metadata: Metadata = {
   title: "LiveOS",
@@ -20,7 +33,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased">
+    <html
+      lang="zh-CN"
+      className={`${dmSans.variable} ${notoSansSC.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

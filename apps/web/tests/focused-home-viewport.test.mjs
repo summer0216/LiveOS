@@ -67,3 +67,30 @@ test('a grounded PLACE keeps SEE stable and gives Focus adaptive subject promine
   assert.equal(homeViewport({ ...home, geographic_status: 'UNRESOLVED' }, 'FOCUS'), null);
   assert.equal(homeViewport({ ...home, lng: null }, 'FOCUS'), null);
 });
+
+test('a real geographic point keeps its screen anchor through First World zoom', () => {
+  const reality = { lng: 103.92073, lat: 30.753792 };
+  const viewport = { width: 1440, height: 900 };
+  const screenAnchor = { x: 590, y: 460 };
+  const project = (location, zoom) => {
+    const size = 256 * (2 ** zoom);
+    const sine = Math.sin(location.lat * Math.PI / 180);
+    return {
+      x: (location.lng + 180) / 360 * size,
+      y: (0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI)) * size,
+    };
+  };
+
+  for (const zoom of [15, 13.5]) {
+    const cameraCenter = geographicCameraCenterForViewport(
+      reality,
+      zoom,
+      viewport,
+      screenAnchor,
+    );
+    const point = project(reality, zoom);
+    const center = project(cameraCenter, zoom);
+    assert.ok(Math.abs(point.x - center.x + viewport.width / 2 - screenAnchor.x) < 0.01);
+    assert.ok(Math.abs(point.y - center.y + viewport.height / 2 - screenAnchor.y) < 0.01);
+  }
+});

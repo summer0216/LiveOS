@@ -123,12 +123,15 @@ export function geographicCameraCenterForViewport(
   anchor: { lng: number; lat: number },
   zoom: number,
   viewport: MapViewportSize,
+  screenAnchor?: { x: number; y: number },
 ) {
   const insets = normalizedInsets(viewport);
-  const desiredX = insets.left
-    + (viewport.width - insets.left - insets.right) / 2;
-  const desiredY = insets.top
-    + (viewport.height - insets.top - insets.bottom) / 2;
+  const desiredX = screenAnchor?.x ?? (
+    insets.left + (viewport.width - insets.left - insets.right) / 2
+  );
+  const desiredY = screenAnchor?.y ?? (
+    insets.top + (viewport.height - insets.top - insets.bottom) / 2
+  );
   const worldSize = 256 * (2 ** zoom);
   const latitude = Math.max(-85.05112878, Math.min(85.05112878, anchor.lat));
   const sine = Math.sin(latitude * Math.PI / 180);
