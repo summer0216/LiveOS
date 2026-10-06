@@ -65,7 +65,8 @@ test('Grounding and World remain gated by authoritative runtime Reality', () => 
 test('First World reveal uses the runtime center and a real camera transition', () => {
   assert.match(page, /initialCenter=\{initialMapCenter\}/);
   assert.match(page, /firstRealityTransition\.focusZoom/);
-  assert.match(firstRealityRuntime, /firstRealityTransition\.worldZoom/);
+  assert.match(firstRealityRuntime, /firstRealityTransition\.worldFraming/);
+  assert.match(page, /initialFraming=\{!firstRealityTransition[\s\S]*authoritativeReality\?\.worldFraming/);
   assert.match(page, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS/);
   assert.doesNotMatch(page, /\b(?:2800|3200)\b/);
   assert.match(firstOpen, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800/);
@@ -73,10 +74,17 @@ test('First World reveal uses the runtime center and a real camera transition', 
   assert.match(firstOpen, /window\.setTimeout\(onWorldSettled, WORLD_SETTLE_MS\)/);
   assert.match(
     firstRealityRuntime,
-    /firstRealityTransition\.center,[\s\S]*firstRealityTransition\.worldZoom,[\s\S]*placeAnchorRef\.current/,
+    /firstRealityTransition\.center,[\s\S]*firstRealityTransition\.worldFraming,[\s\S]*placeAnchorRef\.current/,
   );
   assert.match(
     firstRealityRuntime,
+    /const FIRST_WORLD_FRAMING: GeographicCameraFraming = \{\s*level: 'PLACE',\s*attention: 'SEE'/,
+  );
+  assert.match(firstRealityRuntime, /worldFraming: FIRST_WORLD_FRAMING/);
+  assert.match(mapGround, /geographicZoomForViewport\(initialFramingRef\.current, initialViewport\)/);
+  assert.match(
+    mapGround,
+    /geographicCameraCenterForViewport\(\s*center,\s*zoom,\s*viewport,\s*screenAnchorPoint\(screenAnchor\)/,
   );
   assert.match(mapGround, /cameraTransitionDurationRef/);
   assert.match(mapGround, /animateEnable: cameraTransitionDurationRef\.current !== undefined/);
@@ -99,6 +107,16 @@ test('existing conversations restore formed World from shared authoritative Real
     firstRealityRuntime,
     /if \(nextProfile\.geographic_status === 'GROUNDED'\) \{\s*setPhase\('formed'\);/,
   );
+  assert.match(firstRealityRuntime, /getConversationHistory\(conversationId\)/);
+  assert.match(
+    firstRealityRuntime,
+    /expressionForGroundedReality\(history\.messages, restoredReality\.identity\)/,
+  );
+  assert.match(page, /groundedIdentity=\{authoritativeReality\?\.identity \?\? null\}/);
+  assert.match(page, /initialScreenAnchorRef=\{authoritativeReality \? placeAnchorRef : undefined\}/);
+  assert.match(firstRealityRuntime, /phase === 'formed' && !submittedExpression/);
+  assert.match(firstRealityRuntime, /const firstOpenActive = Boolean\(submittedExpression\) \|\| !hasGroundedWorld \|\| worldVisible/);
+  assert.match(firstRealityRuntime, /const firstOpenStage: FirstOpenRuntimeStage = phase === 'formed'\s*\? 'world'/);
 });
 
 test('page composes First Reality Runtime without owning its detailed implementation', () => {

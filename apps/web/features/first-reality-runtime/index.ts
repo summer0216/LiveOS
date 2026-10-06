@@ -14,6 +14,7 @@ import {
 import type { FirstOpenRuntimeStage } from '@/features/first-open';
 import type { GeographicCameraTarget } from '@/features/living-map/AMapGround';
 import { createClientId } from '@/lib/createClientId';
+import type { GeographicCameraFraming } from '@/lib/geographicScaleContract';
 import {
   decisionGeographyZoom,
   geographicScaleZoom,
@@ -25,7 +26,7 @@ import {
   shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
 import type { PossibleLifeFocus, WorkSubjectFocus } from '@/lib/worldConsequence';
-import { streamMessage } from '@/services/chat';
+import { getConversationHistory, streamMessage } from '@/services/chat';
 import {
   getDecisionGeography,
   type DecisionGeography,
@@ -45,8 +46,13 @@ export interface AuthoritativeGroundedReality {
   center: { lng: number; lat: number };
   identity: string;
   focusZoom: number;
-  worldZoom: number;
+  worldFraming: GeographicCameraFraming;
 }
+
+const FIRST_WORLD_FRAMING: GeographicCameraFraming = {
+  level: 'PLACE',
+  attention: 'SEE',
+};
 
 export type FirstRealityCameraReorient = (
   center: { lng: number; lat: number },
@@ -127,10 +133,7 @@ export function resolveAuthoritativeGroundedReality(
         realityLevelForPrecision(home.geographic_precision),
         'FOCUS',
       ),
-      worldZoom: geographicScaleZoom(
-        realityLevelForPrecision(home.geographic_precision),
-        'SEE',
-      ),
+      worldFraming: FIRST_WORLD_FRAMING,
     };
   }
 
@@ -151,7 +154,7 @@ export function resolveAuthoritativeGroundedReality(
       center: { lng: decisionGeography.lng, lat: decisionGeography.lat },
       identity: decisionGeography.identity,
       focusZoom: decisionGeographyZoom(decisionGeography, 'FOCUS'),
-      worldZoom: decisionGeographyZoom(decisionGeography, 'SEE'),
+      worldFraming: FIRST_WORLD_FRAMING,
     };
   }
 
@@ -177,10 +180,7 @@ export function resolveAuthoritativeGroundedReality(
         realityLevelForPrecision(profile.geographic_precision),
         'FOCUS',
       ),
-      worldZoom: geographicScaleZoom(
-        realityLevelForPrecision(profile.geographic_precision),
-        'SEE',
-      ),
+      worldFraming: FIRST_WORLD_FRAMING,
     };
   }
 
@@ -212,6 +212,18 @@ function hasAdmittedPossibleLifeReality(
     && Number.isFinite(property.lat)
     && Math.abs(property.lat) <= 90
   ));
+}
+
+function expressionForGroundedReality(
+  messages: readonly { role: 'user' | 'assistant'; content: string }[],
+  identity: string,
+) {
+  const normalizedIdentity = identity.normalize('NFKC').replace(/\s+/g, '');
+  if (!normalizedIdentity) return null;
+  return [...messages].reverse().find((message) => (
+    message.role === 'user'
+    && message.content.normalize('NFKC').replace(/\s+/g, '').includes(normalizedIdentity)
+  ))?.content ?? null;
 }
 
 export default function useFirstRealityRuntime({
@@ -311,7 +323,11 @@ export default function useFirstRealityRuntime({
       getProperties(conversationId),
       getDecisionGeography(conversationId),
       getPossibleLives(conversationId),
-    ]).then(([nextProfile, nextProperties, decisionGeography, nextPossibleLives]) => {
+      getConversationHistory(conversationId).catch((error: unknown) => {
+        console.error('Failed to restore First Reality expression:', error);
+        return null;
+      }),
+    ]).then(([nextProfile, nextProperties, decisionGeography, nextPossibleLives, history]) => {
       if (!active) return;
       const restoredReality = resolveAuthoritativeGroundedReality(
         nextProfile,
@@ -323,6 +339,11 @@ export default function useFirstRealityRuntime({
       setPossibleLives(nextPossibleLives);
       decisionGeographyRef.current = decisionGeography;
       setRestoredDecisionGeography(decisionGeography);
+      if (restoredReality && history) {
+        setSubmittedExpression(
+          expressionForGroundedReality(history.messages, restoredReality.identity),
+        );
+      }
       setPhase(restoredReality ? 'formed' : 'empty');
     }).catch((error: unknown) => {
       console.error('Failed to restore First Reality:', error);
@@ -525,7 +546,7 @@ export default function useFirstRealityRuntime({
     const frame = window.requestAnimationFrame(() => {
       reorient(
         firstRealityTransition.center,
-        firstRealityTransition.worldZoom,
+        firstRealityTransition.worldFraming,
         null,
         placeAnchorRef.current,
       );
@@ -552,15 +573,17 @@ export default function useFirstRealityRuntime({
     authoritativeReality
     || hasAdmittedPossibleLifeReality(conversationId, properties, possibleLives),
   );
-  const firstOpenActive = Boolean(submittedExpression) || !hasGroundedWorld;
-  const firstOpenStage: FirstOpenRuntimeStage = phase === 'forming'
-    ? 'submitting'
-    : phase === 'grounding'
-      ? 'grounding'
-      : submittedExpression && (phase === 'revealing' || phase === 'formed')
-        ? 'world'
-        : 'entry';
   const worldVisible = phase === 'formed' && !submittedExpression;
+  const firstOpenActive = Boolean(submittedExpression) || !hasGroundedWorld || worldVisible;
+  const firstOpenStage: FirstOpenRuntimeStage = phase === 'formed'
+    ? 'world'
+    : phase === 'forming'
+      ? 'submitting'
+      : phase === 'grounding'
+        ? 'grounding'
+        : submittedExpression && phase === 'revealing'
+          ? 'world'
+          : 'entry';
 
   return {
     conversationId,

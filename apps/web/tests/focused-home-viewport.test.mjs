@@ -63,6 +63,11 @@ test('a grounded PLACE keeps SEE stable and gives Focus adaptive subject promine
   assert.equal(decisionGeographyZoom({ geographic_scope: 'REGION' }), 6.5);
   assert.equal(decisionGeographyZoom({ geographic_scope: 'CITY' }), 10.5);
   assert.equal(decisionGeographyZoom({ geographic_scope: 'LOCAL' }), 13.5);
+  assert.equal(GEOGRAPHIC_SCALE_CONTRACT.DISTRICT.SEE, 12.5);
+  const livingExtent = { level: 'PLACE', attention: 'SEE' };
+  assert.equal(GEOGRAPHIC_SCALE_CONTRACT.PLACE.SEE, 16);
+  assert.equal(geographicZoomForViewport(livingExtent, { width: 1440, height: 900 }), 16.25);
+  assert.equal(geographicZoomForViewport(livingExtent, { width: 390, height: 844 }), 15.25);
   assert.equal(GEOGRAPHIC_SCALE_CONTRACT.PLACE.FOCUS, GEOGRAPHIC_SCALE_CONTRACT.PLACE.SEE);
   assert.equal(homeViewport({ ...home, geographic_status: 'UNRESOLVED' }, 'FOCUS'), null);
   assert.equal(homeViewport({ ...home, lng: null }, 'FOCUS'), null);
@@ -72,6 +77,10 @@ test('a real geographic point keeps its screen anchor through First World zoom',
   const reality = { lng: 103.92073, lat: 30.753792 };
   const viewport = { width: 1440, height: 900 };
   const screenAnchor = { x: 590, y: 460 };
+  const livingExtentZoom = geographicZoomForViewport(
+    { level: 'PLACE', attention: 'SEE' },
+    viewport,
+  );
   const project = (location, zoom) => {
     const size = 256 * (2 ** zoom);
     const sine = Math.sin(location.lat * Math.PI / 180);
@@ -81,7 +90,7 @@ test('a real geographic point keeps its screen anchor through First World zoom',
     };
   };
 
-  for (const zoom of [15, 13.5]) {
+  for (const zoom of [15, 13.5, livingExtentZoom]) {
     const cameraCenter = geographicCameraCenterForViewport(
       reality,
       zoom,

@@ -23,6 +23,21 @@ export async function sendMessage(
   });
 }
 
+export interface ConversationHistory {
+  conversation_id: string;
+  messages: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+export function getConversationHistory(conversationId: string) {
+  return apiFetch<ConversationHistory>(
+    `/conversations/${encodeURIComponent(conversationId)}`,
+    { method: 'GET', cache: 'no-store' },
+  );
+}
+
 interface StreamMessageOptions {
   conversationId: string;
   message: string;

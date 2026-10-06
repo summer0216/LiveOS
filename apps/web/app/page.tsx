@@ -32,10 +32,13 @@ export default function HomePage() {
   const mapGround = initialMapCenter && hasGroundedWorld ? (
     <AMapGround
       initialCenter={initialMapCenter}
-      initialScreenAnchorRef={firstRealityTransition ? placeAnchorRef : undefined}
+      initialScreenAnchorRef={authoritativeReality ? placeAnchorRef : undefined}
       initialZoom={firstRealityTransition
         ? firstRealityTransition.focusZoom
-        : authoritativeReality?.worldZoom}
+        : undefined}
+      initialFraming={!firstRealityTransition
+        ? authoritativeReality?.worldFraming
+        : undefined}
       cameraTransitionDuration={firstRealityTransition
         ? FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS
         : undefined}
@@ -50,7 +53,7 @@ export default function HomePage() {
         <FirstOpenExperience
           stage={firstOpenStage}
           submittedExpression={submittedExpression}
-          groundedIdentity={firstRealityTransition?.identity ?? null}
+          groundedIdentity={authoritativeReality?.identity ?? null}
           placeAnchorRef={placeAnchorRef}
           map={mapGround}
           onSubmit={(expression) => {
