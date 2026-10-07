@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 from app.core.config import settings
 from app.core.external_rent_observability import record_external_rent_search_trace
+from app.models.reality_evidence import RealityEvidence
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,14 @@ class PublicRentalEvidence:
     observed_at: str
     published_at: str | None = None
     grounded_property_identity: str | None = None
+
+    def reality_evidence(self) -> RealityEvidence:
+        return RealityEvidence(
+            source_provider=self.source_provider,
+            source_reference=self.source_reference,
+            identity=self.grounded_property_identity or "",
+            observed_at=self.observed_at,
+        )
 
 
 class _VisibleTextParser(HTMLParser):

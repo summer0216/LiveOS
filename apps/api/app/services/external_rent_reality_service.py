@@ -5,7 +5,6 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
@@ -13,6 +12,7 @@ from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.core.external_rent_observability import record_external_rent_search_trace
 from app.models.property import GeographicStatus, Property
+from app.models.reality_evidence import RealityAdmission
 from app.services.living_meaning_service import (
     LivingMeaningService,
     living_meaning_service,
@@ -408,6 +408,16 @@ same place, return UNRESOLVED. Never estimate, average, or infer a missing amoun
         if admitted is None:
             return ExternalRentResult("NO_RELIABLE_EVIDENCE")
         rent, source, excerpt = admitted
+        reality_admission = RealityAdmission.admit(
+            source.reality_evidence(),
+            property_id=target.id or "",
+            property_identity=target.geographic_identity or "",
+            property_lng=target.lng,
+            property_lat=target.lat,
+            authority="EXTERNAL_RENT_REALITY_ADMISSION",
+        )
+        if reality_admission is None:
+            return ExternalRentResult("NO_RELIABLE_EVIDENCE")
         updated = self._properties.update_external_rent(
             property_id,
             conversation_id,
@@ -417,6 +427,7 @@ same place, return UNRESOLVED. Never estimate, average, or infer a missing amoun
             evidence={
                 **asdict(source),
                 "admission": {
+                    **reality_admission.to_dict(),
                     "property_id": target.id,
                     "property_identity": target.geographic_identity,
                     "rent_monthly": rent,
@@ -446,20 +457,8 @@ same place, return UNRESOLVED. Never estimate, average, or infer a missing amoun
             return []
         grounded: list[PublicRentalEvidence] = []
         for item in evidence:
-            if (
-                not item.source_reference
-                or not item.source_provider
-                or item.grounded_property_identity != target.geographic_identity
-            ):
-                continue
-            try:
-                observed_time = datetime.fromisoformat(item.observed_at)
-            except ValueError:
-                continue
-            if (
-                observed_time.tzinfo is None
-                or observed_time.utcoffset() is None
-                or observed_time.astimezone(UTC) > datetime.now(UTC)
+            if not item.reality_evidence().qualifies(
+                expected_identity=target.geographic_identity,
             ):
                 continue
             grounded.append(item)
@@ -565,16 +564,6 @@ average, derive a range, generalize to the Property, or invent provenance.
             or not target.geographic_identity
         ):
             return None
-        try:
-            observed_time = datetime.fromisoformat(observed_at)
-        except ValueError:
-            return None
-        if (
-            observed_time.tzinfo is None
-            or observed_time.utcoffset() is None
-            or observed_time.astimezone(UTC) > datetime.now(UTC)
-        ):
-            return None
         source = next(
             (
                 item for item in evidence
@@ -583,7 +572,12 @@ average, derive a range, generalize to the Property, or invent provenance.
             ),
             None,
         )
-        if source is None:
+        if (
+            source is None
+            or not source.reality_evidence().qualifies(
+                expected_identity=target.geographic_identity,
+            )
+        ):
             return None
         normalized_identity = re.sub(
             r"[\s·・•()（）-]", "", target.geographic_identity,

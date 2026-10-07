@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.models.property import GeographicStatus, Property
+from app.services.place_context_reality import is_admitted_nearby_reality
 from app.services.property_manager import PropertyManager, property_manager
 
 
@@ -37,15 +38,17 @@ class PlaceUnderstandingService:
         places = [
             {key: item[key] for key in (
                 "category", "external_id", "name", "identity", "type_code",
-                "lng", "lat", "distance_m", "walking_minutes",
+                "lng", "lat", "distance_m", "walking_minutes", "evidence",
+                "admission", "walking_evidence", "walking_admission",
                 "anchor_candidate", "co_located_with",
             )}
             for item in (home.place_context or [])
-            if item.get("structure_version") == 2
+            if is_admitted_nearby_reality(item, home)
             and all(key in item for key in (
                 "category", "external_id", "name", "identity", "type_code",
                 "lng", "lat", "distance_m", "walking_minutes",
-                "anchor_candidate", "co_located_with",
+                "anchor_candidate", "co_located_with", "evidence", "admission",
+                "walking_evidence", "walking_admission",
             ))
             and item.get("external_id") and item.get("name")
             and isinstance(item.get("lng"), (int, float))

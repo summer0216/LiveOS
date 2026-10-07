@@ -171,6 +171,9 @@ def test_model_tool_evidence_becomes_guarded_external_rent_reality():
     assert stored.admitted_rent_evidence["observed_at"] == stored.rent_observed_at
     assert stored.admitted_rent_evidence["published_at"] == "2026-09-20T09:00:00+00:00"
     assert stored.admitted_rent_evidence["admission"]["property_id"] == target.id
+    assert stored.admitted_rent_evidence["admission"]["status"] == "ADMITTED"
+    assert stored.admitted_rent_evidence["admission"]["authority"] == "EXTERNAL_RENT_REALITY_ADMISSION"
+    assert stored.admitted_rent_evidence["admission"]["evidence_reference"] == stored.rent_source_reference
     assert stored.admitted_rent_evidence["admission"]["rent_monthly"] == 6800
     assert client.get(f"/api/properties?conversation_id={conversation_id}").json()["items"][0]["admitted_rent_evidence"] == stored.admitted_rent_evidence
     assert meanings.calls == [(conversation_id, target.id)]

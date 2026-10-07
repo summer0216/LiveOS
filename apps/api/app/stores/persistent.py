@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from psycopg.types.json import Jsonb
-
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -33,11 +31,13 @@ from app.models.property import (
     PropertyProvenance,
     PropertyRentSource,
 )
+from app.models.reality_evidence import is_admitted_reality_record
 from app.models.reality_need import RealityNeed, RealityNeedResolutionMode
 from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
+from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -1228,7 +1228,7 @@ class PropertyStore:
 
     @staticmethod
     def _from(row: dict[str, Any]) -> Property:
-        return Property(
+        property_ = Property(
             id=str(row["id"]),
             conversation_id=(
                 str(row["conversation_id"])
@@ -1317,6 +1317,27 @@ class PropertyStore:
             ),
             external_id=row.get("external_id"),
         )
+        context = property_.place_context or []
+        if property_.place_understanding is not None and not (
+            context
+            and all(
+                isinstance(item, dict)
+                and item.get("structure_version") == 3
+                and is_admitted_reality_record(
+                    item,
+                    property_id=property_.id,
+                    property_identity=property_.geographic_identity,
+                    property_lng=property_.lng,
+                    property_lat=property_.lat,
+                )
+                and (item.get("admission") or {}).get("authority")
+                == "PLACE_CONTEXT_REALITY_ADMISSION"
+                for item in context
+            )
+        ):
+            # Legacy Place Context cannot certify cached understanding as Reality.
+            property_.place_understanding = None
+        return property_
 
     def create(self, property_: Property) -> Property:
         if property_.id is None or property_.conversation_id is None:

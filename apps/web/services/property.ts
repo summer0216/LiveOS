@@ -71,8 +71,27 @@ export interface Property {
   lat: number | null;
 }
 
-export interface PlaceContextReality {
-  structure_version?: number;
+export interface PlaceContextEvidence {
+  source_provider: string;
+  source_reference: string;
+  source_record_id: string | null;
+  identity: string;
+  observed_at: string;
+}
+
+export interface PlaceContextAdmission {
+  status: 'ADMITTED';
+  admitted_at: string;
+  property_id: string;
+  property_identity: string;
+  property_lng: number;
+  property_lat: number;
+  evidence_reference: string;
+  evidence_observed_at: string;
+  authority: string;
+}
+
+interface PlaceContextRealityFields {
   category: 'COMMERCIAL' | 'GROCERY' | 'TRANSIT' | 'EDUCATION' | 'HEALTHCARE';
   external_id: string;
   name: string;
@@ -82,9 +101,25 @@ export interface PlaceContextReality {
   lat: number;
   distance_m: number;
   walking_minutes: number | null;
+  walking_evidence?: PlaceContextEvidence | null;
+  walking_admission?: PlaceContextAdmission | null;
   anchor_candidate?: boolean;
   co_located_with?: { external_id: string; distance_m: number }[];
 }
+
+export type PlaceContextReality = PlaceContextRealityFields & (
+  | {
+      structure_version: 3;
+      evidence: PlaceContextEvidence;
+      admission: PlaceContextAdmission;
+    }
+  | {
+      /** Legacy acquisition payload; it must not be treated as admitted Reality. */
+      structure_version?: 1 | 2;
+      evidence?: never;
+      admission?: never;
+    }
+);
 
 export type PropertyInput = Omit<
   Property,
