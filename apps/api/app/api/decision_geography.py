@@ -29,4 +29,8 @@ def get_decision_geography(
         status=state.status,
         lng=state.lng,
         lat=state.lat,
+        source_user_turn_id=(
+            str(state.source_user_turn_id)
+            if state.source_user_turn_id is not None else None
+        ),
     )

@@ -76,6 +76,7 @@ SCHEMA_STATEMENTS = (
         lng DOUBLE PRECISION,
         lat DOUBLE PRECISION,
         updated_at TIMESTAMPTZ NOT NULL,
+        source_user_turn_id BIGINT,
         PRIMARY KEY (owner_id, conversation_id)
     )
     """,
@@ -422,6 +423,7 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS source_user_turn_id BIGINT",
     "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
     "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_property_id UUID",
     "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_layout_expression TEXT",

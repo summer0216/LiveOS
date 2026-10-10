@@ -11,6 +11,19 @@ export function isGroundedDecisionGeography(
   );
 }
 
+export function isCurrentExpressionReferent(
+  geography: DecisionGeography | null | undefined,
+  currentUserTurnId: string | null | undefined,
+): geography is DecisionGeography & { identity: string; source_user_turn_id: string } {
+  return Boolean(
+    currentUserTurnId
+    && geography?.source_user_turn_id === currentUserTurnId
+    && geography.intent_established
+    && geography.identity_source === 'USER'
+    && geography.identity.trim(),
+  );
+}
+
 export function decisionGeographyFingerprint(
   geography: DecisionGeography | null | undefined,
 ): string | null {

@@ -20,3 +20,4 @@ class DecisionGeography:
     status: DecisionGeographyStatus = "UNRESOLVED"
     lng: float | None = None
     lat: float | None = None
+    source_user_turn_id: int | None = None

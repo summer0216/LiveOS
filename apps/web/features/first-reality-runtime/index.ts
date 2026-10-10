@@ -22,6 +22,7 @@ import {
 } from '@/lib/geographicScaleContract';
 import {
   decisionGeographyFingerprint,
+  isCurrentExpressionReferent,
   isGroundedDecisionGeography,
   shouldApplyObservedDecisionGeography,
 } from '@/lib/decisionGeographyState';
@@ -78,12 +79,14 @@ interface FirstRealityRuntime {
   conversationId: string;
   profile: LivingProfile | null;
   properties: Property[];
+  authoritativeProperty: Property | null;
   possibleLives: PossibleLifeWorldState[];
   setProperties: Dispatch<SetStateAction<Property[]>>;
   restoredDecisionGeography: DecisionGeography | null | undefined;
   decisionWorldActive: boolean;
   phase: FirstRealityPhase;
   submittedExpression: string | null;
+  currentExpressionReferent: string | null;
   authoritativeReality: AuthoritativeGroundedReality | null;
   firstRealityTransition: AuthoritativeGroundedReality | null;
   currentLocation: { lng: number; lat: number } | null;
@@ -240,6 +243,7 @@ export default function useFirstRealityRuntime({
   >(undefined);
   const [phase, setPhase] = useState<FirstRealityPhase>('empty');
   const [submittedExpression, setSubmittedExpression] = useState<string | null>(null);
+  const [currentExpressionReferent, setCurrentExpressionReferent] = useState<string | null>(null);
   const [firstRealityTransition, setFirstRealityTransition] = useState<
     AuthoritativeGroundedReality | null
   >(null);
@@ -365,6 +369,7 @@ export default function useFirstRealityRuntime({
     let firstRealityRevealStarted = false;
 
     setSubmittedExpression(message);
+    setCurrentExpressionReferent(null);
     setFirstRealityTransition(null);
     setGroundingSettled(false);
     setPhase('forming');
@@ -418,6 +423,7 @@ export default function useFirstRealityRuntime({
 
     try {
       let markWorldStateReady: (() => void) | undefined;
+      let currentUserTurnId: string | null = null;
       const worldStateReady = new Promise<void>((resolve) => {
         markWorldStateReady = resolve;
       });
@@ -444,7 +450,10 @@ export default function useFirstRealityRuntime({
         message,
         currentGeographicReality: currentLocation,
         onChunk: () => {},
-        onWorldStateReady: () => markWorldStateReady?.(),
+        onWorldStateReady: (turnId) => {
+          currentUserTurnId = turnId;
+          markWorldStateReady?.();
+        },
         onWorldConsequenceReady: (focusPropertyId, focusSubject, focusPossibleLife) => {
           onWorldConsequenceReadyRef.current?.(
             focusPropertyId,
@@ -478,6 +487,9 @@ export default function useFirstRealityRuntime({
         );
       }
       if (latestSubmitIdRef.current !== submitId) return;
+      if (isCurrentExpressionReferent(decisionGeography, currentUserTurnId)) {
+        setCurrentExpressionReferent(decisionGeography.identity);
+      }
       if (earlyRevision === consequenceRevision) {
         setProfile(nextProfile);
         setProperties(nextProperties);
@@ -569,6 +581,18 @@ export default function useFirstRealityRuntime({
     ),
     [firstRealityTransition, profile, properties, restoredDecisionGeography],
   );
+  const authoritativeProperty = useMemo(
+    () => authoritativeReality
+      ? properties.find((property) => (
+          property.provenance === 'USER_PROVIDED'
+          && property.geographic_status === 'GROUNDED'
+          && property.title?.trim() === authoritativeReality.identity
+          && property.lng === authoritativeReality.center.lng
+          && property.lat === authoritativeReality.center.lat
+        )) ?? null
+      : null,
+    [authoritativeReality, properties],
+  );
   const hasGroundedWorld = Boolean(
     authoritativeReality
     || hasAdmittedPossibleLifeReality(conversationId, properties, possibleLives),
@@ -589,12 +613,14 @@ export default function useFirstRealityRuntime({
     conversationId,
     profile,
     properties,
+    authoritativeProperty,
     possibleLives,
     setProperties,
     restoredDecisionGeography,
     decisionWorldActive: isGroundedDecisionGeography(restoredDecisionGeography),
     phase,
     submittedExpression,
+    currentExpressionReferent,
     authoritativeReality,
     firstRealityTransition,
     currentLocation,

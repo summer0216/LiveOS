@@ -298,10 +298,6 @@
   animation: groundingAppear 220ms ease both;
 }
 
-.firstOpen[data-frame="grounding"] .exprContext {
-  animation: contextDim 700ms 180ms ease both;
-}
-
 .firstOpen[data-frame="grounding"] .exprPlace {
   animation: placeSettle 700ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -328,11 +324,6 @@
 @keyframes groundingAppear {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@keyframes contextDim {
-  from { color: var(--first-open-ink); }
-  to { color: var(--first-open-muted); }
 }
 
 @keyframes placeSettle {
@@ -368,9 +359,10 @@
   transition: opacity 800ms 400ms ease;
 }
 
+.firstOpen[data-frame="transmitting"] .exprContext,
+.firstOpen[data-frame="grounding"] .exprContext,
 .firstOpen[data-frame="world"] .exprContext {
-  color: var(--first-open-muted);
-  animation: worldContextExit 700ms 350ms ease both;
+  display: none;
 }
 
 .firstOpen[data-frame="world"] .exprPlace {
@@ -380,34 +372,24 @@
   font-size: clamp(16px, 2vw, 24px);
   font-weight: 400;
   letter-spacing: -0.025em;
-  text-shadow:
-    0 0 24px rgb(255 255 255),
-    0 0 10px rgb(255 255 255 / 0.85);
   transition: font-size 700ms 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.firstOpen[data-frame="world"] .exprPlace::after {
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--first-open-ink);
-  content: "";
+.firstOpen[data-frame="world"] .placeLabel {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  line-height: inherit;
   opacity: 0;
-  transform: translateX(-50%) scale(0.2);
-  animation: placeDotAppear 500ms 1100ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  text-shadow: 0 1px 5px rgb(255 255 255 / 0.9);
+  transform: translateY(52px);
 }
 
-@keyframes worldContextExit {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes placeDotAppear {
-  from { opacity: 0; transform: translateX(-50%) scale(0.2); }
-  to { opacity: 0.65; transform: translateX(-50%) scale(1); }
+/* Keep the grounded subject as the visible Reality until its geographic
+   projection is mounted; the DOM marker is the handoff readiness signal. */
+.firstOpen[data-frame="world"]:not(:has([data-reality-anchor])) .placeLabel {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (max-width: 760px) {

@@ -85,6 +85,13 @@ def _stream_events(
             if chunk is WORLD_STATE_READY:
                 yield "event: world-state-ready\ndata: true\n\n"
                 continue
+            if isinstance(chunk, WorldStateReady):
+                data = (
+                    json.dumps({"current_user_turn_id": str(chunk.current_user_turn_id)})
+                    if chunk.current_user_turn_id is not None else "true"
+                )
+                yield f"event: world-state-ready\ndata: {data}\n\n"
+                continue
             if isinstance(chunk, WorldConsequenceReady):
                 payload: bool | dict[str, object] = {}
                 if chunk.focus_property_id:

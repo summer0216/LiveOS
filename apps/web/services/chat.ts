@@ -47,7 +47,7 @@ interface StreamMessageOptions {
   userDecisionPropertyId?: string;
   currentGeographicReality?: { lng: number; lat: number } | null;
   onChunk: (chunk: string) => void;
-  onWorldStateReady?: () => void;
+  onWorldStateReady?: (currentUserTurnId: string | null) => void;
   onWorldConsequenceReady?: (
     focusPropertyId?: string,
     focusSubject?: WorkSubjectFocus,
@@ -162,7 +162,12 @@ export async function streamMessage({
       const chunk: unknown = JSON.parse(data.slice(6));
       if (eventType === 'event: world-state-ready') {
         if (chunk === true) {
-          onWorldStateReady?.();
+          onWorldStateReady?.(null);
+          continue;
+        }
+        if (typeof chunk === 'object' && chunk !== null
+          && typeof (chunk as { current_user_turn_id?: unknown }).current_user_turn_id === 'string') {
+          onWorldStateReady?.((chunk as { current_user_turn_id: string }).current_user_turn_id);
           continue;
         }
         throw new Error('Streaming API returned an invalid world state event.');

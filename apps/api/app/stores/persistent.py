@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from app.models.action_progress import (
     ActionProgressStatus,
     DecisionActionState,
@@ -37,7 +39,6 @@ from app.models.work_subject import WorkSubject
 from app.schemas.decision import DecisionReason, DecisionTradeOff
 from app.schemas.decision_record import DecisionRecord
 from app.stores.database import Database
-from psycopg.types.json import Jsonb
 
 
 def now() -> datetime:
@@ -178,7 +179,7 @@ class ConversationStore:
             ).fetchall()
         return [str(row["id"]) for row in rows]
 
-    def append(self, conversation_id: str, role: str, content: str) -> None:
+    def append(self, conversation_id: str, role: str, content: str) -> int:
         conversation_uuid = uuid_value(conversation_id)
         with self._database.connect() as connection:
             connection.execute(
@@ -195,19 +196,23 @@ class ConversationStore:
             ).fetchone()
             if row is None:
                 raise RuntimeError("Conversation sequence could not be created.")
-            connection.execute(
+            inserted = connection.execute(
                 """
                 INSERT INTO conversation_messages(
                     conversation_id, sequence, role, content, created_at
                 )
                 VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
                 """,
                 (conversation_uuid, row["sequence"], role, content, now()),
-            )
+            ).fetchone()
+            if inserted is None:
+                raise RuntimeError("Conversation message could not be persisted.")
             connection.execute(
                 "UPDATE conversations SET updated_at = %s WHERE id = %s",
                 (now(), conversation_uuid),
             )
+            return int(inserted["id"])
 
     def delete(self, conversation_id: str) -> bool:
         conversation_uuid = optional_uuid(conversation_id)
@@ -1156,6 +1161,7 @@ class DecisionGeographyStore:
             status=row["status"],
             lng=row["lng"],
             lat=row["lat"],
+            source_user_turn_id=row.get("source_user_turn_id"),
         )
 
     def get(self, conversation_id: str) -> DecisionGeography | None:
@@ -1179,14 +1185,27 @@ class DecisionGeographyStore:
         if owner_id is None or conversation_uuid is None:
             raise ValueError("Conversation owner could not be resolved.")
         with self._database.connect() as connection:
+            if state.source_user_turn_id is not None:
+                source_turn = connection.execute(
+                    """
+                    SELECT 1 FROM conversation_messages
+                    WHERE conversation_id = %s AND id = %s AND role = 'user'
+                    """,
+                    (conversation_uuid, state.source_user_turn_id),
+                ).fetchone()
+                if source_turn is None:
+                    raise ValueError(
+                        "Decision Geography source must identify a user message "
+                        "in the same conversation."
+                    )
             row = connection.execute(
                 """
                 INSERT INTO decision_geographies(
                     owner_id, conversation_id, intent_established, intent_type,
                     identity, identity_source, geographic_scope,
                     geographic_identity, geographic_precision, status, lng, lat,
-                    updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    updated_at, source_user_turn_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (owner_id, conversation_id) DO UPDATE SET
                     intent_established = EXCLUDED.intent_established,
                     intent_type = EXCLUDED.intent_type,
@@ -1198,7 +1217,8 @@ class DecisionGeographyStore:
                     status = EXCLUDED.status,
                     lng = EXCLUDED.lng,
                     lat = EXCLUDED.lat,
-                    updated_at = EXCLUDED.updated_at
+                    updated_at = EXCLUDED.updated_at,
+                    source_user_turn_id = EXCLUDED.source_user_turn_id
                 RETURNING *
                 """,
                 (
@@ -1215,6 +1235,7 @@ class DecisionGeographyStore:
                     state.lng,
                     state.lat,
                     now(),
+                    state.source_user_turn_id,
                 ),
             ).fetchone()
         if row is None:

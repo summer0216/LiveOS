@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.config import settings
 from app.models.decision_geography import DecisionGeography
 from app.models.property import GeographicPrecision, GeographicStatus
@@ -989,6 +991,9 @@ def test_decision_geography_survives_database_reconnect() -> None:
 
     conversations.delete(conversation_id)
     conversations.get_or_create(conversation_id, owner_id)
+    source_user_turn_id = conversations.append(
+        conversation_id, "user", "我想住深圳",
+    )
     state = store.save(
         conversation_id,
         DecisionGeography(
@@ -998,11 +1003,47 @@ def test_decision_geography_survives_database_reconnect() -> None:
             status="GROUNDED",
             lng=114.0579,
             lat=22.5431,
+            source_user_turn_id=source_user_turn_id,
         ),
     )
 
     reconnected_store = DecisionGeographyStore(Database(settings.DATABASE_URL))
     assert reconnected_store.get(conversation_id) == state
+    assert reconnected_store.get(conversation_id).source_user_turn_id == source_user_turn_id
+
+
+def test_non_geographic_turn_keeps_previous_decision_geography_source_turn(monkeypatch):
+    previous = DecisionGeography(
+        intent_established=True,
+        intent_type="HOUSING",
+        identity="龙湖时代天街",
+        identity_source="USER",
+        status="UNRESOLVED",
+        source_user_turn_id=1204,
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "get",
+        lambda _conversation_id: previous,
+    )
+    monkeypatch.setattr(
+        decision_geography_module.decision_geography_store,
+        "save",
+        lambda *_args: pytest.fail("A turn without new geography must not rewrite provenance"),
+    )
+
+    result = decision_geography_module.decision_geography_service.apply(
+        "conversation-id",
+        intent_established=False,
+        intent_type=None,
+        identity=None,
+        identity_source=None,
+        api_key=None,
+        source_user_turn_id=1205,
+    )
+
+    assert result is previous
+    assert result.source_user_turn_id == 1204
 
 
 def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
@@ -1099,6 +1140,7 @@ def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
         ("鼓楼区", "LOCAL"),
     ]
     for identity, scope in expected:
+        turn_id = conversations.append(conversation_id, "user", identity)
         state = decision_geography_module.decision_geography_service.apply(
             conversation_id,
             intent_established=True,
@@ -1107,12 +1149,14 @@ def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
             identity_source="USER",
             api_key="server-key",
             current_geographic_reality=(104.0668, 30.5728),
+            source_user_turn_id=turn_id,
         )
         assert state is not None
         assert state.identity == identity
         assert state.identity_source == "USER"
         assert state.geographic_scope == scope
         assert state.status == GeographicStatus.GROUNDED.value
+        assert state.source_user_turn_id == turn_id
 
     unchanged = decision_geography_module.decision_geography_service.apply(
         conversation_id,
@@ -1125,7 +1169,9 @@ def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
     )
     assert unchanged is not None
     assert unchanged.identity == "鼓楼区"
+    assert unchanged.source_user_turn_id == turn_id
 
+    changed_turn_id = conversations.append(conversation_id, "user", "广州")
     changed = decision_geography_module.decision_geography_service.apply(
         conversation_id,
         intent_established=True,
@@ -1134,7 +1180,9 @@ def test_persisted_decision_world_survives_nationwide_multi_turn_sequence(
         identity_source="USER",
         api_key="server-key",
         current_geographic_reality=(104.0668, 30.5728),
+        source_user_turn_id=changed_turn_id,
     )
     assert changed is not None
     assert changed.identity == "广州"
     assert changed.geographic_scope == "CITY"
+    assert changed.source_user_turn_id == changed_turn_id

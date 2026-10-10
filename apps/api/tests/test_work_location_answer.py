@@ -23,7 +23,9 @@ def test_stream_passes_selected_work_role_to_both_extractors(
     service = ChatService()
     calls = []
     history = [ConversationMessage(role="user", content="融科资讯中心")]
-    monkeypatch.setattr(service, "_prepare_conversation", lambda **_: (None, history))
+    monkeypatch.setattr(
+        service, "_prepare_conversation", lambda **_: (None, history, 123),
+    )
     monkeypatch.setattr("app.services.chat_service.property_manager.list", lambda _: [])
     monkeypatch.setattr("app.services.chat_service.profile_manager.get", lambda _: SimpleNamespace(
         geographic_status=GeographicStatus.GROUNDED,

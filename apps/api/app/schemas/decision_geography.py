@@ -15,3 +15,4 @@ class DecisionGeographyResponse(BaseModel):
     status: str
     lng: float | None = None
     lat: float | None = None
+    source_user_turn_id: str | None = None

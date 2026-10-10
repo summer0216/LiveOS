@@ -192,7 +192,8 @@ def _admit_canonical_rent_estimate(
 
 
 class WorldStateReady:
-    pass
+    def __init__(self, current_user_turn_id: int | None = None) -> None:
+        self.current_user_turn_id = current_user_turn_id
 
 
 WORLD_STATE_READY = WorldStateReady()
@@ -234,13 +235,13 @@ class ChatService:
         message: str,
         rent_property_id: str | None = None,
         skip_explicit_rent: bool = False,
-    ) -> tuple[Conversation, list[ConversationMessage]]:
+    ) -> tuple[Conversation, list[ConversationMessage], int]:
         started_at = perf_counter()
         conversation = conversation_manager.get_or_create(
             conversation_id,
         )
 
-        conversation_manager.append_user_message(conversation_id, message)
+        user_turn_id = conversation_manager.append_user_message(conversation_id, message)
         logger.info("Chat user message persisted conversation_id=%s", conversation_id)
         rent_reality = (
             property_reality_service.apply_rent_answer(conversation_id, rent_property_id, message)
@@ -265,7 +266,7 @@ class ChatService:
             (perf_counter() - started_at) * 1000,
         )
 
-        return conversation, history
+        return conversation, history, user_turn_id
 
     def _update_profile(
         self,
@@ -275,6 +276,7 @@ class ChatService:
         analysis: ProfileAnalysis | None = None,
         apply_decision_geography: bool = True,
         current_decision_geography: DecisionGeography | None = None,
+        source_user_turn_id: int | None = None,
         schedule_housing_discovery: Callable[[Callable[[], None]], object]
         | None = None,
     ) -> tuple[DecisionChangeCause, ...]:
@@ -329,6 +331,7 @@ class ChatService:
                     identity_source=analysis.decision_geography.identity_source,
                     api_key=settings.AMAP_WEB_SERVICE_KEY,
                     current_geographic_reality=current_geographic_reality,
+                    source_user_turn_id=source_user_turn_id,
                 )
             logger.warning(
                 "Profile intelligence complete conversation_id=%s elapsed_ms=%.1f",
@@ -629,7 +632,7 @@ class ChatService:
         current_geographic_reality: tuple[float, float] | None = None,
     ) -> str:
         try:
-            _conversation, history = self._prepare_conversation(
+            _conversation, history, user_turn_id = self._prepare_conversation(
                 conversation_id=conversation_id,
                 message=message,
             )
@@ -638,6 +641,7 @@ class ChatService:
                 conversation_id=conversation_id,
                 history=history,
                 current_geographic_reality=current_geographic_reality,
+                source_user_turn_id=user_turn_id,
             )
 
             reply = ai_runtime.chat(history, profile_manager.get(conversation_id))
@@ -660,7 +664,7 @@ class ChatService:
         user_reality_property_id: str | None = None,
         user_decision_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse]:
-        _conversation, history = self._prepare_conversation(
+        _conversation, history, user_turn_id = self._prepare_conversation(
             conversation_id=conversation_id,
             message=message,
             **({"rent_property_id": rent_property_id} if rent_property_id else {}),
@@ -787,6 +791,7 @@ class ChatService:
                 identity_source=signal.identity_source,
                 api_key=settings.AMAP_WEB_SERVICE_KEY,
                 current_geographic_reality=current_geographic_reality,
+                source_user_turn_id=user_turn_id,
             )
             world_state_ready = current_decision_geography is not None
         except Exception:
@@ -802,6 +807,7 @@ class ChatService:
             executor,
             world_state_ready,
             current_decision_geography,
+            current_user_turn_id=user_turn_id,
             property_resolution=property_resolution,
             focused_property_id=user_reality_property_id,
         )
@@ -815,12 +821,17 @@ class ChatService:
         executor: ThreadPoolExecutor,
         world_state_ready: bool,
         current_decision_geography: DecisionGeography | None,
+        current_user_turn_id: int | None = None,
         property_resolution: PropertyExpressionResolution | None = None,
         focused_property_id: str | None = None,
     ) -> Iterator[str | WorldStateReady | WorldConsequenceReady | StreamKeepAlive | PropertyGroundingResponse]:
         try:
             if world_state_ready:
-                yield WORLD_STATE_READY
+                yield (
+                    WorldStateReady(current_user_turn_id)
+                    if current_user_turn_id is not None
+                    else WORLD_STATE_READY
+                )
             while True:
                 try:
                     analysis = profile_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)

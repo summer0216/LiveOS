@@ -411,8 +411,11 @@ export default function AMapGround({
         });
 
         refitOnResize = () => {
-          if (!active || userExploredCamera) return;
+          if (!active) return;
           mapInstance.resize();
+          refreshProjection();
+          refreshZoom();
+          if (userExploredCamera) return;
           if (lastAdaptiveCameraRequest) {
             applyCameraTarget(
               lastAdaptiveCameraRequest.center,
@@ -427,7 +430,6 @@ export default function AMapGround({
           }
           fitGroundedLocations();
         };
-        window.addEventListener('resize', refitOnResize);
         resizeObserver = new ResizeObserver(refitOnResize);
         resizeObserver.observe(containerRef.current);
       })
@@ -438,7 +440,6 @@ export default function AMapGround({
 
     return () => {
       active = false;
-      if (refitOnResize) window.removeEventListener('resize', refitOnResize);
       if (groundReadyFrame !== null) window.cancelAnimationFrame(groundReadyFrame);
       if (groundPaintFrame !== null) window.cancelAnimationFrame(groundPaintFrame);
       resizeObserver?.disconnect();

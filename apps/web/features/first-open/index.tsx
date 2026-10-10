@@ -15,8 +15,10 @@ interface FirstOpenExperienceProps {
   stage: FirstOpenRuntimeStage;
   submittedExpression: string | null;
   groundedIdentity: string | null;
+  expressionReferent?: string | null;
   placeAnchorRef: RefObject<HTMLSpanElement | null>;
   map?: ReactNode;
+  worldProjection?: ReactNode;
   onSubmit: (expression: string) => void;
   onGroundingSettled: () => void;
   onWorldSettled: () => void;
@@ -54,8 +56,10 @@ export default function FirstOpenExperience({
   stage,
   submittedExpression,
   groundedIdentity,
+  expressionReferent = null,
   placeAnchorRef,
   map,
+  worldProjection,
   onSubmit,
   onGroundingSettled,
   onWorldSettled,
@@ -101,10 +105,10 @@ export default function FirstOpenExperience({
 
   const expression = submittedExpression ?? value;
   const groundedExpression = useMemo(
-    () => groundedIdentity
-      ? splitExpression(expression, groundedIdentity)
+    () => (groundedIdentity ?? expressionReferent)
+      ? splitExpression(expression, groundedIdentity ?? expressionReferent ?? '')
       : null,
-    [expression, groundedIdentity],
+    [expression, expressionReferent, groundedIdentity],
   );
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -141,7 +145,12 @@ export default function FirstOpenExperience({
       data-frame={visualFrame}
       aria-label="LiveOS First Open"
     >
-      {map && <div className={styles.mapCanvas}>{map}</div>}
+      {map && (
+        <div className={styles.mapCanvas}>
+          {map}
+          {worldProjection}
+        </div>
+      )}
 
       <header className={styles.topbar}>
         <span className={styles.wordmark}>LiveOS</span>
@@ -151,10 +160,16 @@ export default function FirstOpenExperience({
       <div className={styles.entryStage}>
         <div className={styles.conversationEntry}>
           <div className={styles.writingLine}>
-            {groundedExpression && (visualFrame === 'grounding' || visualFrame === 'world') ? (
+            {groundedExpression && (
+              visualFrame === 'transmitting'
+              || visualFrame === 'grounding'
+              || visualFrame === 'world'
+            ) ? (
               <div className={styles.expressionGrounded} aria-live="polite">
                 <span className={styles.exprContext}>{groundedExpression.lead}</span>
-                <span ref={placeAnchorRef} className={styles.exprPlace}>{groundedExpression.identity}</span>
+                <span ref={placeAnchorRef} className={styles.exprPlace}>
+                  <span className={styles.placeLabel}>{groundedExpression.identity}</span>
+                </span>
                 <span className={styles.exprContext}>{groundedExpression.tail}</span>
               </div>
             ) : (

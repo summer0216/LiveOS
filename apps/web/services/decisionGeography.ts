@@ -10,6 +10,7 @@ export interface DecisionGeography {
   status: 'UNRESOLVED' | 'GROUNDED';
   lng: number | null;
   lat: number | null;
+  source_user_turn_id?: string | null;
 }
 
 export async function getDecisionGeography(

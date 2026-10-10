@@ -3,6 +3,7 @@
 :root {
   --background: #050812;
   --foreground: #f1f5f9;
+  --reality-anchor-purple: #7c3aed;
   --font-sans-system: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono-system: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   color-scheme: dark;

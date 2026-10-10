@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,6 +19,7 @@ from app.services.chat_service import (
     STREAM_KEEP_ALIVE,
     WORLD_CONSEQUENCE_READY,
     WORLD_STATE_READY,
+    WorldStateReady,
 )
 from app.services.conversation_manager import conversation_manager
 from app.services.decision_challenge_context import decision_challenge_context
@@ -266,6 +269,8 @@ def test_stream_api_persists_one_world_across_nationwide_turns(
         "app.services.chat_service.decision_signal_intelligence.analyze",
         lambda message: signals.get(message, DecisionGeography()),
     )
+
+
     monkeypatch.setattr(
         "app.services.chat_service.profile_intelligence.analyze",
         lambda *_args, **_kwargs: ProfileAnalysis(patch=LivingProfilePatch()),
@@ -330,13 +335,23 @@ def test_stream_api_persists_one_world_across_nationwide_turns(
         )
 
         assert response.status_code == 200
-        assert "event: world-state-ready\ndata: true" in response.text
+        world_state_data = next(
+            line.removeprefix("data: ")
+            for line in response.text.splitlines()
+            if line.startswith('data: {"current_user_turn_id":')
+        )
+        current_turn_id = json.loads(world_state_data)["current_user_turn_id"]
         assert state_response.status_code == 200
         state = state_response.json()
         assert state["identity"] == expected_identity
         assert state["identity_source"] == "USER"
         assert state["geographic_scope"] == expected_scope
         assert state["status"] == "GROUNDED"
+        assert state["source_user_turn_id"] is not None
+        if message == "预算3000，通勤30分钟":
+            assert state["source_user_turn_id"] != current_turn_id
+        else:
+            assert state["source_user_turn_id"] == current_turn_id
 
     control_response = client.post(
         "/api/chat/stream",
@@ -361,6 +376,12 @@ def test_stream_api_persists_one_world_across_nationwide_turns(
 
     conversation_manager.delete(conversation_id)
     conversation_manager.delete(control_id)
+
+
+def test_stream_world_state_carries_authoritative_current_user_turn_id() -> None:
+    events = list(_stream_events(iter([WorldStateReady(74321)])))
+
+    assert "event: world-state-ready\ndata: {\"current_user_turn_id\": \"74321\"}\n\n" in events
 
 
 def test_stream_events_turns_a_first_token_timeout_into_a_terminal_error_event(

@@ -39,8 +39,8 @@ class ConversationManager:
     def owner_id(self, conversation_id: str) -> str | None:
         return conversation_store.owner_id(conversation_id)
 
-    def append_user_message(self, conversation_id: str, content: str) -> None:
-        conversation_store.append(conversation_id, "user", content)
+    def append_user_message(self, conversation_id: str, content: str) -> int:
+        return conversation_store.append(conversation_id, "user", content)
 
     def append_assistant_message(self, conversation_id: str, content: str) -> None:
         conversation_store.append(conversation_id, "assistant", content)

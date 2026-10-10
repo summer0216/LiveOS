@@ -69,6 +69,7 @@ class DecisionGeographyService:
         identity_source: str | None,
         api_key: str | None,
         current_geographic_reality: tuple[float, float] | None = None,
+        source_user_turn_id: int | None = None,
     ) -> DecisionGeography | None:
         normalized_identity = (
             normalize_local_geographic_identity(identity) if identity else ""
@@ -225,6 +226,7 @@ class DecisionGeographyService:
             status=status,
             lng=result.lng if status == GeographicStatus.GROUNDED.value else None,
             lat=result.lat if status == GeographicStatus.GROUNDED.value else None,
+            source_user_turn_id=source_user_turn_id,
         )
         persisted = decision_geography_store.save(conversation_id, state)
         logger.info(

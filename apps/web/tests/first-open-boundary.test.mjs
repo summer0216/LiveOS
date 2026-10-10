@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { existsSync, readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
 const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
 const firstOpen = readFileSync(
@@ -37,6 +38,140 @@ test('First Open visual states live outside the product page boundary', () => {
   ]) {
     assert.match(firstOpen + firstOpenStyles, new RegExp(frame));
   }
+});
+
+test('pre-grounding Expression Referent requires backend current-turn provenance', () => {
+  assert.match(firstRealityRuntime, /isCurrentExpressionReferent\(decisionGeography, currentUserTurnId\)/);
+  assert.match(firstRealityRuntime, /setCurrentExpressionReferent\(decisionGeography\.identity\)/);
+  assert.match(firstOpen, /groundedIdentity \?\? expressionReferent/);
+  const state = readFileSync(
+    new URL('../lib/decisionGeographyState.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(state, /source_user_turn_id === currentUserTurnId/);
+  assert.match(state, /geography\.identity_source === 'USER'/);
+  assert.match(state, /geography\.intent_established/);
+  assert.match(page, /expressionReferent=\{currentExpressionReferent\}/);
+});
+
+test('grounded Reality Anchor visual is independent from the camera-only framing ref', () => {
+  assert.match(
+    firstOpen,
+    /<span ref=\{placeAnchorRef\} className=\{styles\.exprPlace\}>\s*<span className=\{styles\.placeLabel\}>\{groundedExpression\.identity\}<\/span>/,
+  );
+  assert.doesNotMatch(firstOpenStyles, /\.exprPlace::(?:before|after)/);
+  assert.match(page, /<RealityAnchorProjection[\s\S]*?location=\{authoritativeProperty\?\.geographic_status === 'GROUNDED'/);
+  assert.match(mapGround, /lngLatToContainer/);
+  const anchor = readFileSync(
+    new URL('../features/possible-life-world/RealityAnchorProjection.tsx', import.meta.url),
+    'utf8',
+  );
+  const anchorStyles = readFileSync(
+    new URL('../features/possible-life-world/PossibleLifeWorld.module.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(anchor, /style=\{\{ left: position\.left, top: position\.top \}\}/);
+  assert.match(anchor, /projection\(location\)/);
+  assert.doesNotMatch(anchor, /getBoundingClientRect|offsetLeft|offsetTop/);
+  assert.match(anchorStyles, /\.anchorCore/);
+  assert.match(anchorStyles, /\.anchorRing/);
+  assert.match(anchorStyles, /\.anchorGlow/);
+  assert.match(anchorStyles, /data-reality-anchor-lod="regional"/);
+  assert.doesNotMatch(anchorStyles, /infinite/);
+  assert.match(
+    readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    /--reality-anchor-purple: #7c3aed;/,
+  );
+});
+
+test('Reality Anchor geographic LOD uses named scale boundaries', () => {
+  const lod = readFileSync(
+    new URL('../features/possible-life-world/geographicLod.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(lod, /GEOGRAPHIC_SCALE_CONTRACT\.PLACE\.SEE - 1/);
+  assert.match(lod, /GEOGRAPHIC_SCALE_CONTRACT\.CITY\.FOCUS/);
+  assert.match(lod, /zoom >= LOCAL_MIN_ZOOM/);
+  assert.match(lod, /zoom > REGIONAL_MAX_ZOOM/);
+  assert.match(page, /onZoomChange=\{handleZoomChange\}/);
+  assert.match(mapGround, /mapInstance\.on\('zoomchange'/);
+  assert.match(mapGround, /mapInstance\.on\('mapmove', refreshProjection\)/);
+  const resizeProjection = mapGround.match(/refitOnResize = \(\) => \{([\s\S]*?)\n        \};/);
+  assert.ok(resizeProjection);
+  assert.match(resizeProjection[1], /mapInstance\.resize\(\);[\s\S]*?refreshProjection\(\);[\s\S]*?refreshZoom\(\);/);
+});
+
+test('a map-container resize has one camera refit trigger', () => {
+  assert.equal((mapGround.match(/new ResizeObserver\(refitOnResize\)/g) ?? []).length, 1);
+  assert.match(mapGround, /resizeObserver\.observe\(containerRef\.current\)/);
+  assert.doesNotMatch(mapGround, /(?:addEventListener|removeEventListener)\('resize', refitOnResize\)/);
+  const resizeRefit = mapGround.match(/refitOnResize = \(\) => \{([\s\S]*?)\n        \};/);
+  assert.ok(resizeRefit);
+  assert.equal((resizeRefit[1].match(/applyCameraTarget\(/g) ?? []).length, 1);
+  assert.match(resizeRefit[1], /mapInstance\.resize\(\);[\s\S]*?refreshProjection\(\);[\s\S]*?refreshZoom\(\);/);
+  assert.match(resizeRefit[1], /if \(userExploredCamera\) return;/);
+  const observerSetup = mapGround.match(
+    /resizeObserver = new ResizeObserver\(refitOnResize\);\s*resizeObserver\.observe\(containerRef\.current\);/,
+  );
+  assert.ok(observerSetup);
+  const calls = [];
+  const context = {
+    active: true,
+    userExploredCamera: false,
+    lastAdaptiveCameraRequest: {
+      center: { lng: 104, lat: 31 }, framing: { level: 'PLACE', attention: 'SEE' },
+      occlusion: null, screenAnchor: null,
+    },
+    mapInstance: { resize: () => calls.push('resize') },
+    refreshProjection: () => calls.push('projection'),
+    refreshZoom: () => calls.push('zoom'),
+    applyCameraTarget: () => calls.push('camera'),
+    fitGroundedLocations: () => calls.push('fit'),
+    containerRef: { current: {} },
+    ResizeObserver: class {
+      constructor(callback) { this.callback = callback; }
+      observe() {}
+      notify() { this.callback(); }
+    },
+    refitOnResize: null,
+    resizeObserver: null,
+  };
+  runInNewContext(`${resizeRefit[0]}\n${observerSetup[0]}`, context);
+  context.resizeObserver.notify();
+  assert.deepEqual(calls, ['resize', 'projection', 'zoom', 'camera', 'projection', 'zoom']);
+});
+
+test('grounded Place label stays visible until its geographic Reality Anchor is mounted', () => {
+  assert.match(
+    firstOpenStyles,
+    /\.firstOpen\[data-frame="world"\]:not\(:has\(\[data-reality-anchor\]\)\) \.placeLabel\s*\{\s*opacity: 1;/,
+  );
+  assert.match(
+    readFileSync(
+      new URL('../features/possible-life-world/RealityAnchorProjection.tsx', import.meta.url),
+      'utf8',
+    ),
+    /data-reality-anchor="grounded-property"/,
+  );
+});
+
+test('authoritative grounded subject replaces Expression context immediately through reveal', () => {
+  assert.match(
+    firstOpen,
+    /groundedExpression && \([\s\S]*?visualFrame === 'transmitting'[\s\S]*?visualFrame === 'grounding'[\s\S]*?visualFrame === 'world'/,
+  );
+  assert.match(
+    firstOpenStyles,
+    /\.firstOpen\[data-frame="transmitting"\] \.exprContext,[\s\S]*?\.firstOpen\[data-frame="grounding"\] \.exprContext,[\s\S]*?\.firstOpen\[data-frame="world"\] \.exprContext\s*\{\s*display: none;/,
+  );
+  assert.doesNotMatch(firstOpenStyles, /contextDim|worldContextExit/);
+});
+
+test('Anchor handoff preserves the single World reframe', () => {
+  assert.doesNotMatch(page, /POSSIBLE_LIFE_WORLD_FRAMING|reorient\(/);
+  assert.match(page, /initialFraming=\{!firstRealityTransition\s*\?\s*authoritativeReality\?\.worldFraming/);
+  assert.match(page, /fitLocations=\{NO_FIT_LOCATIONS\}/);
+  assert.match(firstRealityRuntime, /reorient\(\s*firstRealityTransition\.center,\s*firstRealityTransition\.worldFraming,\s*null,\s*placeAnchorRef\.current/);
 });
 
 test('prototype navigation and hard-coded Reality are not shipped', () => {

@@ -1,0 +1,104 @@
+.anchorOverlay {
+  position: absolute;
+  z-index: 13;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.realityAnchor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  color: var(--reality-anchor-purple);
+}
+
+.anchorCore,
+.anchorRing,
+.anchorGlow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 160ms ease, height 160ms ease, opacity 160ms ease;
+}
+
+.anchorCore {
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border: 3px solid #fff;
+  background: var(--reality-anchor-purple);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.82);
+}
+
+.anchorRing {
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--reality-anchor-purple) 36%, transparent);
+}
+
+.anchorGlow {
+  z-index: 0;
+  width: 40px;
+  height: 40px;
+  background: color-mix(in srgb, var(--reality-anchor-purple) 9%, transparent);
+  filter: blur(7px);
+}
+
+.anchorLabel {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  width: max-content;
+  color: #201b2b;
+  font-family: var(--font-dm-sans), var(--font-noto-sans-sc), "PingFang SC", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-shadow: 0 1px 5px rgb(255 255 255 / 0.9);
+  transform: translateX(-50%);
+  transition: opacity 160ms ease, font-size 160ms ease;
+  white-space: nowrap;
+}
+
+.realityAnchor[data-reality-anchor-lod="district"] .anchorCore {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
+.realityAnchor[data-reality-anchor-lod="district"] .anchorRing {
+  width: 21px;
+  height: 21px;
+}
+
+.realityAnchor[data-reality-anchor-lod="district"] .anchorGlow {
+  width: 30px;
+  height: 30px;
+}
+
+.realityAnchor[data-reality-anchor-lod="district"] .anchorLabel {
+  top: 19px;
+  font-size: 13px;
+  opacity: 0.82;
+}
+
+.realityAnchor[data-reality-anchor-lod="regional"] .anchorCore {
+  width: 7px;
+  height: 7px;
+  border-width: 1px;
+}
+
+.realityAnchor[data-reality-anchor-lod="regional"] .anchorRing {
+  width: 13px;
+  height: 13px;
+  opacity: 0.35;
+}
+
+.realityAnchor[data-reality-anchor-lod="regional"] .anchorGlow,
+.realityAnchor[data-reality-anchor-lod="regional"] .anchorLabel {
+  opacity: 0;
+}
