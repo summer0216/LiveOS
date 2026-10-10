@@ -238,6 +238,9 @@ def test_decision_geography_resolves_and_persists_coordinates(monkeypatch) -> No
         "resolve",
         lambda *_args: SimpleNamespace(
             status="GROUNDED",
+            geographic_identity="广东省深圳市",
+            geographic_precision=GeographicPrecision.AREA,
+            geographic_scope="CITY",
             lng=114.0579,
             lat=22.5431,
         ),
