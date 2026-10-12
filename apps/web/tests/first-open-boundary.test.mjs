@@ -60,7 +60,9 @@ test('grounded Reality Anchor visual is independent from the camera-only framing
     /<span ref=\{placeAnchorRef\} className=\{styles\.exprPlace\}>\s*<span className=\{styles\.placeLabel\}>\{groundedExpression\.identity\}<\/span>/,
   );
   assert.doesNotMatch(firstOpenStyles, /\.exprPlace::(?:before|after)/);
-  assert.match(page, /<RealityAnchorProjection[\s\S]*?location=\{authoritativeProperty\?\.geographic_status === 'GROUNDED'/);
+  assert.match(page, /initialCenter=\{initialMapCenter\}/);
+  assert.match(page, /<RealityAnchorProjection[\s\S]*?identity=\{authoritativeReality\?\.identity \?\? null\}/);
+  assert.match(page, /<RealityAnchorProjection[\s\S]*?location=\{authoritativeReality\?\.center \?\? null\}/);
   assert.match(mapGround, /lngLatToContainer/);
   const anchor = readFileSync(
     new URL('../features/possible-life-world/RealityAnchorProjection.tsx', import.meta.url),

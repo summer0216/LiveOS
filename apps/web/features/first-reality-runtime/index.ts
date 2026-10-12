@@ -13,6 +13,14 @@ import {
 
 import type { FirstOpenRuntimeStage } from '@/features/first-open';
 import type { GeographicCameraTarget } from '@/features/living-map/AMapGround';
+import {
+  admittedPlaceContextFor,
+  groundedPlaceContextScope,
+  hasCompleteAdmittedPlaceContext,
+  reconcileRereadPlaceContext,
+  requestPlaceContextOnce,
+  type AdmittedPlaceContextReality,
+} from './placeContext';
 import { createClientId } from '@/lib/createClientId';
 import type { GeographicCameraFraming } from '@/lib/geographicScaleContract';
 import {
@@ -34,7 +42,7 @@ import {
 } from '@/services/decisionGeography';
 import { getPossibleLives, type PossibleLifeWorldState } from '@/services/possibleLife';
 import { getLivingProfile, type LivingProfile } from '@/services/profile';
-import { getProperties, type Property } from '@/services/property';
+import { establishPlaceContext, getProperties, type Property } from '@/services/property';
 
 export type FirstRealityPhase =
   | 'empty'
@@ -80,6 +88,7 @@ interface FirstRealityRuntime {
   profile: LivingProfile | null;
   properties: Property[];
   authoritativeProperty: Property | null;
+  admittedPlaceContextReality: AdmittedPlaceContextReality[];
   possibleLives: PossibleLifeWorldState[];
   setProperties: Dispatch<SetStateAction<Property[]>>;
   restoredDecisionGeography: DecisionGeography | null | undefined;
@@ -258,6 +267,7 @@ export default function useFirstRealityRuntime({
   const latestSubmitIdRef = useRef(0);
   const skipRestoreConversationRef = useRef<string | null>(null);
   const decisionGeographyRef = useRef<DecisionGeography | null | undefined>(undefined);
+  const placeContextAttemptsRef = useRef(new Map<string, Promise<Property[]>>());
   const onWorldConsequenceReadyRef = useRef(onWorldConsequenceReady);
   const onPersistedRealityReconciledRef = useRef(onPersistedRealityReconciled);
 
@@ -593,6 +603,43 @@ export default function useFirstRealityRuntime({
       : null,
     [authoritativeReality, properties],
   );
+  const placeContextScope = groundedPlaceContextScope(conversationId, authoritativeProperty);
+  const admittedPlaceContextReality = useMemo(
+    () => admittedPlaceContextFor(authoritativeProperty),
+    [authoritativeProperty],
+  );
+  const hasCompletePlaceContext = hasCompleteAdmittedPlaceContext(
+    authoritativeProperty,
+    admittedPlaceContextReality,
+  );
+  const placeContextPropertyId = authoritativeProperty?.id;
+
+  useEffect(() => {
+    if (!placeContextScope || !placeContextPropertyId || hasCompletePlaceContext) return;
+
+    let active = true;
+    const currentRequest = requestPlaceContextOnce(
+      placeContextAttemptsRef.current,
+      placeContextScope,
+      () => establishPlaceContext(conversationId, placeContextPropertyId)
+        .then(() => getProperties(conversationId)),
+    );
+    void currentRequest.then((rereadProperties) => {
+      if (!active) return;
+      const persisted = rereadProperties.find((property) => (
+        property.id === placeContextPropertyId
+        && groundedPlaceContextScope(conversationId, property) === placeContextScope
+      ));
+      if (!persisted) return;
+      setProperties((current) => reconcileRereadPlaceContext(
+        current, persisted, conversationId, placeContextScope,
+      ));
+    }).catch((error: unknown) => {
+      if (active) console.error('Failed to establish Place Context:', error);
+    });
+    return () => { active = false; };
+  }, [conversationId, hasCompletePlaceContext, placeContextPropertyId, placeContextScope]);
+
   const hasGroundedWorld = Boolean(
     authoritativeReality
     || hasAdmittedPossibleLifeReality(conversationId, properties, possibleLives),
@@ -614,6 +661,7 @@ export default function useFirstRealityRuntime({
     profile,
     properties,
     authoritativeProperty,
+    admittedPlaceContextReality,
     possibleLives,
     setProperties,
     restoredDecisionGeography,

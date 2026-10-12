@@ -21,7 +21,6 @@ export default function HomePage() {
     currentExpressionReferent,
     phase,
     authoritativeReality,
-    authoritativeProperty,
     firstRealityTransition,
     hasGroundedWorld,
     firstOpenActive,
@@ -78,12 +77,8 @@ export default function HomePage() {
           map={mapGround}
           worldProjection={(
             <RealityAnchorProjection
-              identity={authoritativeProperty?.title ?? authoritativeReality?.identity ?? null}
-              location={authoritativeProperty?.geographic_status === 'GROUNDED'
-                && typeof authoritativeProperty.lng === 'number'
-                && typeof authoritativeProperty.lat === 'number'
-                ? { lng: authoritativeProperty.lng, lat: authoritativeProperty.lat }
-                : null}
+              identity={authoritativeReality?.identity ?? null}
+              location={authoritativeReality?.center ?? null}
               projection={mapProjection}
               zoom={mapZoom}
               visible={firstOpenStage === 'world' && phase !== 'empty'}
