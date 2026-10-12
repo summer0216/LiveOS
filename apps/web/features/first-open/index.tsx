@@ -1,7 +1,7 @@
 'use client';
 
 import type { ChangeEvent, KeyboardEvent, ReactNode, RefObject } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import styles from './FirstOpen.module.css';
 
@@ -13,14 +13,15 @@ export type FirstOpenRuntimeStage =
 
 interface FirstOpenExperienceProps {
   stage: FirstOpenRuntimeStage;
+  worldFormed?: boolean;
+  isSubmittingExpression?: boolean;
   submittedExpression: string | null;
   groundedIdentity: string | null;
   expressionReferent?: string | null;
   placeAnchorRef: RefObject<HTMLSpanElement | null>;
   map?: ReactNode;
   worldProjection?: ReactNode;
-  onSubmit: (expression: string) => void;
-  onGroundingSettled: () => void;
+  onSubmit: (expression: string) => void | Promise<void>;
   onWorldSettled: () => void;
 }
 
@@ -28,8 +29,6 @@ type EntryFrame = 'idle' | 'focus' | 'typing' | 'ready';
 type VisualFrame = EntryFrame | 'transmitting' | 'grounding' | 'world';
 
 const READY_DELAY_MS = 460;
-const TRANSMISSION_MS = 1100;
-const GROUNDING_SETTLE_MS = 3300;
 const WORLD_SETTLE_MS = 3200;
 
 export const FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800;
@@ -42,74 +41,53 @@ function ReturnMark() {
   );
 }
 
-function splitExpression(expression: string, identity: string) {
-  const index = expression.indexOf(identity);
-  if (index < 0) return { lead: '', identity, tail: '' };
-  return {
-    lead: expression.slice(0, index),
-    identity,
-    tail: expression.slice(index + identity.length),
-  };
-}
-
 export default function FirstOpenExperience({
   stage,
-  submittedExpression,
+  worldFormed = false,
+  isSubmittingExpression = false,
   groundedIdentity,
   expressionReferent = null,
   placeAnchorRef,
   map,
   worldProjection,
   onSubmit,
-  onGroundingSettled,
   onWorldSettled,
 }: FirstOpenExperienceProps) {
   const [value, setValue] = useState('');
   const [entryFrame, setEntryFrame] = useState<EntryFrame>('idle');
-  const [transmissionSettled, setTransmissionSettled] = useState(true);
-  const transmissionTimerRef = useRef<number | null>(null);
+  const [entryPending, setEntryPending] = useState(false);
+  const entrySubmittingRef = useRef(false);
+  const worldEntry = stage === 'world';
+  const entryEditable = stage === 'entry' || worldEntry;
+  const entryHidden = stage === 'submitting' || stage === 'grounding'
+    || (stage === 'entry' && entryPending);
 
   useEffect(() => {
-    return () => {
-      if (transmissionTimerRef.current !== null) {
-        window.clearTimeout(transmissionTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (stage !== 'entry' || !value.trim() || entryFrame !== 'typing') return;
+    if (!entryEditable || !value.trim() || entryFrame !== 'typing') return;
     const timer = window.setTimeout(() => setEntryFrame('ready'), READY_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [entryFrame, stage, value]);
+  }, [entryEditable, entryFrame, value]);
 
   const visualFrame: VisualFrame = stage === 'world'
     ? 'world'
-    : stage === 'grounding' && transmissionSettled
+    : stage === 'grounding'
       ? 'grounding'
-      : stage === 'submitting' || stage === 'grounding'
+      : stage === 'submitting'
         ? 'transmitting'
         : entryFrame;
 
   useEffect(() => {
-    if (visualFrame !== 'grounding') return;
-    const timer = window.setTimeout(onGroundingSettled, GROUNDING_SETTLE_MS);
+    if (visualFrame !== 'world' || worldFormed) return;
+    const timer = window.setTimeout(() => {
+      onWorldSettled();
+    }, WORLD_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [onGroundingSettled, visualFrame]);
+  }, [onWorldSettled, visualFrame, worldFormed]);
 
-  useEffect(() => {
-    if (visualFrame !== 'world') return;
-    const timer = window.setTimeout(onWorldSettled, WORLD_SETTLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [onWorldSettled, visualFrame]);
-
-  const expression = submittedExpression ?? value;
-  const groundedExpression = useMemo(
-    () => (groundedIdentity ?? expressionReferent)
-      ? splitExpression(expression, groundedIdentity ?? expressionReferent ?? '')
-      : null,
-    [expression, expressionReferent, groundedIdentity],
-  );
+  const subjectIdentity = groundedIdentity ?? expressionReferent;
+  const cameraAnchorMounted = Boolean(subjectIdentity && (
+    stage === 'grounding' || stage === 'world'
+  ));
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = event.target.value;
@@ -117,32 +95,48 @@ export default function FirstOpenExperience({
     setEntryFrame(nextValue.trim() ? 'typing' : 'focus');
   };
 
-  const submit = () => {
+  const submit = async () => {
     const nextExpression = value.trim();
-    if (!nextExpression || stage !== 'entry') return;
+    if (!nextExpression || !entryEditable || isSubmittingExpression || entrySubmittingRef.current
+      || (worldEntry && !worldFormed)) return;
 
-    if (transmissionTimerRef.current !== null) {
-      window.clearTimeout(transmissionTimerRef.current);
+    entrySubmittingRef.current = true;
+    setEntryPending(true);
+    setValue('');
+    if (worldFormed) {
+      try {
+        await onSubmit(nextExpression);
+        setEntryFrame('ready');
+      } finally {
+        entrySubmittingRef.current = false;
+        setEntryPending(false);
+      }
+      return;
     }
+
     setEntryFrame('ready');
-    setTransmissionSettled(false);
-    transmissionTimerRef.current = window.setTimeout(() => {
-      setTransmissionSettled(true);
-      transmissionTimerRef.current = null;
-    }, TRANSMISSION_MS);
-    onSubmit(nextExpression);
+    try {
+      await onSubmit(nextExpression);
+    } finally {
+      entrySubmittingRef.current = false;
+      setEntryPending(false);
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
-    submit();
+    void submit();
   };
 
   return (
     <section
       className={styles.firstOpen}
       data-frame={visualFrame}
+      data-world-entry={worldEntry || undefined}
+      data-entry-frame={worldEntry
+        ? isSubmittingExpression ? 'transmitting' : entryFrame
+        : undefined}
       aria-label="LiveOS First Open"
     >
       {map && (
@@ -160,42 +154,42 @@ export default function FirstOpenExperience({
       <div className={styles.entryStage}>
         <div className={styles.conversationEntry}>
           <div className={styles.writingLine}>
-            {groundedExpression && (
-              visualFrame === 'transmitting'
-              || visualFrame === 'grounding'
-              || visualFrame === 'world'
-            ) ? (
-              <div className={styles.expressionGrounded} aria-live="polite">
-                <span className={styles.exprContext}>{groundedExpression.lead}</span>
+            {cameraAnchorMounted && (
+              <div className={styles.expressionGrounded} aria-hidden="true">
                 <span ref={placeAnchorRef} className={styles.exprPlace}>
-                  <span className={styles.placeLabel}>{groundedExpression.identity}</span>
+                  <span className={styles.placeLabel}>{subjectIdentity}</span>
                 </span>
-                <span className={styles.exprContext}>{groundedExpression.tail}</span>
               </div>
-            ) : (
+            )}
+            <div className={styles.expressionEntry} data-anchor-layout={cameraAnchorMounted} data-entry-hidden={entryHidden}>
               <textarea
                 rows={1}
-                value={stage === 'entry' ? value : expression}
-                readOnly={stage !== 'entry'}
+                value={value}
+                readOnly={!entryEditable}
+                aria-busy={isSubmittingExpression}
+                tabIndex={entryEditable ? 0 : -1}
                 onChange={handleChange}
                 onFocus={() => {
-                  if (stage === 'entry' && !value.trim()) setEntryFrame('focus');
+                  if (entryEditable && !value.trim()) setEntryFrame('focus');
                 }}
                 onBlur={() => {
-                  if (stage !== 'entry') return;
+                  if (!entryEditable) return;
                   setEntryFrame(value.trim() ? 'ready' : 'idle');
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="告诉 LiveOS……"
+                placeholder="告诉 LiveOS…"
                 aria-label="告诉 LiveOS 一件关于生活的事"
               />
-            )}
-            <span className={styles.lineLeft} aria-hidden="true" />
-            <span className={styles.lineRight} aria-hidden="true" />
-            <span className={styles.lineResponse} aria-hidden="true" />
-            <span className={styles.commitMark} aria-hidden="true">
-              <ReturnMark />
-            </span>
+              <button
+                type="button"
+                className={styles.commitMark}
+                aria-label="提交表达"
+                disabled={!entryEditable || !value.trim() || isSubmittingExpression || (worldEntry && !worldFormed)}
+                onClick={() => { void submit(); }}
+              >
+                <ReturnMark />
+              </button>
+            </div>
           </div>
         </div>
       </div>

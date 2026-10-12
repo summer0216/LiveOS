@@ -95,6 +95,7 @@ interface FirstRealityRuntime {
   decisionWorldActive: boolean;
   phase: FirstRealityPhase;
   submittedExpression: string | null;
+  isSubmittingExpression: boolean;
   currentExpressionReferent: string | null;
   authoritativeReality: AuthoritativeGroundedReality | null;
   firstRealityTransition: AuthoritativeGroundedReality | null;
@@ -109,7 +110,6 @@ interface FirstRealityRuntime {
   submit: (expression: string) => Promise<void>;
   onGroundReadyChange: (ready: boolean) => void;
   onCameraReady: (reorient: FirstRealityCameraReorient) => void;
-  onGroundingSettled: () => void;
   onWorldSettled: () => void;
 }
 
@@ -252,11 +252,11 @@ export default function useFirstRealityRuntime({
   >(undefined);
   const [phase, setPhase] = useState<FirstRealityPhase>('empty');
   const [submittedExpression, setSubmittedExpression] = useState<string | null>(null);
+  const [isSubmittingExpression, setIsSubmittingExpression] = useState(false);
   const [currentExpressionReferent, setCurrentExpressionReferent] = useState<string | null>(null);
   const [firstRealityTransition, setFirstRealityTransition] = useState<
     AuthoritativeGroundedReality | null
   >(null);
-  const [groundingSettled, setGroundingSettled] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{
     lng: number;
     lat: number;
@@ -376,13 +376,23 @@ export default function useFirstRealityRuntime({
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
     let consequenceRevision = 0;
-    let firstRealityRevealStarted = false;
+    const continuingWorld = phase === 'formed';
+    let firstRealityRevealStarted = continuingWorld;
 
-    setSubmittedExpression(message);
-    setCurrentExpressionReferent(null);
-    setFirstRealityTransition(null);
-    setGroundingSettled(false);
-    setPhase('forming');
+    setIsSubmittingExpression(true);
+    if (continuingWorld) {
+      // Resume and fresh journeys keep the same admitted subject through later turns.
+      if (!firstRealityTransition) {
+        setFirstRealityTransition(resolveAuthoritativeGroundedReality(
+          profile, properties, restoredDecisionGeography,
+        ));
+      }
+    } else {
+      setSubmittedExpression(message);
+      setCurrentExpressionReferent(null);
+      setFirstRealityTransition(null);
+      setPhase('forming');
+    }
 
     const applySceneResolution = (
       nextProfile: LivingProfile | null,
@@ -535,10 +545,15 @@ export default function useFirstRealityRuntime({
         applySceneResolution(persistedProfile, persistedProperties, undefined, true);
       } catch (restoreError: unknown) {
         console.error('Failed to restore persisted World State:', restoreError);
-        setPhase('empty');
+        if (!continuingWorld) setPhase('empty');
       }
+    } finally {
+      if (latestSubmitIdRef.current === submitId) setIsSubmittingExpression(false);
     }
-  }, [conversationId, currentLocation]);
+  }, [
+    conversationId, currentLocation, phase, firstRealityTransition,
+    profile, properties, restoredDecisionGeography,
+  ]);
 
   const onGroundReadyChange = useCallback((ready: boolean) => {
     setGeographicGroundReady(ready);
@@ -546,10 +561,6 @@ export default function useFirstRealityRuntime({
 
   const onCameraReady = useCallback((nextReorient: FirstRealityCameraReorient) => {
     setReorient(() => nextReorient);
-  }, []);
-
-  const onGroundingSettled = useCallback(() => {
-    setGroundingSettled(true);
   }, []);
 
   const onWorldSettled = useCallback(() => {
@@ -560,7 +571,6 @@ export default function useFirstRealityRuntime({
     if (
       phase !== 'grounding'
       || !firstRealityTransition
-      || !groundingSettled
       || !geographicGroundReady
       || !reorient
     ) return;
@@ -578,7 +588,6 @@ export default function useFirstRealityRuntime({
   }, [
     firstRealityTransition,
     geographicGroundReady,
-    groundingSettled,
     phase,
     reorient,
   ]);
@@ -668,6 +677,7 @@ export default function useFirstRealityRuntime({
     decisionWorldActive: isGroundedDecisionGeography(restoredDecisionGeography),
     phase,
     submittedExpression,
+    isSubmittingExpression,
     currentExpressionReferent,
     authoritativeReality,
     firstRealityTransition,
@@ -682,7 +692,6 @@ export default function useFirstRealityRuntime({
     submit,
     onGroundReadyChange,
     onCameraReady,
-    onGroundingSettled,
     onWorldSettled,
   };
 }

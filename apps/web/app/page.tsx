@@ -18,6 +18,7 @@ export default function HomePage() {
   const searchParams = useSearchParams();
   const {
     submittedExpression,
+    isSubmittingExpression,
     currentExpressionReferent,
     phase,
     authoritativeReality,
@@ -29,7 +30,6 @@ export default function HomePage() {
     submit,
     onGroundReadyChange,
     onCameraReady,
-    onGroundingSettled,
     onWorldSettled,
   } = useFirstRealityRuntime({
     initialConversationId: searchParams.get('conversation_id') ?? '',
@@ -70,6 +70,8 @@ export default function HomePage() {
       {firstOpenActive ? (
         <FirstOpenExperience
           stage={firstOpenStage}
+          worldFormed={phase === 'formed'}
+          isSubmittingExpression={isSubmittingExpression}
           submittedExpression={submittedExpression}
           groundedIdentity={authoritativeReality?.identity ?? null}
           expressionReferent={currentExpressionReferent}
@@ -84,10 +86,7 @@ export default function HomePage() {
               visible={firstOpenStage === 'world' && phase !== 'empty'}
             />
           )}
-          onSubmit={(expression) => {
-            void submit(expression);
-          }}
-          onGroundingSettled={onGroundingSettled}
+          onSubmit={submit}
           onWorldSettled={onWorldSettled}
         />
       ) : mapGround}

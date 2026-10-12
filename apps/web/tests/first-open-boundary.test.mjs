@@ -57,7 +57,7 @@ test('pre-grounding Expression Referent requires backend current-turn provenance
 test('grounded Reality Anchor visual is independent from the camera-only framing ref', () => {
   assert.match(
     firstOpen,
-    /<span ref=\{placeAnchorRef\} className=\{styles\.exprPlace\}>\s*<span className=\{styles\.placeLabel\}>\{groundedExpression\.identity\}<\/span>/,
+    /<span ref=\{placeAnchorRef\} className=\{styles\.exprPlace\}>\s*<span className=\{styles\.placeLabel\}>\{subjectIdentity\}<\/span>/,
   );
   assert.doesNotMatch(firstOpenStyles, /\.exprPlace::(?:before|after)/);
   assert.match(page, /initialCenter=\{initialMapCenter\}/);
@@ -143,10 +143,10 @@ test('a map-container resize has one camera refit trigger', () => {
   assert.deepEqual(calls, ['resize', 'projection', 'zoom', 'camera', 'projection', 'zoom']);
 });
 
-test('grounded Place label stays visible until its geographic Reality Anchor is mounted', () => {
+test('direct Reveal keeps only a hidden layout reference for the accepted camera', () => {
   assert.match(
     firstOpenStyles,
-    /\.firstOpen\[data-frame="world"\]:not\(:has\(\[data-reality-anchor\]\)\) \.placeLabel\s*\{\s*opacity: 1;/,
+    /\.expressionGrounded\s*\{\s*visibility: hidden;/,
   );
   assert.match(
     readFileSync(
@@ -157,16 +157,10 @@ test('grounded Place label stays visible until its geographic Reality Anchor is 
   );
 });
 
-test('authoritative grounded subject replaces Expression context immediately through reveal', () => {
-  assert.match(
-    firstOpen,
-    /groundedExpression && \([\s\S]*?visualFrame === 'transmitting'[\s\S]*?visualFrame === 'grounding'[\s\S]*?visualFrame === 'world'/,
-  );
-  assert.match(
-    firstOpenStyles,
-    /\.firstOpen\[data-frame="transmitting"\] \.exprContext,[\s\S]*?\.firstOpen\[data-frame="grounding"\] \.exprContext,[\s\S]*?\.firstOpen\[data-frame="world"\] \.exprContext\s*\{\s*display: none;/,
-  );
-  assert.doesNotMatch(firstOpenStyles, /contextDim|worldContextExit/);
+test('direct World Reveal has no subject waiting animation or timer gate', () => {
+  assert.doesNotMatch(firstOpen, /TRANSMISSION_MS|GROUNDING_SETTLE_MS|onGroundingSettled|aria-live/);
+  assert.doesNotMatch(firstOpenStyles, /groundingAppear|placeSettle|exprContext/);
+  assert.doesNotMatch(firstRealityRuntime, /groundingSettled/);
 });
 
 test('Anchor handoff preserves the single World reframe', () => {
@@ -194,7 +188,7 @@ test('Grounding and World remain gated by authoritative runtime Reality', () => 
   );
   assert.match(
     firstRealityRuntime,
-    /phase !== 'grounding'[\s\S]*!firstRealityTransition[\s\S]*!groundingSettled[\s\S]*!geographicGroundReady/,
+    /phase !== 'grounding'[\s\S]*!firstRealityTransition[\s\S]*!geographicGroundReady[\s\S]*!reorient/,
   );
   assert.match(page, /initialMapCenter && hasGroundedWorld/);
 });
@@ -208,7 +202,7 @@ test('First World reveal uses the runtime center and a real camera transition', 
   assert.doesNotMatch(page, /\b(?:2800|3200)\b/);
   assert.match(firstOpen, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800/);
   assert.match(firstOpen, /WORLD_SETTLE_MS = 3200/);
-  assert.match(firstOpen, /window\.setTimeout\(onWorldSettled, WORLD_SETTLE_MS\)/);
+  assert.match(firstOpen, /window\.setTimeout\(\(\) => \{[\s\S]*?onWorldSettled\(\);\s*\}, WORLD_SETTLE_MS\)/);
   assert.match(
     firstRealityRuntime,
     /firstRealityTransition\.center,[\s\S]*firstRealityTransition\.worldFraming,[\s\S]*placeAnchorRef\.current/,
