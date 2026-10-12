@@ -262,7 +262,7 @@ test('page composes First Reality Runtime without owning its detailed implementa
 
   assert.match(firstRealityRuntime, /const latestSubmitIdRef = useRef\(0\)/);
   assert.match(firstRealityRuntime, /const chatCompletion = streamMessage\(\{/);
-  assert.match(firstRealityRuntime, /await Promise\.race\(\[/);
+  assert.match(firstRealityRuntime, /await waitForTurn\(Promise\.race\(\[/);
   assert.match(firstRealityRuntime, /getDecisionGeography\(currentConversationId\)/);
   assert.match(firstRealityRuntime, /applySceneResolution\(completedProfile, completedProperties, undefined, true\)/);
 });

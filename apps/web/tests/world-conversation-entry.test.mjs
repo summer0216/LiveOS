@@ -56,6 +56,7 @@ function load(relativePath, dependencies, globals = {}) {
     module: loaded, exports: loaded.exports,
     require: (name) => name in dependencies ? dependencies[name] : require(name),
     console, ...globals,
+    AbortController,
   });
   return loaded.exports.default;
 }
@@ -69,9 +70,11 @@ function elements(tree, type) {
   ];
 }
 
-test('Grounded Reality reveals directly when the map is ready without a presentation timer', async () => {
+for (const outcome of ['ready', 'grounding-timeout', 'map-timeout', 'world-timeout']) {
+test(`First Reality ${outcome}: direct reveal or bounded retry without SSE completion`, async () => {
   const react = hooks();
   const frames = [];
+  const timers = new Map();
   const cameraCalls = [];
   const home = {
     id: 'home', conversation_id: 'fresh', title: '当前住所',
@@ -93,7 +96,10 @@ test('Grounded Reality reveals directly when the map is ready without a presenta
       getConversationHistory: async () => ({ messages: [] }),
       streamMessage: (options) => {
         request = options;
-        return new Promise((resolve) => { complete = resolve; });
+        return new Promise((resolve, reject) => {
+          complete = resolve;
+          options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
       },
     },
     '@/services/profile': { getLivingProfile: async () => null },
@@ -106,6 +112,8 @@ test('Grounded Reality reveals directly when the map is ready without a presenta
   }, {
     navigator: {},
     window: {
+      setTimeout(fn, delay) { timers.set(delay, fn); return delay; },
+      clearTimeout(id) { timers.delete(id); },
       requestAnimationFrame(fn) { frames.push(fn); return frames.length; },
       cancelAnimationFrame() {},
     },
@@ -118,23 +126,66 @@ test('Grounded Reality reveals directly when the map is ready without a presenta
   runtime = render();
   assert.equal(runtime.phase, 'forming');
   assert.equal(frames.length, 0, 'no admitted Reality means no reveal');
+  if (outcome === 'grounding-timeout') {
+    timers.get(90_000)();
+    await pending;
+    runtime = render();
+    assert.equal(runtime.firstOpenStage, 'entry');
+    assert.equal(runtime.isSubmittingExpression, false);
+    assert.equal(runtime.authoritativeReality, null);
+    assert.equal(cameraCalls.length, 0);
+    return;
+  }
   properties = [home];
   request.onWorldStateReady('current-turn');
   await tick();
   runtime = render();
   assert.equal(runtime.phase, 'grounding');
   assert.equal(frames.length, 0, 'Grounding alone cannot reveal an unready map');
+  if (outcome === 'map-timeout') {
+    timers.get(90_000)();
+    await pending;
+    runtime = render();
+    assert.equal(runtime.firstOpenStage, 'entry');
+    assert.equal(runtime.isSubmittingExpression, false);
+    assert.equal(runtime.authoritativeReality.identity, home.title, 'timeout preserves admitted Reality');
+    assert.equal(cameraCalls.length, 0);
+    request.onWorldStateReady('stale-turn');
+    complete();
+    await tick();
+    assert.equal(render().firstOpenStage, 'entry', 'late SSE cannot reveal the expired turn');
+    return;
+  }
   runtime.onGroundReadyChange(true);
   render();
   assert.equal(frames.length, 1, 'map readiness directly schedules the reveal');
   frames.shift()();
   runtime = render();
   assert.equal(runtime.firstOpenStage, 'world');
+  assert.equal(timers.has(90_000), false, 'reveal ends the readiness deadline while SSE continues');
   assert.equal(cameraCalls.length, 1);
   assert.equal(JSON.stringify(cameraCalls[0][0]), JSON.stringify(runtime.authoritativeReality.center));
+  if (outcome === 'world-timeout') {
+    runtime.onWorldSettled();
+    runtime = render();
+    assert.equal(runtime.isSubmittingExpression, false, 'formed World releases the first request before SSE');
+    const previousSignal = request.signal;
+    const nextPending = runtime.submit('附近吃饭方便吗？');
+    runtime = render();
+    assert.equal(previousSignal.aborted, true, 'a newer Expression cancels the older stream');
+    assert.equal(runtime.isSubmittingExpression, true);
+    timers.get(90_000)();
+    await Promise.all([pending, nextPending]);
+    runtime = render();
+    assert.equal(runtime.phase, 'formed');
+    assert.equal(runtime.authoritativeReality.identity, home.title);
+    assert.equal(runtime.isSubmittingExpression, false, 'World request timeout restores the entry');
+    return;
+  }
   complete();
   await pending;
 });
+}
 
 test('one Expression Entry moves into World and accepts second and third expressions', async () => {
   const react = hooks();
@@ -205,6 +256,52 @@ test('one Expression Entry moves into World and accepts second and third express
   }
   assert.deepEqual(submitted, ['附近吃饭方便吗？', '交通呢？']);
   assert.equal(timers.has(3200), false, 'formed World does not replay reveal');
+});
+
+test('World readiness releases the initial Entry lock before SSE; late completion cannot unlock a newer submit', async () => {
+  const react = hooks();
+  const requests = [];
+  const completions = [];
+  const Experience = load('../features/first-open/index.tsx', {
+    react,
+    './FirstOpen.module.css': { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) },
+  }, { window: { setTimeout: () => 1, clearTimeout() {} } });
+  const props = {
+    stage: 'entry', worldFormed: false, isSubmittingExpression: false,
+    submittedExpression: null, groundedIdentity: null, placeAnchorRef: { current: null },
+    onWorldSettled() {},
+    onSubmit(expression) {
+      requests.push(expression);
+      return new Promise((resolve) => completions.push(resolve));
+    },
+  };
+  const render = () => { react.begin(); const tree = Experience(props); react.flush(); return tree; };
+  let tree = render();
+  elements(tree, 'textarea')[0].props.onChange({ target: { value: '我住在当前住所' } });
+  tree = render();
+  elements(tree, 'button')[0].props.onClick();
+  props.stage = 'world';
+  props.worldFormed = true;
+  tree = render(); // first SSE is still pending, but World is ready.
+  elements(tree, 'textarea')[0].props.onChange({ target: { value: '附近吃饭方便吗？' } });
+  tree = render();
+  elements(tree, 'button')[0].props.onClick();
+  assert.deepEqual(requests, ['我住在当前住所', '附近吃饭方便吗？']);
+  props.isSubmittingExpression = true;
+  tree = render();
+  completions[0]();
+  await tick();
+  elements(tree, 'textarea')[0].props.onChange({ target: { value: '交通呢？' } });
+  tree = render();
+  elements(tree, 'textarea')[0].props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(requests.length, 2, 'old SSE completion does not release a newer pending turn');
+  props.isSubmittingExpression = false;
+  tree = render(); // current turn semantic reconciliation completes, SSE still pending.
+  elements(tree, 'textarea')[0].props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(requests.length, 3, 'next Expression does not wait for reply SSE completion');
+  completions[1]();
+  completions[2]();
+  await tick();
 });
 
 test('First Open click and Enter share submission and block a duplicate in-flight turn', async () => {
@@ -283,6 +380,7 @@ test('continuing SSE turns preserve the formed subject, Conversation and camera 
   }, {
     navigator: {},
     window: {
+      setTimeout() { return 1; },
       requestAnimationFrame() { throw new Error('continuation must not reorient camera'); },
       clearTimeout() {},
     },
@@ -308,6 +406,8 @@ test('continuing SSE turns preserve the formed subject, Conversation and camera 
     request.onWorldStateReady('current-turn');
     request.onWorldConsequenceReady();
     await tick();
+    runtime = render(); react.flush();
+    assert.equal(runtime.isSubmittingExpression, false, 'authoritative turn reread releases entry before SSE completion');
     // A transient empty reread must not erase the already-admitted World subject.
     currentProperties = [];
     release(); await pending;

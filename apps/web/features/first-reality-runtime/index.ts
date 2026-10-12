@@ -113,6 +113,8 @@ interface FirstRealityRuntime {
   onWorldSettled: () => void;
 }
 
+const EXPRESSION_READY_TIMEOUT_MS = 90_000;
+
 export function resolveAuthoritativeGroundedReality(
   profile: LivingProfile | null,
   properties: readonly Property[],
@@ -265,11 +267,27 @@ export default function useFirstRealityRuntime({
   const [reorient, setReorient] = useState<FirstRealityCameraReorient | null>(null);
   const placeAnchorRef = useRef<HTMLSpanElement>(null);
   const latestSubmitIdRef = useRef(0);
+  const activeSubmitRef = useRef<AbortController | null>(null);
+  const readinessTimeoutRef = useRef<number | null>(null);
   const skipRestoreConversationRef = useRef<string | null>(null);
   const decisionGeographyRef = useRef<DecisionGeography | null | undefined>(undefined);
   const placeContextAttemptsRef = useRef(new Map<string, Promise<Property[]>>());
   const onWorldConsequenceReadyRef = useRef(onWorldConsequenceReady);
   const onPersistedRealityReconciledRef = useRef(onPersistedRealityReconciled);
+
+  useEffect(() => () => {
+    latestSubmitIdRef.current += 1;
+    activeSubmitRef.current?.abort();
+    if (readinessTimeoutRef.current !== null) window.clearTimeout(readinessTimeoutRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'empty' && phase !== 'revealing' && phase !== 'formed') return;
+    if (readinessTimeoutRef.current !== null) {
+      window.clearTimeout(readinessTimeoutRef.current);
+      readinessTimeoutRef.current = null;
+    }
+  }, [phase]);
 
   useEffect(() => {
     decisionGeographyRef.current = restoredDecisionGeography;
@@ -375,6 +393,15 @@ export default function useFirstRealityRuntime({
     const currentConversationId = conversationId || createClientId();
     const submitId = latestSubmitIdRef.current + 1;
     latestSubmitIdRef.current = submitId;
+    activeSubmitRef.current?.abort();
+    const controller = new AbortController();
+    activeSubmitRef.current = controller;
+    const interrupted = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(
+        new Error('First Reality request was cancelled.'),
+      ), { once: true });
+    });
+    const waitForTurn = <T,>(operation: Promise<T>) => Promise.race([operation, interrupted]);
     let consequenceRevision = 0;
     const continuingWorld = phase === 'formed';
     let firstRealityRevealStarted = continuingWorld;
@@ -393,6 +420,15 @@ export default function useFirstRealityRuntime({
       setFirstRealityTransition(null);
       setPhase('forming');
     }
+    if (readinessTimeoutRef.current !== null) window.clearTimeout(readinessTimeoutRef.current);
+    readinessTimeoutRef.current = window.setTimeout(() => {
+      if (latestSubmitIdRef.current !== submitId) return;
+      latestSubmitIdRef.current += 1;
+      controller.abort();
+      setIsSubmittingExpression(false);
+      if (!continuingWorld) setPhase('empty');
+      console.error('Expression readiness timed out; Expression Entry restored for retry.');
+    }, EXPRESSION_READY_TIMEOUT_MS);
 
     const applySceneResolution = (
       nextProfile: LivingProfile | null,
@@ -466,6 +502,7 @@ export default function useFirstRealityRuntime({
       };
 
       const chatCompletion = streamMessage({
+        signal: controller.signal,
         conversationId: currentConversationId,
         message,
         currentGeographicReality: currentLocation,
@@ -486,17 +523,17 @@ export default function useFirstRealityRuntime({
         },
       });
 
-      await Promise.race([
+      await waitForTurn(Promise.race([
         worldStateReady,
         chatCompletion.then(() => undefined),
-      ]);
+      ]));
       const earlyRevision = consequenceRevision;
-      const [nextProfile, nextProperties, decisionGeography, nextPossibleLives] = await Promise.all([
+      const [nextProfile, nextProperties, decisionGeography, nextPossibleLives] = await waitForTurn(Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
         getDecisionGeography(currentConversationId),
         getPossibleLives(currentConversationId),
-      ]);
+      ]));
       if (!conversationId) {
         skipRestoreConversationRef.current = currentConversationId;
         setConversationId(currentConversationId);
@@ -518,26 +555,34 @@ export default function useFirstRealityRuntime({
       }
       applyObservedDecisionGeography(decisionGeography);
 
-      await chatCompletion;
-      const [completedProfile, completedProperties, completedPossibleLives] = await Promise.all([
+      if (continuingWorld) {
+        setIsSubmittingExpression(false);
+        if (readinessTimeoutRef.current !== null) {
+          window.clearTimeout(readinessTimeoutRef.current);
+          readinessTimeoutRef.current = null;
+        }
+      }
+
+      await waitForTurn(chatCompletion);
+      const [completedProfile, completedProperties, completedPossibleLives] = await waitForTurn(Promise.all([
         getLivingProfile(currentConversationId),
         getProperties(currentConversationId),
         getPossibleLives(currentConversationId),
-      ]);
+      ]));
       if (latestSubmitIdRef.current !== submitId) return;
       setProfile(completedProfile);
       setProperties(completedProperties);
       setPossibleLives(completedPossibleLives);
       applySceneResolution(completedProfile, completedProperties, undefined, true);
     } catch (error: unknown) {
-      console.error('Failed to form First Reality:', error);
       if (latestSubmitIdRef.current !== submitId) return;
+      console.error('Failed to form First Reality:', error);
       try {
-        const [persistedProfile, persistedProperties, persistedPossibleLives] = await Promise.all([
+        const [persistedProfile, persistedProperties, persistedPossibleLives] = await waitForTurn(Promise.all([
           getLivingProfile(currentConversationId),
           getProperties(currentConversationId),
           getPossibleLives(currentConversationId),
-        ]);
+        ]));
         if (latestSubmitIdRef.current !== submitId) return;
         setProfile(persistedProfile);
         setProperties(persistedProperties);
@@ -548,7 +593,13 @@ export default function useFirstRealityRuntime({
         if (!continuingWorld) setPhase('empty');
       }
     } finally {
-      if (latestSubmitIdRef.current === submitId) setIsSubmittingExpression(false);
+      if (latestSubmitIdRef.current === submitId) {
+        setIsSubmittingExpression(false);
+        if ((continuingWorld || !firstRealityRevealStarted) && readinessTimeoutRef.current !== null) {
+          window.clearTimeout(readinessTimeoutRef.current);
+          readinessTimeoutRef.current = null;
+        }
+      }
     }
   }, [
     conversationId, currentLocation, phase, firstRealityTransition,
@@ -565,6 +616,7 @@ export default function useFirstRealityRuntime({
 
   const onWorldSettled = useCallback(() => {
     setPhase((current) => current === 'revealing' ? 'formed' : current);
+    setIsSubmittingExpression(false);
   }, []);
 
   useEffect(() => {

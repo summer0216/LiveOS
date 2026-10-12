@@ -57,10 +57,18 @@ export default function FirstOpenExperience({
   const [entryFrame, setEntryFrame] = useState<EntryFrame>('idle');
   const [entryPending, setEntryPending] = useState(false);
   const entrySubmittingRef = useRef(false);
+  const entrySubmitIdRef = useRef(0);
   const worldEntry = stage === 'world';
   const entryEditable = stage === 'entry' || worldEntry;
   const entryHidden = stage === 'submitting' || stage === 'grounding'
     || (stage === 'entry' && entryPending);
+
+  useEffect(() => {
+    if (!worldFormed || isSubmittingExpression) return;
+    // Runtime readiness releases entry ownership while reply streaming continues.
+    entrySubmitIdRef.current += 1;
+    entrySubmittingRef.current = false;
+  }, [worldFormed, isSubmittingExpression]);
 
   useEffect(() => {
     if (!entryEditable || !value.trim() || entryFrame !== 'typing') return;
@@ -101,15 +109,18 @@ export default function FirstOpenExperience({
       || (worldEntry && !worldFormed)) return;
 
     entrySubmittingRef.current = true;
+    const entrySubmitId = ++entrySubmitIdRef.current;
     setEntryPending(true);
     setValue('');
     if (worldFormed) {
       try {
         await onSubmit(nextExpression);
-        setEntryFrame('ready');
+        if (entrySubmitIdRef.current === entrySubmitId) setEntryFrame('ready');
       } finally {
-        entrySubmittingRef.current = false;
-        setEntryPending(false);
+        if (entrySubmitIdRef.current === entrySubmitId) {
+          entrySubmittingRef.current = false;
+          setEntryPending(false);
+        }
       }
       return;
     }
@@ -118,8 +129,10 @@ export default function FirstOpenExperience({
     try {
       await onSubmit(nextExpression);
     } finally {
-      entrySubmittingRef.current = false;
-      setEntryPending(false);
+      if (entrySubmitIdRef.current === entrySubmitId) {
+        entrySubmittingRef.current = false;
+        setEntryPending(false);
+      }
     }
   };
 

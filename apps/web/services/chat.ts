@@ -39,6 +39,7 @@ export function getConversationHistory(conversationId: string) {
 }
 
 interface StreamMessageOptions {
+  signal?: AbortSignal;
   conversationId: string;
   message: string;
   clarificationTarget?: 'WORK_LOCATION';
@@ -98,6 +99,7 @@ function isDecisionChange(value: unknown): value is DecisionChange {
 const STREAM_READ_TIMEOUT_MS = 90_000;
 
 export async function streamMessage({
+  signal,
   conversationId,
   message,
   clarificationTarget,
@@ -123,6 +125,7 @@ export async function streamMessage({
   };
 
   const response = await apiRequest('/chat/stream', {
+    signal,
     method: 'POST',
     cache: 'no-store',
     headers: {
