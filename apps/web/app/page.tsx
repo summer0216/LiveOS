@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import FirstOpenExperience, {
@@ -8,14 +8,14 @@ import FirstOpenExperience, {
 } from '@/features/first-open';
 import RealityAnchorProjection from '@/features/possible-life-world/RealityAnchorProjection';
 import useFirstRealityRuntime from '@/features/first-reality-runtime';
-import AMapGround, {
-  type GeographicProjection,
-} from '@/features/living-map/AMapGround';
+import AMapGround from '@/features/living-map/AMapGround';
+import type { GeographicProjection } from '@/lib/runtimePresentationContract';
 
 const NO_FIT_LOCATIONS: readonly { lng: number; lat: number }[] = [];
 
 export default function HomePage() {
   const searchParams = useSearchParams();
+  const placeAnchorRef = useRef<HTMLSpanElement>(null);
   const {
     submittedExpression,
     isSubmittingExpression,
@@ -26,13 +26,13 @@ export default function HomePage() {
     hasGroundedWorld,
     firstOpenActive,
     firstOpenStage,
-    placeAnchorRef,
     submit,
     onGroundReadyChange,
     onCameraReady,
     onWorldSettled,
   } = useFirstRealityRuntime({
     initialConversationId: searchParams.get('conversation_id') ?? '',
+    placeAnchorRef,
   });
   const [mapProjection, setMapProjection] = useState<GeographicProjection | null>(null);
   const [mapZoom, setMapZoom] = useState<number | null>(null);

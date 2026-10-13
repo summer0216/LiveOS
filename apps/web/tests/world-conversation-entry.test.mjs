@@ -119,8 +119,12 @@ test(`First Reality ${outcome}: direct reveal or bounded retry without SSE compl
     },
     console: { ...console, info() {}, error() {} },
   });
-  const render = () => { react.begin(); const result = Runtime({ initialConversationId: '' }); react.flush(); return result; };
+  const presentationAnchor = { current: null };
+  const render = () => { react.begin(); const result = Runtime({ initialConversationId: '', placeAnchorRef: presentationAnchor }); react.flush(); return result; };
   let runtime = render();
+  assert.equal(runtime.placeAnchorRef, presentationAnchor);
+  const mountedAnchor = { presentation: 'replacement UI anchor' };
+  presentationAnchor.current = mountedAnchor;
   runtime.onCameraReady((...args) => cameraCalls.push(args));
   const pending = runtime.submit('我住在当前住所');
   runtime = render();
@@ -164,6 +168,7 @@ test(`First Reality ${outcome}: direct reveal or bounded retry without SSE compl
   assert.equal(runtime.firstOpenStage, 'world');
   assert.equal(timers.has(90_000), false, 'reveal ends the readiness deadline while SSE continues');
   assert.equal(cameraCalls.length, 1);
+  assert.equal(cameraCalls[0][3], mountedAnchor, 'Runtime frames the presentation-owned mounted anchor');
   assert.equal(JSON.stringify(cameraCalls[0][0]), JSON.stringify(runtime.authoritativeReality.center));
   if (outcome === 'world-timeout') {
     runtime.onWorldSettled();
@@ -386,7 +391,8 @@ test('continuing SSE turns preserve the formed subject, Conversation and camera 
     },
     console: { ...console, info() {}, error() {} },
   });
-  const render = () => { react.begin(); return Runtime({ initialConversationId: home.conversation_id }); };
+  const presentationAnchor = { current: null };
+  const render = () => { react.begin(); return Runtime({ initialConversationId: home.conversation_id, placeAnchorRef: presentationAnchor }); };
   render(); react.flush(); await tick();
   let runtime = render();
   assert.equal(runtime.phase, 'formed');

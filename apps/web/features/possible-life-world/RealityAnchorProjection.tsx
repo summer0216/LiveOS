@@ -1,6 +1,6 @@
 'use client';
 
-import type { GeographicProjection } from '@/features/living-map/AMapGround';
+import type { GeographicProjection } from '@/lib/runtimePresentationContract';
 import { resolveWorldGeographicLod } from './geographicLod';
 import styles from './PossibleLifeWorld.module.css';
 

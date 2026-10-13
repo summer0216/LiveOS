@@ -7,12 +7,15 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type RefObject,
   type SetStateAction,
 } from 'react';
 
-import type { FirstOpenRuntimeStage } from '@/features/first-open';
-import type { GeographicCameraTarget } from '@/features/living-map/AMapGround';
+import type {
+  FirstOpenRuntimeStage,
+  GeographicCameraReorient,
+  WorldPresentationAnchor,
+  WorldRevealPresentation,
+} from '@/lib/runtimePresentationContract';
 import {
   admittedPlaceContextFor,
   groundedPlaceContextScope,
@@ -63,14 +66,7 @@ const FIRST_WORLD_FRAMING: GeographicCameraFraming = {
   attention: 'SEE',
 };
 
-export type FirstRealityCameraReorient = (
-  center: { lng: number; lat: number },
-  target: GeographicCameraTarget,
-  occlusion?: HTMLElement | null,
-  screenAnchor?: HTMLElement | null,
-) => void;
-
-interface FirstRealityRuntimeOptions {
+interface FirstRealityRuntimeOptions extends WorldPresentationAnchor {
   initialConversationId: string;
   onWorldConsequenceReady?: (
     focusPropertyId?: string,
@@ -83,7 +79,7 @@ interface FirstRealityRuntimeOptions {
   ) => void;
 }
 
-interface FirstRealityRuntime {
+interface FirstRealityRuntime extends WorldRevealPresentation {
   conversationId: string;
   profile: LivingProfile | null;
   properties: Property[];
@@ -105,12 +101,10 @@ interface FirstRealityRuntime {
   firstOpenStage: FirstOpenRuntimeStage;
   worldVisible: boolean;
   geographicGroundReady: boolean;
-  reorient: FirstRealityCameraReorient | null;
-  placeAnchorRef: RefObject<HTMLSpanElement | null>;
+  reorient: GeographicCameraReorient | null;
   submit: (expression: string) => Promise<void>;
   onGroundReadyChange: (ready: boolean) => void;
-  onCameraReady: (reorient: FirstRealityCameraReorient) => void;
-  onWorldSettled: () => void;
+  onCameraReady: (reorient: GeographicCameraReorient) => void;
 }
 
 const EXPRESSION_READY_TIMEOUT_MS = 90_000;
@@ -242,6 +236,7 @@ function expressionForGroundedReality(
 
 export default function useFirstRealityRuntime({
   initialConversationId,
+  placeAnchorRef,
   onWorldConsequenceReady,
   onPersistedRealityReconciled,
 }: FirstRealityRuntimeOptions): FirstRealityRuntime {
@@ -264,8 +259,7 @@ export default function useFirstRealityRuntime({
     lat: number;
   } | null>(null);
   const [geographicGroundReady, setGeographicGroundReady] = useState(false);
-  const [reorient, setReorient] = useState<FirstRealityCameraReorient | null>(null);
-  const placeAnchorRef = useRef<HTMLSpanElement>(null);
+  const [reorient, setReorient] = useState<GeographicCameraReorient | null>(null);
   const latestSubmitIdRef = useRef(0);
   const activeSubmitRef = useRef<AbortController | null>(null);
   const readinessTimeoutRef = useRef<number | null>(null);
@@ -610,7 +604,7 @@ export default function useFirstRealityRuntime({
     setGeographicGroundReady(ready);
   }, []);
 
-  const onCameraReady = useCallback((nextReorient: FirstRealityCameraReorient) => {
+  const onCameraReady = useCallback((nextReorient: GeographicCameraReorient) => {
     setReorient(() => nextReorient);
   }, []);
 
@@ -641,6 +635,7 @@ export default function useFirstRealityRuntime({
     firstRealityTransition,
     geographicGroundReady,
     phase,
+    placeAnchorRef,
     reorient,
   ]);
 

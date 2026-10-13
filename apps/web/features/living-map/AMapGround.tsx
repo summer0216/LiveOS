@@ -8,6 +8,12 @@ import {
   type MapViewportInsets,
 } from '@/lib/geographicScaleContract';
 
+import type {
+  GeographicProjection,
+  GeographicCameraTarget,
+  GeographicCameraReorient,
+} from '@/lib/runtimePresentationContract';
+
 type AMapInstance = {
   destroy: () => void;
   lngLatToContainer: (location: AMapLngLat) => AMapPixel;
@@ -72,12 +78,6 @@ declare global {
   }
 }
 
-export interface GeographicProjection {
-  (location: { lng: number; lat: number }): { x: number; y: number };
-}
-
-export type GeographicCameraTarget = number | GeographicCameraFraming;
-
 interface AMapGroundProps {
   fitLocations?: readonly { lng: number; lat: number }[];
   fitRequestKey?: string;
@@ -89,12 +89,7 @@ interface AMapGroundProps {
   presentation?: 'default' | 'quiet' | 'active';
   onProjectionReady?: (projection: GeographicProjection) => void;
   onGroundReadyChange?: (ready: boolean) => void;
-  onCameraReady?: (reorient: (
-    center: { lng: number; lat: number },
-    target: GeographicCameraTarget,
-    occlusion?: HTMLElement | null,
-    screenAnchor?: HTMLElement | null,
-  ) => void) => void;
+  onCameraReady?: (reorient: GeographicCameraReorient) => void;
   onReturnToLivingWorldReady?: (action: (() => void) | null) => void;
   onUserExploredCameraChange?: (explored: boolean) => void;
   onZoomChange?: (zoom: number) => void;

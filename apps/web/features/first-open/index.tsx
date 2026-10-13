@@ -1,28 +1,22 @@
 'use client';
 
-import type { ChangeEvent, KeyboardEvent, ReactNode, RefObject } from 'react';
+import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 import styles from './FirstOpen.module.css';
 
-export type FirstOpenRuntimeStage =
-  | 'entry'
-  | 'submitting'
-  | 'grounding'
-  | 'world';
+import type { FirstOpenRuntimeStage, WorldRevealPresentation } from '@/lib/runtimePresentationContract';
 
-interface FirstOpenExperienceProps {
+interface FirstOpenExperienceProps extends WorldRevealPresentation<HTMLSpanElement> {
   stage: FirstOpenRuntimeStage;
   worldFormed?: boolean;
   isSubmittingExpression?: boolean;
   submittedExpression: string | null;
   groundedIdentity: string | null;
   expressionReferent?: string | null;
-  placeAnchorRef: RefObject<HTMLSpanElement | null>;
   map?: ReactNode;
   worldProjection?: ReactNode;
   onSubmit: (expression: string) => void | Promise<void>;
-  onWorldSettled: () => void;
 }
 
 type EntryFrame = 'idle' | 'focus' | 'typing' | 'ready';
