@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import styles from './first-conversation.module.css';
 
 export default function ExpressionComposer({ onSubmit, disabled }: {
@@ -8,6 +8,12 @@ export default function ExpressionComposer({ onSubmit, disabled }: {
   disabled: boolean;
 }) {
   const [value, setValue] = useState('');
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!input.current) return;
+    input.current.style.height = 'auto';
+    input.current.style.height = `${Math.min(input.current.scrollHeight, 156)}px`;
+  }, [value]);
   const send = (event: FormEvent) => {
     event.preventDefault();
     const expression = value.trim();
@@ -23,16 +29,16 @@ export default function ExpressionComposer({ onSubmit, disabled }: {
   };
 
   return (
-    <form className={styles.composer} onSubmit={send}>
+    <form className={styles.composer} onSubmit={send} aria-busy={disabled}>
       <label className={styles.srOnly} htmlFor="expression">写下你正在想的事</label>
       <textarea
+        ref={input}
         id="expression"
         rows={1}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="写下你正在想的事…"
-        disabled={disabled}
       />
       <button type="submit" aria-label="发送" disabled={disabled || !value.trim()}>↑</button>
     </form>

@@ -1,7 +1,20 @@
-:root { color-scheme: light; font-family: 'DM Sans', 'Noto Sans SC', sans-serif; color: #26332d; background: #f3f4ef; }
+:root {
+  color-scheme: light;
+  --brand-primary: #356B58;
+  --brand-deep: #234E41;
+  --brand-light: #75A98F;
+  --brand-soft: #E6F2EF;
+  --background: #FAF9F6;
+  --surface: #FFFFFF;
+  --text: #252927;
+  --secondary: #626A65;
+  --border: #E5E5E0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text);
+  background: var(--background);
+}
 * { box-sizing: border-box; }
 html, body { min-height: 100%; margin: 0; }
-body { min-height: 100vh; }
 button, textarea { font: inherit; }
 button { color: inherit; }
-::selection { background: #d9e4d8; }
+::selection { background: var(--brand-soft); }
