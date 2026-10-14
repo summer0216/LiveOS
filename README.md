@@ -6,7 +6,7 @@ AI Native Living Decision System
 
 ## Quick Start
 
-在仓库根目录打开三个终端，按以下顺序启动本地服务。
+在仓库根目录启动数据库和 API，再启动要开发的前端。
 
 ### 1. PostgreSQL
 
@@ -44,15 +44,36 @@ does not fall back to SQLite.
 
 API 启动后可通过 http://127.0.0.1:8000/docs 访问接口文档。
 
-### 3. Web
+### 3. Unified Frontend v2.0
+
+新前端位于 `apps/liveos`，独立运行在 http://localhost:3002。Experience 01 提供 First Open、真实 SSE Conversation 与刷新历史恢复；当前不包含地图或 Living World。
+
+```bash
+pnpm install
+pnpm --filter liveos-frontend dev
+```
+
+运行检查：
+
+```bash
+pnpm --filter liveos-frontend type-check
+pnpm --filter liveos-frontend lint
+pnpm --filter liveos-frontend build
+pnpm --filter liveos-frontend exec node --experimental-strip-types --test tests/conversation-messages.test.mjs
+```
+
+新应用通过 Next rewrite 将 `/api/*` 转发到 API。开发环境默认使用 `http://127.0.0.1:8000`；部署时设置 `RENDER_API_URL` 或 `INTERNAL_API_URL`。
+
+`apps/liveos/infrastructure/conversationApi.ts` 调用已验证的 Conversation API 实现。SSE、历史读取、API 请求配置及相关契约当前通过 `apps/liveos/tsconfig.json` 的路径映射复用 `apps/web/services`、`apps/web/lib` 和 `apps/web/types` 中的能力代码；新前端不依赖旧页面、First Open、Unified Surface、Presentation Policy 或 World Runtime。
+
+### 4. Existing Web (Legacy)
 
 ```bash
 cd apps/web
-pnpm install
 pnpm dev
 ```
 
-Web 启动后访问 http://localhost:3000。
+旧 Web 启动后访问 http://localhost:3000。它保留现有体验及地图实现，作为能力参考；第三代新体验从 `apps/liveos` 开始开发。
 
 ### 常见启动问题
 

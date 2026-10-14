@@ -1,0 +1,7 @@
+:root { color-scheme: light; font-family: 'DM Sans', 'Noto Sans SC', sans-serif; color: #26332d; background: #f3f4ef; }
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body { min-height: 100vh; }
+button, textarea { font: inherit; }
+button { color: inherit; }
+::selection { background: #d9e4d8; }

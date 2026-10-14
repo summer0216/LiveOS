@@ -1,0 +1,3 @@
+.wordmark { display: inline-flex; padding: 12px; background: #FAF9F6; }
+/* The original viewBox includes whitespace; 40px yields visible outlines above 24px. */
+.image { display: block; height: 40px; width: auto; }
