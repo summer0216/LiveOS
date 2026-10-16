@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+import firstOpenBackground from '../../../../docs/03_Design/UI_Library/ Screens/01_First_Open/assets/first-open-mountain-background.png';
 import Wordmark from '../../components/brand/Wordmark';
 import { useConversationSession } from '../../runtime/useConversationSession';
 import ConversationTranscript from './ConversationTranscript';
@@ -12,6 +14,7 @@ export default function FirstConversationExperience({ initialConversationId }: {
 
   return (
     <main className={styles.surface}>
+      <Image className={styles.firstOpenBackground} src={firstOpenBackground} alt="" fill priority sizes="100vw" />
       <header className={styles.brand}><Wordmark /></header>
       {started ? (
         <ConversationTranscript messages={messages} isResponding={isResponding} />

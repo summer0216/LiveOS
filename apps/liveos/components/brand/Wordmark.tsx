@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import styles from './Wordmark.module.css';
 
-/** Use the delivered outlines unchanged, with a neutral backing for every surface. */
+/** Use the delivered outlines unchanged. */
 export default function Wordmark() {
   return (
     <span className={styles.wordmark}>
