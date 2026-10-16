@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { PresentedMessage } from '../../contracts/conversation';
 import MarkdownResponse from './MarkdownResponse';
+import ConversationIdentity from './ConversationIdentity';
 import styles from './first-conversation.module.css';
 
 export default function ConversationTranscript({ messages, isResponding }: {
@@ -25,10 +26,12 @@ export default function ConversationTranscript({ messages, isResponding }: {
       <section className={styles.conversation} role="log" aria-label="对话" aria-busy={isResponding}>
         {messages.map((message) => (
           <article className={message.role === 'user' ? styles.user : styles.assistant} key={message.id}>
-            <span className={styles.speaker}>{message.role === 'user' ? '你' : 'LiveOS'}</span>
-            {message.role === 'user'
-              ? <p className={styles.expression}>{message.content}</p>
-              : <MarkdownResponse content={message.content} />}
+            <ConversationIdentity role={message.role} />
+            <div className={styles.messageContent}>
+              {message.role === 'user'
+                ? <p className={styles.expression}>{message.content}</p>
+                : <MarkdownResponse content={message.content} />}
+            </div>
           </article>
         ))}
       </section>

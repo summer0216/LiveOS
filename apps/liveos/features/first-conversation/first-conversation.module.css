@@ -14,9 +14,16 @@
 .composer button:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 3px; }
 .transcript { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .conversation { width: min(680px, calc(100% - 40px)); margin: 0 auto; padding: 24px 0; }
-.user, .assistant { margin: 0 0 32px; overflow-wrap: anywhere; }
-.user { width: fit-content; max-width: 85%; margin-left: auto; text-align: right; }
-.speaker { display: block; color: var(--secondary); font-size: 14px; line-height: 21px; font-weight: 500; margin-bottom: 8px; }
+.user, .assistant { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 24px; overflow-wrap: anywhere; text-align: left; }
+.user { width: fit-content; max-width: min(68%, 520px); margin-left: auto; flex-direction: row-reverse; }
+.assistant { width: min(78%, 600px); margin-right: auto; }
+.speaker { flex: 0 0 auto; }
+.user .speaker { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-deep); font-size: 14px; line-height: 1; font-weight: 500; }
+.assistant .speaker { padding-top: 16px; }
+.identityWordmark { display: block; width: auto; height: 20px; }
+.messageContent { min-width: 0; flex: 1; padding: 16px 18px; border-radius: 18px; }
+.user .messageContent { background: var(--brand-soft); }
+.assistant .messageContent { background: color-mix(in srgb, var(--surface) 96%, transparent); }
 .expression { margin: 0; font-size: 17px; line-height: 28px; white-space: pre-wrap; }
 .markdown { font-size: 17px; line-height: 29px; color: var(--text); }
 .markdown p { margin: 0 0 16px; white-space: pre-wrap; }
@@ -34,7 +41,17 @@
 .markdown code { font-family: ui-monospace, monospace; font-size: .9em; }
 .markdown pre { max-width: 100%; overflow-x: auto; margin: 16px 0; padding: 16px; background: var(--brand-soft); border-radius: 14px; white-space: pre; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (min-width: 768px) and (max-width: 1279px) {
+  .user { max-width: 75%; }
+  .assistant { width: 85%; }
+  .user, .assistant { margin-bottom: 20px; }
+}
 @media (max-width: 767px) {
+  .user, .assistant { margin-bottom: 18px; gap: 8px; }
+  .messageContent { padding: 14px 16px; border-radius: 16px; }
+  .user { max-width: 88%; }
+  .assistant { width: 100%; flex-direction: column; align-items: stretch; }
+  .assistant .speaker { padding: 0 16px; }
   .brand { padding: 8px 8px 0; }
   .welcome { padding-bottom: 32px; }
   .welcome h1 { font-size: 30px; line-height: 39px; }
