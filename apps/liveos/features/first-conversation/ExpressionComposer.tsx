@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import styles from './first-conversation.module.css';
 
-export default function ExpressionComposer({ onSubmit, disabled }: {
+export default function ExpressionComposer({ onSubmit, disabled, conversation = false }: {
   onSubmit: (expression: string) => Promise<void>;
   disabled: boolean;
+  conversation?: boolean;
 }) {
   const [value, setValue] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
@@ -29,7 +30,12 @@ export default function ExpressionComposer({ onSubmit, disabled }: {
   };
 
   return (
-    <form className={styles.composer} onSubmit={send} aria-busy={disabled}>
+    <form className={`${styles.composer} ${conversation ? styles.conversationComposer : ''}`} onSubmit={send} aria-busy={disabled}>
+      <span className={styles.composerPlus} aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" focusable="false">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </span>
       <label className={styles.srOnly} htmlFor="expression">写下你正在想的事</label>
       <textarea
         ref={input}

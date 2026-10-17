@@ -40,8 +40,12 @@
       ],
       "@/lib/createClientId": [
         "../web/lib/createClientId.ts"
+      ],
+      "@/services/profile": [
+        "../web/services/profile.ts"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true
   },
   "include": [
     "next-env.d.ts",

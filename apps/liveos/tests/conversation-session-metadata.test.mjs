@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+import test from 'node:test';
+import { appendAssistantChunk, restoreConversationMessages } from '../runtime/conversationMessages.ts';
+
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
+const source = ts.transpileModule(readFileSync(new URL('../runtime/useConversationSession.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
+const persisted = [
+  { id: '9007199254740993', created_at: '2026-10-17T01:00:00Z', role: 'user', content: '测试' },
+  { id: '9007199254740994', created_at: '2026-10-17T01:00:01Z', role: 'assistant', content: '第一段第二段' },
+];
+
+// Exercise the actual hook with controlled API promises and a minimal hook lifecycle.
+function session({ initialId = '', history, stream }) {
+  const values = [], effects = [];
+  let cursor = 0;
+  const react = {
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in values)) values[index] = typeof initial === 'function' ? initial() : initial;
+      return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }];
+    },
+    useRef(initial) {
+      const index = cursor++;
+      return values[index] ??= { current: initial };
+    },
+    useCallback(callback) { return callback; },
+    useEffect(effect) { if (!effects.length) effects.push(effect); },
+  };
+  const compiled = { exports: {} };
+  vm.runInNewContext(`(function(require,module,exports){${source}\n})`, {
+    URL, Error, window: { location: { href: 'http://localhost:3002/' }, history: { replaceState() {} } },
+  })((name) => {
+    if (name === 'react') return react;
+    if (name === '@/lib/createClientId') return { createClientId: () => 'conversation-1' };
+    if (name === '../infrastructure/conversationApi') return { getConversationHistory: history, streamMessage: stream };
+    if (name === './conversationMessages') return { appendAssistantChunk, restoreConversationMessages };
+    throw new Error(`Unexpected dependency ${name}`);
+  }, compiled, compiled.exports);
+  return {
+    read() { cursor = 0; return compiled.exports.useConversationSession(initialId); },
+    mount() { effects[0](); },
+  };
+}
+
+test('stream uses temporary identity then reconciles once to server history; refresh is identical', async () => {
+  let client, historyCalls = 0;
+  client = session({
+    history: async (id) => { assert.equal(id, 'conversation-1'); historyCalls++; return { messages: persisted }; },
+    stream: async ({ onChunk }) => {
+      onChunk('第一段');
+      const pending = client.read();
+      assert.equal(pending.messages[1].id, '1:assistant');
+      assert.equal(pending.messages[1].created_at, undefined);
+      assert.equal(pending.messages[1].content, '第一段');
+      onChunk('第二段');
+      assert.equal(client.read().messages[1].content, '第一段第二段');
+    },
+  });
+  await client.read().submit('测试');
+  const completed = client.read();
+  assert.deepEqual(completed.messages, persisted);
+  assert.equal(completed.isResponding, false);
+  assert.equal(historyCalls, 1);
+  const refresh = session({ initialId: 'conversation-1', history: async () => ({ messages: persisted }) });
+  refresh.read(); refresh.mount();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(refresh.read().messages, completed.messages);
+});
+
+test('failed metadata recovery preserves streamed messages and exposes an error', async () => {
+  const client = session({
+    history: async () => { throw new Error('History unavailable'); },
+    stream: async ({ onChunk }) => { onChunk('完整回复'); },
+  });
+  await client.read().submit('测试');
+  assert.deepEqual(Array.from(client.read().messages, (item) => item.content), ['测试', '完整回复']);
+  assert.equal(client.read().error, 'History unavailable');
+  assert.equal(client.read().isResponding, false);
+});

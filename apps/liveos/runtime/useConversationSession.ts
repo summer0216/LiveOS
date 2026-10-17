@@ -20,7 +20,7 @@ export function useConversationSession(initialConversationId: string) {
     let active = true;
     getConversationHistory(requestedId).then((history) => {
       if (!active || activeRequest.current !== 0) return;
-      setMessages(restoreConversationMessages(requestedId, history.messages));
+      setMessages(restoreConversationMessages(history.messages));
     }).catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : '无法恢复对话。');
     }).finally(() => {
@@ -56,6 +56,10 @@ export function useConversationSession(initialConversationId: string) {
           setMessages((current) => appendAssistantChunk(current, `${requestId}:assistant`, chunk));
         },
       });
+      const history = await getConversationHistory(activeConversationId);
+      if (activeRequest.current === requestId) {
+        setMessages(restoreConversationMessages(history.messages));
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '回复暂时无法送达。');
     } finally {
@@ -63,5 +67,5 @@ export function useConversationSession(initialConversationId: string) {
     }
   }, [conversationId, isResponding]);
 
-  return { messages, isResponding, isRestoring, error, submit };
+  return { conversationId, messages, isResponding, isRestoring, error, submit };
 }

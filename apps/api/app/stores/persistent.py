@@ -13,7 +13,7 @@ from app.models.action_progress import (
     VerificationEvidence,
     VerificationOutcomeStatus,
 )
-from app.models.conversation import Conversation, ConversationMessage
+from app.models.conversation import Conversation, ConversationMessage, MessageFeedback
 from app.models.decision_geography import DecisionGeography
 from app.models.decision_unknown import DecisionUnknown, DecisionUnknownStatus
 from app.models.living_time import LivingTimeRelationship
@@ -126,20 +126,61 @@ class ConversationStore:
                 return None
             messages = connection.execute(
                 """
-                SELECT role, content
-                FROM conversation_messages
-                WHERE conversation_id = %s
-                ORDER BY sequence
+                SELECT m.id, m.role, m.content, m.created_at, f.feedback
+                FROM conversation_messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                LEFT JOIN conversation_message_feedback f
+                  ON f.message_id = m.id AND f.anonymous_user_id = c.anonymous_user_id
+                WHERE m.conversation_id = %s
+                ORDER BY m.sequence
                 """,
                 (conversation_uuid,),
             ).fetchall()
         return Conversation(
             conversation_id,
             [
-                ConversationMessage(role=row["role"], content=row["content"])
+                ConversationMessage(
+                    role=row["role"], content=row["content"],
+                    id=row["id"], created_at=row["created_at"],
+                    feedback=row["feedback"],
+                )
                 for row in messages
             ],
         )
+
+    def set_message_feedback(
+        self, conversation_id: str, message_id: int, user_id: str,
+        feedback: MessageFeedback | None,
+    ) -> None:
+        with self._database.connect() as connection:
+            message = connection.execute(
+                """
+                SELECT m.role FROM conversation_messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.id = %s AND m.conversation_id = %s AND c.anonymous_user_id = %s
+                FOR UPDATE OF m
+                """,
+                (message_id, uuid_value(conversation_id), uuid_value(user_id)),
+            ).fetchone()
+            if message is None:
+                raise LookupError("Message not found.")
+            if message["role"] != "assistant":
+                raise ValueError("Only assistant messages accept feedback.")
+            if feedback is None:
+                connection.execute(
+                    "DELETE FROM conversation_message_feedback WHERE message_id = %s AND anonymous_user_id = %s",
+                    (message_id, uuid_value(user_id)),
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO conversation_message_feedback(message_id, anonymous_user_id, feedback)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (message_id, anonymous_user_id)
+                    DO UPDATE SET feedback = EXCLUDED.feedback
+                    """,
+                    (message_id, uuid_value(user_id), feedback),
+                )
 
     def belongs_to(self, conversation_id: str, user_id: str) -> bool:
         conversation_uuid = optional_uuid(conversation_id)

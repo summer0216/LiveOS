@@ -1,13 +1,18 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
 
 MessageRole = Literal["user", "assistant"]
+MessageFeedback = Literal["POSITIVE", "NEGATIVE"]
 
 
 @dataclass
 class ConversationMessage:
     role: MessageRole
     content: str
+    id: int | None = None
+    created_at: datetime | None = None
+    feedback: MessageFeedback | None = None
 
 
 @dataclass

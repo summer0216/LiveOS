@@ -10,6 +10,7 @@ REQUIRED_TABLES = {
     "anonymous_users",
     "conversations",
     "conversation_messages",
+    "conversation_message_feedback",
     "living_profiles",
     "properties",
     "decision_records",
@@ -51,6 +52,14 @@ SCHEMA_STATEMENTS = (
         content TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL,
         UNIQUE (conversation_id, sequence)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS conversation_message_feedback (
+        message_id BIGINT NOT NULL REFERENCES conversation_messages(id) ON DELETE CASCADE,
+        anonymous_user_id UUID NOT NULL REFERENCES anonymous_users(id),
+        feedback TEXT NOT NULL CHECK (feedback IN ('POSITIVE', 'NEGATIVE')),
+        PRIMARY KEY (message_id, anonymous_user_id)
     )
     """,
     """

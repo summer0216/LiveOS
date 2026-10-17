@@ -1,13 +1,11 @@
 import type { PresentedMessage } from '../contracts/conversation';
+import type { ConversationHistory } from '../infrastructure/conversationApi';
 
-interface HistoryMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-export function restoreConversationMessages(conversationId: string, history: readonly HistoryMessage[]): PresentedMessage[] {
-  return history.map((message, index) => ({
-    id: `${conversationId}:${index}`,
+export function restoreConversationMessages(history: ConversationHistory['messages']): PresentedMessage[] {
+  return history.map((message) => ({
+    id: message.id,
+    created_at: message.created_at,
+    ...(message.feedback !== undefined ? { feedback: message.feedback } : {}),
     role: message.role,
     content: message.content,
   }));

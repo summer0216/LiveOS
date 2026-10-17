@@ -1,0 +1,48 @@
+.feedback {
+  margin: 0;
+}
+
+.buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.buttons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 24px;
+  height: 24px;
+  padding: 0;
+
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+
+  color: #84938e;
+  cursor: pointer;
+}
+
+.buttons button:hover,
+.buttons button[aria-pressed="true"] {
+  background: transparent;
+  color: var(--brand-deep);
+}
+
+.buttons button:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.buttons button:disabled {
+  cursor: wait;
+}
+
+.error {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}

@@ -5,14 +5,14 @@ import {
   restoreConversationMessages,
 } from '../runtime/conversationMessages.ts';
 
-test('history recovery preserves role and order while assigning stable conversation scoped keys', () => {
-  const messages = restoreConversationMessages('conversation-1', [
-    { role: 'user', content: '你是谁？' },
-    { role: 'assistant', content: '我是 LiveOS。' },
+test('history recovery preserves persisted identity, timestamp, role and order', () => {
+  const messages = restoreConversationMessages([
+    { id: '101', created_at: '2026-10-17T00:00:00Z', role: 'user', content: '你是谁？' },
+    { id: '102', created_at: '2026-10-17T00:00:02Z', role: 'assistant', content: '我是 LiveOS。' },
   ]);
-  assert.deepEqual(messages.map(({ id, role, content }) => [id, role, content]), [
-    ['conversation-1:0', 'user', '你是谁？'],
-    ['conversation-1:1', 'assistant', '我是 LiveOS。'],
+  assert.deepEqual(messages.map(({ id, created_at, role, content }) => [id, created_at, role, content]), [
+    ['101', '2026-10-17T00:00:00Z', 'user', '你是谁？'],
+    ['102', '2026-10-17T00:00:02Z', 'assistant', '我是 LiveOS。'],
   ]);
 });
 
@@ -26,4 +26,10 @@ test('SSE chunks append only to their active assistant turn', () => {
     { ...messages[1], content: '我是 LiveOS。' },
   ]);
   assert.deepEqual(appendAssistantChunk(messages, 'stale-turn', '过期内容'), messages);
+});
+
+test('history recovery preserves feedback alongside message identity', () => {
+  const history = [{ id: '102', created_at: '2026-10-17T00:00:02Z', role: 'assistant', content: '回复', feedback: 'NEGATIVE' }];
+  assert.equal(restoreConversationMessages(history)[0].feedback, 'NEGATIVE');
+  assert.equal(restoreConversationMessages([{ ...history[0], feedback: null }])[0].feedback, null);
 });

@@ -1,8 +1,14 @@
-from app.models.conversation import Conversation, ConversationMessage
+from app.models.conversation import Conversation, ConversationMessage, MessageFeedback
 from app.stores.runtime import DEFAULT_ANONYMOUS_USER_ID, conversation_store
 
 
 class ConversationManager:
+    def set_message_feedback(
+        self, conversation_id: str, message_id: int, user_id: str,
+        feedback: MessageFeedback | None,
+    ) -> None:
+        conversation_store.set_message_feedback(conversation_id, message_id, user_id, feedback)
+
     def get_or_create(
         self,
         conversation_id: str,
