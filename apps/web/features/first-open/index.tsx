@@ -5,7 +5,13 @@ import { useEffect, useRef, useState } from 'react';
 
 import styles from './FirstOpen.module.css';
 
-import type { FirstOpenRuntimeStage, WorldRevealPresentation } from '@/lib/runtimePresentationContract';
+import {
+  WORLD_SETTLE_MS,
+  type FirstOpenRuntimeStage,
+  type WorldRevealPresentation,
+} from '@/lib/runtimePresentationContract';
+
+export { FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS } from '@/lib/runtimePresentationContract';
 
 interface FirstOpenExperienceProps extends WorldRevealPresentation<HTMLSpanElement> {
   stage: FirstOpenRuntimeStage;
@@ -23,9 +29,6 @@ type EntryFrame = 'idle' | 'focus' | 'typing' | 'ready';
 type VisualFrame = EntryFrame | 'transmitting' | 'grounding' | 'world';
 
 const READY_DELAY_MS = 460;
-const WORLD_SETTLE_MS = 3200;
-
-export const FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800;
 
 function ReturnMark() {
   return (

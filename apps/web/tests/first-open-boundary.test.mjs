@@ -5,11 +5,11 @@ import { runInNewContext } from 'node:vm';
 
 const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
 const firstOpen = readFileSync(
-  new URL('../features/first-open/index.tsx', import.meta.url),
+  new URL('../features/unified-surface/index.tsx', import.meta.url),
   'utf8',
 );
 const firstOpenStyles = readFileSync(
-  new URL('../features/first-open/FirstOpen.module.css', import.meta.url),
+  new URL('../features/unified-surface/UnifiedSurface.module.css', import.meta.url),
   'utf8',
 );
 const firstRealityRuntime = readFileSync(
@@ -21,29 +21,22 @@ const mapGround = readFileSync(
   'utf8',
 );
 
-test('First Open visual states live outside the product page boundary', () => {
-  assert.match(page, /import FirstOpenExperience/);
-  assert.match(page, /<FirstOpenExperience/);
-  assert.doesNotMatch(page, /ConversationComposer/);
-  assert.doesNotMatch(page, /transitionPrefixVisible|transitionMapVisible/);
-
-  for (const frame of [
-    'idle',
-    'focus',
-    'typing',
-    'ready',
-    'transmitting',
-    'grounding',
-    'world',
-  ]) {
-    assert.match(firstOpen + firstOpenStyles, new RegExp(frame));
-  }
+test('Unified Surface is independent of legacy First Open and Runtime owns orchestration', () => {
+  assert.match(page, /import UnifiedSurface/);
+  assert.match(page, /<UnifiedSurface/);
+  assert.doesNotMatch(page + firstOpen, /features\/first-open|FirstOpenExperience|firstOpenStage|FirstOpenRuntimeStage/);
+  assert.doesNotMatch(firstOpen, /streamMessage|getConversationHistory|useFirstRealityRuntime/);
+  assert.match(firstOpen, /WorldRevealPresentation/);
+  assert.match(firstOpen, /<Conversation/);
+  assert.match(firstOpen, /<ExpressionEntry/);
+  assert.match(firstOpen, /你的生活，从哪里开始？/);
 });
 
 test('pre-grounding Expression Referent requires backend current-turn provenance', () => {
   assert.match(firstRealityRuntime, /isCurrentExpressionReferent\(decisionGeography, currentUserTurnId\)/);
   assert.match(firstRealityRuntime, /setCurrentExpressionReferent\(decisionGeography\.identity\)/);
-  assert.match(firstOpen, /groundedIdentity \?\? expressionReferent/);
+  assert.match(firstOpen, /const subjectIdentity = groundedReality\?\.identity/);
+  assert.doesNotMatch(firstOpen, /expressionReferent/);
   const state = readFileSync(
     new URL('../lib/decisionGeographyState.ts', import.meta.url),
     'utf8',
@@ -51,18 +44,18 @@ test('pre-grounding Expression Referent requires backend current-turn provenance
   assert.match(state, /source_user_turn_id === currentUserTurnId/);
   assert.match(state, /geography\.identity_source === 'USER'/);
   assert.match(state, /geography\.intent_established/);
-  assert.match(page, /expressionReferent=\{currentExpressionReferent\}/);
+  assert.doesNotMatch(page, /expressionReferent=\{/);
 });
 
 test('grounded Reality Anchor visual is independent from the camera-only framing ref', () => {
   assert.match(
     firstOpen,
-    /<span ref=\{placeAnchorRef\} className=\{styles\.exprPlace\}>\s*<span className=\{styles\.placeLabel\}>\{subjectIdentity\}<\/span>/,
+    /<span ref=\{placeAnchorRef\} className=\{styles\.cameraAnchor\} aria-hidden="true">\{subjectIdentity\}<\/span>/,
   );
   assert.doesNotMatch(firstOpenStyles, /\.exprPlace::(?:before|after)/);
   assert.match(page, /initialCenter=\{initialMapCenter\}/);
-  assert.match(page, /<RealityAnchorProjection[\s\S]*?identity=\{authoritativeReality\?\.identity \?\? null\}/);
-  assert.match(page, /<RealityAnchorProjection[\s\S]*?location=\{authoritativeReality\?\.center \?\? null\}/);
+  assert.match(firstOpen, /<RealityAnchorProjection[\s\S]*?identity=\{groundedReality\?\.identity \?\? null\}/);
+  assert.match(firstOpen, /<RealityAnchorProjection[\s\S]*?location=\{groundedReality\?\.center \?\? null\}/);
   assert.match(mapGround, /lngLatToContainer/);
   const anchor = readFileSync(
     new URL('../features/possible-life-world/RealityAnchorProjection.tsx', import.meta.url),
@@ -146,7 +139,7 @@ test('a map-container resize has one camera refit trigger', () => {
 test('direct Reveal keeps only a hidden layout reference for the accepted camera', () => {
   assert.match(
     firstOpenStyles,
-    /\.expressionGrounded\s*\{\s*visibility: hidden;/,
+    /\.cameraAnchor\s*\{[^}]*visibility: hidden;/,
   );
   assert.match(
     readFileSync(
@@ -158,7 +151,7 @@ test('direct Reveal keeps only a hidden layout reference for the accepted camera
 });
 
 test('direct World Reveal has no subject waiting animation or timer gate', () => {
-  assert.doesNotMatch(firstOpen, /TRANSMISSION_MS|GROUNDING_SETTLE_MS|onGroundingSettled|aria-live/);
+  assert.doesNotMatch(firstOpen, /TRANSMISSION_MS|GROUNDING_SETTLE_MS|onGroundingSettled/);
   assert.doesNotMatch(firstOpenStyles, /groundingAppear|placeSettle|exprContext/);
   assert.doesNotMatch(firstRealityRuntime, /groundingSettled/);
 });
@@ -200,9 +193,10 @@ test('First World reveal uses the runtime center and a real camera transition', 
   assert.match(page, /initialFraming=\{!firstRealityTransition[\s\S]*authoritativeReality\?\.worldFraming/);
   assert.match(page, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS/);
   assert.doesNotMatch(page, /\b(?:2800|3200)\b/);
-  assert.match(firstOpen, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800/);
-  assert.match(firstOpen, /WORLD_SETTLE_MS = 3200/);
-  assert.match(firstOpen, /window\.setTimeout\(\(\) => \{[\s\S]*?onWorldSettled\(\);\s*\}, WORLD_SETTLE_MS\)/);
+  const contract = readFileSync(new URL('../lib/runtimePresentationContract.ts', import.meta.url), 'utf8');
+  assert.match(contract, /FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS = 2800/);
+  assert.match(contract, /WORLD_SETTLE_MS = 3200/);
+  assert.match(firstOpen, /window\.setTimeout\(onWorldSettled, WORLD_SETTLE_MS\)/);
   assert.match(
     firstRealityRuntime,
     /firstRealityTransition\.center,[\s\S]*firstRealityTransition\.worldFraming,[\s\S]*placeAnchorRef\.current/,
@@ -243,7 +237,7 @@ test('existing conversations restore formed World from shared authoritative Real
     firstRealityRuntime,
     /expressionForGroundedReality\(history\.messages, restoredReality\.identity\)/,
   );
-  assert.match(page, /groundedIdentity=\{authoritativeReality\?\.identity \?\? null\}/);
+  assert.match(page, /groundedReality=\{authoritativeReality\}/);
   assert.match(page, /initialScreenAnchorRef=\{authoritativeReality \? placeAnchorRef : undefined\}/);
   assert.match(firstRealityRuntime, /phase === 'formed' && !submittedExpression/);
   assert.match(firstRealityRuntime, /const firstOpenActive = Boolean\(submittedExpression\) \|\| !hasGroundedWorld \|\| worldVisible/);
@@ -252,7 +246,7 @@ test('existing conversations restore formed World from shared authoritative Real
 
 test('page composes First Reality Runtime without owning its detailed implementation', () => {
   assert.match(page, /useFirstRealityRuntime\(\{/);
-  assert.match(page, /<FirstOpenExperience/);
+  assert.match(page, /<UnifiedSurface/);
   assert.match(page, /<AMapGround/);
   assert.doesNotMatch(page, /streamMessage\(/);
   assert.doesNotMatch(page, /getLivingProfile\(/);

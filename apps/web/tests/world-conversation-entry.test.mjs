@@ -6,6 +6,9 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as placeContext from '../features/first-reality-runtime/placeContext.ts';
 import * as scale from '../lib/geographicScaleContract.ts';
+import * as presentationContract from '../lib/runtimePresentationContract.ts';
+import * as worldConsequence from '../lib/worldConsequence.ts';
+import * as surfacePolicy from '../features/unified-surface/presentationPolicy.ts';
 
 const require = createRequire(import.meta.url);
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -54,11 +57,11 @@ function load(relativePath, dependencies, globals = {}) {
   const loaded = { exports: {} };
   runInNewContext(compiled, {
     module: loaded, exports: loaded.exports,
-    require: (name) => name in dependencies ? dependencies[name] : require(name),
+    require: (name) => name === '@/lib/runtimePresentationContract' ? presentationContract : name === './presentationPolicy' ? surfacePolicy : name in dependencies ? dependencies[name] : require(name),
     console, ...globals,
     AbortController,
   });
-  return loaded.exports.default;
+  return loaded.exports.default ?? loaded.exports;
 }
 
 function elements(tree, type) {
@@ -112,6 +115,7 @@ test(`First Reality ${outcome}: direct reveal or bounded retry without SSE compl
   }, {
     navigator: {},
     window: {
+      history: { replaceState() {} },
       setTimeout(fn, delay) { timers.set(delay, fn); return delay; },
       clearTimeout(id) { timers.delete(id); },
       requestAnimationFrame(fn) { frames.push(fn); return frames.length; },
@@ -174,10 +178,14 @@ test(`First Reality ${outcome}: direct reveal or bounded retry without SSE compl
     runtime.onWorldSettled();
     runtime = render();
     assert.equal(runtime.isSubmittingExpression, false, 'formed World releases the first request before SSE');
+    const previousRequest = request;
     const previousSignal = request.signal;
     const nextPending = runtime.submit('附近吃饭方便吗？');
     runtime = render();
     assert.equal(previousSignal.aborted, true, 'a newer Expression cancels the older stream');
+    const currentMessages = JSON.stringify(runtime.messages);
+    previousRequest.onChunk('stale reply');
+    assert.equal(JSON.stringify(render().messages), currentMessages, 'cancelled SSE cannot append to the current Conversation');
     assert.equal(runtime.isSubmittingExpression, true);
     timers.get(90_000)();
     await Promise.all([pending, nextPending]);
@@ -385,6 +393,7 @@ test('continuing SSE turns preserve the formed subject, Conversation and camera 
   }, {
     navigator: {},
     window: {
+      history: { replaceState() {} },
       setTimeout() { return 1; },
       requestAnimationFrame() { throw new Error('continuation must not reorient camera'); },
       clearTimeout() {},
@@ -435,4 +444,192 @@ test('continuing SSE turns preserve the formed subject, Conversation and camera 
   assert.equal(runtime.phase, 'formed');
   assert.equal(runtime.isSubmittingExpression, false);
   assert.equal(runtime.authoritativeReality.identity, identity);
+});
+
+function conversationRuntime(history = [], { failWorldRead = false, failHistory = false } = {}) {
+  const react = hooks();
+  const requests = [];
+  const chat = load('../services/chat.ts', {
+    './api': {
+      apiFetch: async () => {
+        if (failHistory) throw new Error('history unavailable');
+        return { conversation_id: 'existing', messages: history };
+      },
+      apiRequest: async (_path, options) => {
+        let output;
+        const body = new ReadableStream({ start(controller) { output = controller; } });
+        requests.push({
+          body: JSON.parse(options.body),
+          emit(text) { output.enqueue(new TextEncoder().encode(text)); },
+          finish() { output.close(); },
+          fail() { output.error(new Error('stream unavailable')); },
+        });
+        options.signal.addEventListener('abort', () => output.error(new Error('aborted')), { once: true });
+        return new Response(body);
+      },
+    },
+    '@/lib/worldConsequence': worldConsequence,
+  }, { setTimeout, clearTimeout, TextDecoder });
+  const Runtime = load('../features/first-reality-runtime/index.ts', {
+    react, './placeContext': placeContext,
+    '@/lib/createClientId': { createClientId: () => 'fresh' },
+    '@/lib/geographicScaleContract': scale,
+    '@/lib/decisionGeographyState': {
+      isGroundedDecisionGeography: () => false, isCurrentExpressionReferent: () => false,
+      decisionGeographyFingerprint: () => null, shouldApplyObservedDecisionGeography: () => false,
+    },
+    '@/services/chat': chat,
+    '@/services/profile': { getLivingProfile: async () => null },
+    '@/services/property': {
+      getProperties: async () => { if (failWorldRead) throw new Error('world unavailable'); return []; },
+      establishPlaceContext: async () => {},
+    },
+    '@/services/decisionGeography': { getDecisionGeography: async () => null },
+    '@/services/possibleLife': { getPossibleLives: async () => [] },
+  }, {
+    navigator: {},
+    window: {
+      setTimeout() { return 1; }, clearTimeout() {}, history: { replaceState() {} },
+      requestAnimationFrame() { throw new Error('ungrounded Conversation must not reveal a World'); },
+    },
+    console: { ...console, info() {}, error() {} },
+  });
+  const anchor = { current: null };
+  const render = () => {
+    react.begin();
+    const runtime = Runtime({ initialConversationId: history.length || failHistory ? 'existing' : '', placeAnchorRef: anchor });
+    react.flush();
+    return runtime;
+  };
+  return { render, requests };
+}
+
+test('real SSE progressively presents replies, keeps Conversation ID, and restores without duplication', async () => {
+  const { render, requests } = conversationRuntime();
+  let runtime = render();
+  const first = runtime.submit('你是谁？');
+  runtime = render();
+  assert.equal(runtime.conversationId, 'fresh');
+  assert.equal(runtime.messages[0].content, '你是谁？');
+  assert.equal(runtime.isResponding, true);
+  await tick();
+  requests[0].emit('data: "我是"\n\n');
+  await tick();
+  assert.equal(render().messages[1].content, '我是');
+  requests[0].emit('data: " LiveOS。"\n\n');
+  await tick();
+  assert.equal(render().messages[1].content, '我是 LiveOS。');
+  requests[0].finish(); await first;
+  runtime = render();
+  assert.equal(runtime.isResponding, false);
+  assert.equal(runtime.hasGroundedWorld, false);
+  assert.equal(runtime.phase, 'empty');
+  const second = runtime.submit('你能帮我做什么？');
+  render(); await tick();
+  assert.equal(requests[1].body.conversation_id, requests[0].body.conversation_id);
+  requests[1].emit('data: "可以一起梳理你的生活选择。"\n\n');
+  requests[1].finish(); await second;
+  runtime = render();
+  assert.equal(runtime.messages.length, 4);
+  const persisted = runtime.messages.map(({ role, content }) => ({ role, content }));
+  const restored = conversationRuntime(persisted);
+  assert.equal(restored.render().isRestoringConversation, true);
+  await tick();
+  const recovered = restored.render();
+  assert.equal(recovered.isRestoringConversation, false);
+  assert.equal(JSON.stringify(recovered.messages.map(({ role, content }) => ({ role, content }))), JSON.stringify(persisted));
+  assert.equal(new Set(recovered.messages.map((message) => message.id)).size, 4);
+  restored.render(); await tick();
+  assert.equal(restored.render().messages.length, 4);
+});
+
+test('Conversation history recovers independently of World reads and reports history failure', async () => {
+  const history = [{ role: 'user', content: '你好' }, { role: 'assistant', content: '你好。' }];
+  const restored = conversationRuntime(history, { failWorldRead: true });
+  restored.render(); await tick();
+  assert.equal(restored.render().messages.length, 2);
+  assert.equal(restored.render().isRestoringConversation, false);
+  const failed = conversationRuntime([], { failHistory: true });
+  failed.render(); await tick();
+  assert.equal(failed.render().isRestoringConversation, false);
+  assert.ok(failed.render().conversationError);
+});
+
+test('a failed SSE keeps partial reply and permits continued expression in the same Conversation', async () => {
+  const { render, requests } = conversationRuntime();
+  const pending = render().submit('你是谁？');
+  render(); await tick();
+  requests[0].emit('data: "我是"\n\n'); await tick();
+  requests[0].fail(); await pending;
+  const runtime = render();
+  assert.equal(runtime.isResponding, false);
+  assert.ok(runtime.conversationError);
+  assert.equal(runtime.messages[1].content, '我是');
+  const retry = runtime.submit('继续');
+  render(); await tick();
+  assert.equal(requests[1].body.conversation_id, 'fresh');
+  requests[1].emit('data: "我们继续。"\n\n'); requests[1].finish(); await retry;
+  assert.equal(render().conversationError, null);
+});
+
+test('Unified Surface retains reveal timing and a continuous Expression Entry', () => {
+  const react = hooks();
+  const timers = new Map();
+  let settled = 0;
+  const Surface = load('../features/unified-surface/index.tsx', {
+    react, './UnifiedSurface.module.css': new Proxy({}, { get: (_, key) => key }),
+    './Conversation': { __esModule: true, default: 'Conversation' }, './ExpressionEntry': { __esModule: true, default: 'ExpressionEntry' },
+    '@/features/possible-life-world/RealityAnchorProjection': { __esModule: true, default: 'RealityAnchorProjection' },
+  }, { window: { setTimeout(fn, ms) { timers.set(ms, fn); return ms; }, clearTimeout(id) { timers.delete(id); } } });
+  const props = {
+    requiresCameraAnchor: false, revealStarted: false, revealComplete: false, messages: [], isResponding: false, isSubmittingExpression: false,
+    isRestoringConversation: false, conversationError: null, groundedReality: null,
+    geographicGroundReady: false, cameraReady: false, consequenceFocus: null,
+    mapProjection: null, mapZoom: null, placeAnchorRef: { current: null },
+    onSubmit: async () => {}, onWorldSettled: () => { settled++; },
+  };
+  const render = () => { react.begin(); const tree = Surface(props); react.flush(); return tree; };
+  assert.equal(render().props['data-started'], false);
+  props.messages = [{ id: 'u', role: 'user', content: '你是谁？' }];
+  assert.equal(render().props['data-started'], true);
+  assert.equal(elements(render(), 'ExpressionEntry').length, 1);
+  assert.equal(timers.size, 0);
+  props.groundedReality = { identity: '当前住所', center: { lng: 104, lat: 31 } };
+  props.requiresCameraAnchor = true; render();
+  assert.equal(timers.size, 0);
+  props.geographicGroundReady = true; props.cameraReady = true;
+  props.revealStarted = true; render();
+  assert.ok(timers.has(presentationContract.WORLD_SETTLE_MS));
+  timers.get(presentationContract.WORLD_SETTLE_MS)();
+  assert.equal(settled, 1);
+  props.revealComplete = true; render();
+  assert.equal(timers.size, 0);
+});
+
+test('Unified Expression Entry respects IME, Shift+Enter and blocks duplicate submissions', async () => {
+  const react = hooks();
+  let complete;
+  const submissions = [];
+  const Entry = load('../features/unified-surface/ExpressionEntry.tsx', {
+    react, './UnifiedSurface.module.css': new Proxy({}, { get: (_, key) => key }),
+  });
+  const props = { disabled: false, onSubmit(value) {
+    submissions.push(value);
+    return new Promise((resolve) => { complete = resolve; });
+  } };
+  const render = () => { react.begin(); return Entry(props); };
+  elements(render(), 'textarea')[0].props.onChange({ target: { value: '你是谁？' } });
+  const keyboard = (overrides = {}) => ({ key: 'Enter', shiftKey: false, nativeEvent: { isComposing: false }, preventDefault() {}, ...overrides });
+  elements(render(), 'textarea')[0].props.onKeyDown(keyboard({ nativeEvent: { isComposing: true } }));
+  elements(render(), 'textarea')[0].props.onKeyDown(keyboard({ shiftKey: true }));
+  assert.equal(submissions.length, 0);
+  elements(render(), 'textarea')[0].props.onKeyDown(keyboard());
+  render().props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(submissions, ['你是谁？']);
+  assert.equal(elements(render(), 'textarea')[0].props.value, '');
+  complete(); await tick();
+  props.disabled = true;
+  elements(render(), 'textarea')[0].props.onChange({ target: { value: '继续' } });
+  render().props.onSubmit({ preventDefault() {} });
+  assert.equal(submissions.length, 1);
 });

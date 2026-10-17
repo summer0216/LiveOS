@@ -26,6 +26,8 @@ export async function sendMessage(
 export interface ConversationHistory {
   conversation_id: string;
   messages: Array<{
+    id: string;
+    created_at: string;
     role: 'user' | 'assistant';
     content: string;
   }>;

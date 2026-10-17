@@ -3,29 +3,38 @@
 import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-import FirstOpenExperience, {
-  FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS,
-} from '@/features/first-open';
-import RealityAnchorProjection from '@/features/possible-life-world/RealityAnchorProjection';
+import UnifiedSurface from '@/features/unified-surface';
 import useFirstRealityRuntime from '@/features/first-reality-runtime';
 import AMapGround from '@/features/living-map/AMapGround';
-import type { GeographicProjection } from '@/lib/runtimePresentationContract';
+import { FIRST_OPEN_WORLD_CAMERA_TRANSITION_MS, type GeographicProjection } from '@/lib/runtimePresentationContract';
+import type { WorldConsequenceFocus } from '@/lib/worldConsequence';
 
 const NO_FIT_LOCATIONS: readonly { lng: number; lat: number }[] = [];
 
 export default function HomePage() {
   const searchParams = useSearchParams();
   const placeAnchorRef = useRef<HTMLSpanElement>(null);
+  const [consequenceFocus, setConsequenceFocus] = useState<WorldConsequenceFocus | null>(null);
+  const onWorldConsequenceReady = useCallback((
+    focusPropertyId?: WorldConsequenceFocus['focusPropertyId'],
+    focusSubject?: WorldConsequenceFocus['focusSubject'],
+    focusPossibleLife?: WorldConsequenceFocus['focusPossibleLife'],
+  ) => {
+    setConsequenceFocus(focusPropertyId || focusSubject || focusPossibleLife
+      ? { focusPropertyId, focusSubject, focusPossibleLife } : null);
+  }, []);
   const {
-    submittedExpression,
+    messages,
+    isResponding,
+    isRestoringConversation,
+    conversationError,
     isSubmittingExpression,
-    currentExpressionReferent,
     phase,
     authoritativeReality,
     firstRealityTransition,
     hasGroundedWorld,
-    firstOpenActive,
-    firstOpenStage,
+    geographicGroundReady,
+    reorient,
     submit,
     onGroundReadyChange,
     onCameraReady,
@@ -33,6 +42,7 @@ export default function HomePage() {
   } = useFirstRealityRuntime({
     initialConversationId: searchParams.get('conversation_id') ?? '',
     placeAnchorRef,
+    onWorldConsequenceReady,
   });
   const [mapProjection, setMapProjection] = useState<GeographicProjection | null>(null);
   const [mapZoom, setMapZoom] = useState<number | null>(null);
@@ -67,29 +77,26 @@ export default function HomePage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#eef2ed] text-slate-950">
-      {firstOpenActive ? (
-        <FirstOpenExperience
-          stage={firstOpenStage}
-          worldFormed={phase === 'formed'}
-          isSubmittingExpression={isSubmittingExpression}
-          submittedExpression={submittedExpression}
-          groundedIdentity={authoritativeReality?.identity ?? null}
-          expressionReferent={currentExpressionReferent}
-          placeAnchorRef={placeAnchorRef}
-          map={mapGround}
-          worldProjection={(
-            <RealityAnchorProjection
-              identity={authoritativeReality?.identity ?? null}
-              location={authoritativeReality?.center ?? null}
-              projection={mapProjection}
-              zoom={mapZoom}
-              visible={firstOpenStage === 'world' && phase !== 'empty'}
-            />
-          )}
-          onSubmit={submit}
-          onWorldSettled={onWorldSettled}
-        />
-      ) : mapGround}
+      <UnifiedSurface
+        requiresCameraAnchor={phase === 'grounding' || phase === 'revealing' || phase === 'formed'}
+        revealStarted={phase === 'revealing' || phase === 'formed'}
+        revealComplete={phase === 'formed'}
+        geographicGroundReady={geographicGroundReady}
+        cameraReady={reorient !== null}
+        groundedReality={authoritativeReality}
+        consequenceFocus={consequenceFocus}
+        messages={messages}
+        isResponding={isResponding}
+        isSubmittingExpression={isSubmittingExpression}
+        isRestoringConversation={isRestoringConversation}
+        conversationError={conversationError}
+        placeAnchorRef={placeAnchorRef}
+        map={mapGround}
+        mapProjection={mapProjection}
+        mapZoom={mapZoom}
+        onSubmit={submit}
+        onWorldSettled={onWorldSettled}
+      />
     </main>
   );
 }

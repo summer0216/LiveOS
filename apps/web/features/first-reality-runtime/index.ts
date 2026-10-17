@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import type {
+  ConversationMessage,
   FirstOpenRuntimeStage,
   GeographicCameraReorient,
   WorldPresentationAnchor,
@@ -81,6 +82,10 @@ interface FirstRealityRuntimeOptions extends WorldPresentationAnchor {
 
 interface FirstRealityRuntime extends WorldRevealPresentation {
   conversationId: string;
+  messages: ConversationMessage[];
+  isResponding: boolean;
+  isRestoringConversation: boolean;
+  conversationError: string | null;
   profile: LivingProfile | null;
   properties: Property[];
   authoritativeProperty: Property | null;
@@ -241,6 +246,10 @@ export default function useFirstRealityRuntime({
   onPersistedRealityReconciled,
 }: FirstRealityRuntimeOptions): FirstRealityRuntime {
   const [conversationId, setConversationId] = useState(initialConversationId);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [isResponding, setIsResponding] = useState(false);
+  const [isRestoringConversation, setIsRestoringConversation] = useState(Boolean(initialConversationId));
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [profile, setProfile] = useState<LivingProfile | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [possibleLives, setPossibleLives] = useState<PossibleLifeWorldState[]>([]);
@@ -344,17 +353,29 @@ export default function useFirstRealityRuntime({
     }
 
     let active = true;
+    const restoreSubmitId = latestSubmitIdRef.current;
     void Promise.all([
       getLivingProfile(conversationId),
       getProperties(conversationId),
       getDecisionGeography(conversationId),
       getPossibleLives(conversationId),
-      getConversationHistory(conversationId).catch((error: unknown) => {
+      getConversationHistory(conversationId).then((history) => {
+        if (active && latestSubmitIdRef.current === restoreSubmitId) {
+          setMessages(history.messages.map((item, index) => ({
+            ...item,
+            id: `${conversationId}:history:${index}`,
+          })));
+        }
+        return history;
+      }).catch((error: unknown) => {
         console.error('Failed to restore First Reality expression:', error);
+        if (active) setConversationError('对话暂时无法恢复，请刷新重试。');
         return null;
+      }).finally(() => {
+        if (active) setIsRestoringConversation(false);
       }),
     ]).then(([nextProfile, nextProperties, decisionGeography, nextPossibleLives, history]) => {
-      if (!active) return;
+      if (!active || latestSubmitIdRef.current !== restoreSubmitId) return;
       const restoredReality = resolveAuthoritativeGroundedReality(
         nextProfile,
         nextProperties,
@@ -390,6 +411,22 @@ export default function useFirstRealityRuntime({
     activeSubmitRef.current?.abort();
     const controller = new AbortController();
     activeSubmitRef.current = controller;
+    const assistantMessageId = `${currentConversationId}:turn:${submitId}:assistant`;
+    setMessages((current) => [...current,
+      { id: `${currentConversationId}:turn:${submitId}:user`, role: 'user', content: message },
+      { id: assistantMessageId, role: 'assistant', content: '' },
+    ]);
+    setIsResponding(true);
+    setConversationError(null);
+    if (!conversationId) {
+      skipRestoreConversationRef.current = currentConversationId;
+      setConversationId(currentConversationId);
+      window.history.replaceState(
+        window.history.state,
+        '',
+        '/?conversation_id=' + encodeURIComponent(currentConversationId),
+      );
+    }
     const interrupted = new Promise<never>((_, reject) => {
       controller.signal.addEventListener('abort', () => reject(
         new Error('First Reality request was cancelled.'),
@@ -420,6 +457,8 @@ export default function useFirstRealityRuntime({
       latestSubmitIdRef.current += 1;
       controller.abort();
       setIsSubmittingExpression(false);
+      setIsResponding(false);
+      setConversationError('回复暂时中断，你可以继续表达。');
       if (!continuingWorld) setPhase('empty');
       console.error('Expression readiness timed out; Expression Entry restored for retry.');
     }, EXPRESSION_READY_TIMEOUT_MS);
@@ -500,7 +539,12 @@ export default function useFirstRealityRuntime({
         conversationId: currentConversationId,
         message,
         currentGeographicReality: currentLocation,
-        onChunk: () => {},
+        onChunk: (chunk) => {
+          if (latestSubmitIdRef.current !== submitId) return;
+          setMessages((current) => current.map((item) => item.id === assistantMessageId
+            ? { ...item, content: item.content + chunk }
+            : item));
+        },
         onWorldStateReady: (turnId) => {
           currentUserTurnId = turnId;
           markWorldStateReady?.();
@@ -528,15 +572,6 @@ export default function useFirstRealityRuntime({
         getDecisionGeography(currentConversationId),
         getPossibleLives(currentConversationId),
       ]));
-      if (!conversationId) {
-        skipRestoreConversationRef.current = currentConversationId;
-        setConversationId(currentConversationId);
-        window.history.replaceState(
-          window.history.state,
-          '',
-          '/?conversation_id=' + encodeURIComponent(currentConversationId),
-        );
-      }
       if (latestSubmitIdRef.current !== submitId) return;
       if (isCurrentExpressionReferent(decisionGeography, currentUserTurnId)) {
         setCurrentExpressionReferent(decisionGeography.identity);
@@ -571,6 +606,7 @@ export default function useFirstRealityRuntime({
     } catch (error: unknown) {
       if (latestSubmitIdRef.current !== submitId) return;
       console.error('Failed to form First Reality:', error);
+      setConversationError('回复暂时中断，你可以继续表达。');
       try {
         const [persistedProfile, persistedProperties, persistedPossibleLives] = await waitForTurn(Promise.all([
           getLivingProfile(currentConversationId),
@@ -588,6 +624,7 @@ export default function useFirstRealityRuntime({
       }
     } finally {
       if (latestSubmitIdRef.current === submitId) {
+        setIsResponding(false);
         setIsSubmittingExpression(false);
         if ((continuingWorld || !firstRealityRevealStarted) && readinessTimeoutRef.current !== null) {
           window.clearTimeout(readinessTimeoutRef.current);
@@ -714,6 +751,10 @@ export default function useFirstRealityRuntime({
 
   return {
     conversationId,
+    messages,
+    isResponding,
+    isRestoringConversation,
+    conversationError,
     profile,
     properties,
     authoritativeProperty,
