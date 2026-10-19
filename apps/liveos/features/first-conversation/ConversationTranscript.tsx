@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react';
 import type { PresentedMessage } from '../../contracts/conversation';
 import MarkdownResponse from './MarkdownResponse';
 import ConversationIdentity from './ConversationIdentity';
-import UnderstandingSummary from './UnderstandingSummary';
 import MessageFeedback from './MessageFeedback';
 import MessageCopy from './MessageCopy';
 import styles from './first-conversation.module.css';
@@ -83,16 +82,6 @@ export default function ConversationTranscript({ messages, isResponding, convers
                       ) : (
                         <MarkdownResponse content={message.content} />
                       )}
-
-                      {conversationId &&
-                        !isResponding &&
-                        message.content.trim() &&
-                        message.id === latestAssistant?.id && (
-                          <UnderstandingSummary
-                            conversationId={conversationId}
-                            responseId={message.id}
-                          />
-                        )}
                     </>
                   )}
                 </div>

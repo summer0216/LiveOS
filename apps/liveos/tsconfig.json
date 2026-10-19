@@ -7,6 +7,7 @@
       "esnext"
     ],
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -41,11 +42,25 @@
       "@/lib/createClientId": [
         "../web/lib/createClientId.ts"
       ],
+      "@/services/property": [
+        "../web/services/property.ts"
+      ],
       "@/services/profile": [
         "../web/services/profile.ts"
+      ],
+      "@/services/decisionGeography": [
+        "../web/services/decisionGeography.ts"
+      ],
+      "@/lib/geographicScaleContract": [
+        "../web/lib/geographicScaleContract.ts"
+      ],
+      "@/lib/runtimePresentationContract": [
+        "../web/lib/runtimePresentationContract.ts"
+      ],
+      "@/features/living-map/AMapGround": [
+        "../web/features/living-map/AMapGround.tsx"
       ]
-    },
-    "allowImportingTsExtensions": true
+    }
   },
   "include": [
     "next-env.d.ts",

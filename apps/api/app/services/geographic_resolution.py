@@ -1,3 +1,4 @@
+import math
 import re
 from dataclasses import dataclass
 
@@ -5,6 +6,21 @@ import httpx
 
 from app.models.decision_geography import DecisionGeographyScope
 from app.models.property import GeographicPrecision
+
+
+@dataclass(frozen=True)
+class GeographicPlaceCandidate:
+    """Transient provider evidence, not an admitted Reality or a second store."""
+    provider_id: str
+    name: str
+    city: str
+    district: str
+    category: str
+    lng: float
+    lat: float
+    address: str | None = None
+    adcode: str | None = None
+    provider: str = "AMAP"
 
 
 @dataclass(frozen=True)
@@ -16,6 +32,7 @@ class GeographicResolutionResult:
     lng: float | None = None
     lat: float | None = None
     ambiguous: bool = False
+    candidates: tuple[GeographicPlaceCandidate, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -217,9 +234,66 @@ class GeographicResolver:
         if payload.get("status") != "1":
             return GeographicResolutionResult(status="UNRESOLVED")
 
+        pois = list(payload.get("pois") or [])
+        try:
+            total = int(payload.get("count", len(pois)))
+            page = 1
+            # Bound provider reads; an incomplete result can never prove uniqueness.
+            while len(pois) < total and page < 5:
+                page += 1
+                response = httpx.get(
+                    "https://restapi.amap.com/v3/place/text",
+                    params={"key": api_key, "keywords": title,
+                            **({"city": context_location, "citylimit": "true"} if context_location else {}),
+                            "offset": 20, "page": page}, timeout=10,
+                )
+                response.raise_for_status()
+                next_payload = response.json()
+                rows = next_payload.get("pois") or []
+                if next_payload.get("status") != "1" or not rows:
+                    break
+                pois.extend(rows)
+        except (httpx.HTTPError, ValueError, TypeError):
+            return GeographicResolutionResult(status="UNRESOLVED")
+        places = tuple(
+            candidate for poi in pois if isinstance(poi, dict)
+            and _is_place_category(str(poi.get("type") or ""))
+            and _poi_is_within_context(poi, context_location)
+            and (candidate := _place_candidate(title, poi)) is not None
+        )
+        # Provider IDs identify candidates; response order and distance do not.
+        by_id = {candidate.provider_id: candidate for candidate in places}
+        if any(by_id[candidate.provider_id] != candidate for candidate in places):
+            return GeographicResolutionResult(status="UNRESOLVED", ambiguous=True, candidates=places)
+        places = tuple(by_id.values())
+        incomplete_identity = any(
+            isinstance(poi, dict) and _is_place_category(str(poi.get("type") or ""))
+            and _poi_is_within_context(poi, context_location)
+            and _place_name_matches(title, poi)
+            and _place_candidate(title, poi) is None
+            for poi in pois
+        )
+        if len(pois) < total or incomplete_identity:
+            return GeographicResolutionResult(
+                status="UNRESOLVED", ambiguous=len(places) > 1, candidates=places,
+            )
+        if places:
+            if len(places) != 1:
+                return GeographicResolutionResult(
+                    status="UNRESOLVED", ambiguous=True, candidates=places,
+                )
+            candidate = places[0]
+            return GeographicResolutionResult(
+                status="GROUNDED",
+                geographic_identity=f"{candidate.city}{candidate.district}{candidate.name}",
+                geographic_precision=GeographicPrecision.PLACE,
+                geographic_scope="LOCAL", lng=candidate.lng, lat=candidate.lat,
+                candidates=places,
+            )
+
         candidates = [
             candidate
-            for candidate in payload.get("pois") or []
+            for candidate in pois
             if isinstance(candidate, dict)
             and _poi_is_within_context(candidate, context_location)
             and _poi_match_score(title, candidate) is not None
@@ -385,8 +459,62 @@ def _administrative_component(value: object) -> str | None:
 def _poi_is_within_context(candidate: dict, context_location: str | None) -> bool:
     if context_location is None:
         return True
-    city = candidate.get("cityname")
-    return isinstance(city, str) and city.replace("市", "") == context_location.replace("市", "")
+    city = _administrative_component(candidate.get("cityname"))
+    if city is None:
+        return False
+    province = _administrative_component(candidate.get("pname")) or ""
+    district = _administrative_component(candidate.get("adname")) or ""
+    return context_location.replace("市", "") in {
+        value.replace("市", "") for value in
+        (city, province + city, city + district, province + city + district)
+    }
+
+
+def _is_place_category(category: str) -> bool:
+    return category.startswith(("商务住宅;住宅区", "商务住宅;楼宇", "购物服务;商场"))
+
+
+def _place_name_matches(title: str, poi: dict) -> bool:
+    name = _administrative_component(poi.get("name"))
+    if name is None:
+        return False
+    city = _administrative_component(poi.get("cityname")) or ""
+    district = _administrative_component(poi.get("adname")) or ""
+    query = _normalize_place_punctuation(title)
+    for prefix in (city + district, city, district):
+        if prefix and query.startswith(prefix):
+            query = query[len(prefix):]
+            break
+    normalized_name = _normalize_place_punctuation(name)
+    # A bare complex name may refer to several named subdivisions. A specific
+    # name must not match an unrelated shop, car park or building under it.
+    return normalized_name == query or (
+        bool(query)
+        and normalized_name.startswith(query)
+        and re.fullmatch(
+            r"(?:[东西南北中]{1,2}区|[A-Z]区|[一二三四五六七八九十0-9]+期)",
+            normalized_name[len(query):],
+        ) is not None
+    )
+
+
+def _place_candidate(title: str, poi: dict) -> GeographicPlaceCandidate | None:
+    fields = {key: _administrative_component(poi.get(key))
+              for key in ("id", "name", "cityname", "adname", "type", "location")}
+    if not all(fields.values()) or not _place_name_matches(title, poi):
+        return None
+    try:
+        lng, lat = map(float, fields["location"].split(","))
+    except (ValueError, TypeError):
+        return None
+    if not (math.isfinite(lng) and math.isfinite(lat) and -180 <= lng <= 180 and -90 <= lat <= 90):
+        return None
+    return GeographicPlaceCandidate(
+        provider_id=fields["id"], name=fields["name"], city=fields["cityname"], district=fields["adname"],
+        category=fields["type"], lng=lng, lat=lat,
+        address=_administrative_component(poi.get("address")),
+        adcode=_administrative_component(poi.get("adcode")),
+    )
 
 
 def _poi_match_score(title: str, candidate: dict) -> int | None:

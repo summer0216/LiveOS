@@ -322,6 +322,34 @@ class ChatService:
                 conversation_id,
                 analysis.choices,
             )
+            # A confirmed place can refine an existing choice without restating
+            # it in Profile Analysis. Match evidence, not the expression format.
+            if (
+                current_decision_geography is not None
+                and current_decision_geography.status == "GROUNDED"
+                and current_decision_geography.identity_source == "USER"
+                and current_decision_geography.geographic_identity
+            ):
+                city_context = decision_geography_service.city_context(
+                    current_decision_geography, settings.AMAP_WEB_SERVICE_KEY,
+                )
+                for choice in property_manager.list(conversation_id):
+                    if (
+                        choice.title
+                        and (choice.title in current_decision_geography.identity
+                             or choice.title in current_decision_geography.geographic_identity)
+                        and choice.provenance == PropertyProvenance.USER_PROVIDED
+                        and choice.geographic_status == GeographicStatus.UNRESOLVED
+                    ):
+                        # Text only selects the existing referent to refine.
+                        # Revalidate the user's confirmed subdivision identity;
+                        # the original broad name may still have many candidates.
+                        _ground_explicit_possible_home(
+                            conversation_id, choice.id or "",
+                            title=current_decision_geography.geographic_identity,
+                            geography=current_decision_geography,
+                            city_context=city_context,
+                        )
             if apply_decision_geography:
                 current_decision_geography = decision_geography_service.apply(
                     conversation_id,
@@ -395,7 +423,12 @@ class ChatService:
                     context_location=geographic_context,
                     api_key=settings.AMAP_WEB_SERVICE_KEY,
                 )
+            ambiguous_identity = decision_geography_service.ambiguous_identity(
+                current_decision_geography, settings.AMAP_WEB_SERVICE_KEY,
+            )
             for property_ in materialized_choices:
+                if property_.title == ambiguous_identity:
+                    continue
                 explicit_possible_home = _is_explicit_possible_home(
                     analysis, current_decision_geography,
                 )
@@ -770,6 +803,11 @@ class ChatService:
             return profile_intelligence.analyze(history, properties or None)
 
         def extract_signal():
+            city_answer = decision_geography_service.city_answer_signal(
+                conversation_id, message, settings.AMAP_WEB_SERVICE_KEY,
+            )
+            if city_answer is not None:
+                return city_answer
             if work_location_answer:
                 return decision_signal_intelligence.analyze(
                     message, work_location_answer=True,
@@ -1010,7 +1048,15 @@ class ChatService:
         conversation_id: str,
         history: list[ConversationMessage],
     ) -> Iterator[str]:
-
+        clarification = decision_geography_service.clarification_question(
+            decision_geography_service.get(conversation_id),
+            settings.AMAP_WEB_SERVICE_KEY,
+        )
+        if clarification is not None:
+            reply = clarification
+            conversation_manager.append_assistant_message(conversation_id, reply)
+            yield reply
+            return
         assistant_reply_parts: list[str] = []
 
         runtime_started_at = perf_counter()

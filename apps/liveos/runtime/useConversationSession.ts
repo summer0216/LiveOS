@@ -31,7 +31,7 @@ export function useConversationSession(initialConversationId: string) {
     return () => { active = false; };
   }, [initialConversationId]);
 
-  const submit = useCallback(async (expression: string) => {
+  const submit = useCallback(async (expression: string, onWorldConsequenceReady?: () => void) => {
     if (isResponding || restoring.current || !expression.trim()) return;
     const requestId = ++activeRequest.current;
     const activeConversationId = conversationId || createClientId();
@@ -51,6 +51,9 @@ export function useConversationSession(initialConversationId: string) {
       await streamMessage({
         conversationId: activeConversationId,
         message: expression,
+        onWorldConsequenceReady: () => {
+          if (activeRequest.current === requestId) onWorldConsequenceReady?.();
+        },
         onChunk: (chunk) => {
           if (activeRequest.current !== requestId) return;
           setMessages((current) => appendAssistantChunk(current, `${requestId}:assistant`, chunk));

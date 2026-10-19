@@ -20,8 +20,7 @@ function load(url) {
     if (name === 'react') return { ...React, useEffect() {}, useRef: () => ({ current: null }) };
     if (name === 'next/image') return { __esModule: true, default: ({ alt, src }) => React.createElement('img', { alt, src }) };
     if (name.endsWith('.css')) return { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) };
-    // Profile fetching is outside this presentation check.
-    if (name === './UnderstandingSummary') return { __esModule: true, default: () => null };
+    if (name === './UnderstandingSummary') throw new Error('Ordinary messages must not inject the legacy Profile summary');
     if (name === '../../infrastructure/conversationApi') return { setMessageFeedback: async () => ({ feedback: null }) };
     if (name.startsWith('.')) return load(new URL(`${name}${name === './markdown' ? '.ts' : '.tsx'}`, url));
     return require(name);
@@ -34,6 +33,18 @@ const Transcript = load(new URL('../features/first-conversation/ConversationTran
 const user = { id: 'u', role: 'user', content: '你好' };
 const assistant = (id, content) => ({ id, role: 'assistant', content });
 const render = (messages, isResponding) => renderToStaticMarkup(React.createElement(Transcript, { messages, isResponding }));
+
+test('completed ordinary replies render conversation content without an automatic Profile summary', () => {
+  const html = renderToStaticMarkup(React.createElement(Transcript, {
+    conversationId: 'cid', isResponding: false,
+    messages: [user, { ...assistant('42', '你指的是哪个城市？'), created_at: '2026-10-19T12:00:00Z' }],
+  }));
+  assert.ok(html.includes('你指的是哪个城市？'));
+  assert.doesNotMatch(html, /我为你梳理的关键信息|<dl\b/);
+  assert.match(html, /复制回复/);
+  assert.match(html, /回复评价/);
+  assert.match(html, /<time /);
+});
 
 test('pending assistant uses its existing identity and three accessible thinking dots', () => {
   const html = render([user, assistant('a', '')], true);

@@ -83,3 +83,29 @@ test('failed metadata recovery preserves streamed messages and exposes an error'
   assert.equal(client.read().error, 'History unavailable');
   assert.equal(client.read().isResponding, false);
 });
+
+test('world consequences refresh Reality before EOF without interrupting chunks or history reconciliation', async () => {
+  let emit, finish;
+  const stream = new Promise((resolve) => { finish = resolve; });
+  let historyCalls = 0, refreshes = 0;
+  const client = session({
+    history: async (id) => { assert.equal(id, 'conversation-1'); historyCalls++; return { messages: persisted }; },
+    stream: (options) => { emit = options; return stream; },
+  });
+  const pending = client.read().submit('测试', () => { refreshes++; });
+  assert.equal(emit.onWorldStateReady, undefined); // Early Geography is not Property admission.
+  emit.onWorldConsequenceReady();
+  assert.equal(refreshes, 1);
+  assert.equal(client.read().isResponding, true);
+  assert.equal(historyCalls, 0);
+  emit.onChunk('第一段');
+  emit.onWorldConsequenceReady();
+  emit.onChunk('第二段');
+  assert.equal(client.read().messages[1].content, '第一段第二段');
+  assert.equal(client.read().conversationId, 'conversation-1');
+  finish();
+  await pending;
+  assert.deepEqual(client.read().messages, persisted);
+  assert.equal(client.read().isResponding, false);
+  assert.equal(historyCalls, 1);
+});

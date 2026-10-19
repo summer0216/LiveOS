@@ -1,6 +1,7 @@
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 from app.models.decision_geography import DecisionGeography
 from app.models.property import GeographicStatus
@@ -21,6 +22,95 @@ class DecisionGeographyService:
 
     def get(self, conversation_id: str) -> DecisionGeography | None:
         return decision_geography_store.get(conversation_id)
+
+    def ambiguous_identity(
+        self, state: DecisionGeography | None, api_key: str | None,
+    ) -> str | None:
+        """Recheck the conversation's unresolved user place, not profile cities."""
+        if (
+            state is None or state.status != "UNRESOLVED"
+            or state.identity_source != "USER" or not state.identity
+        ):
+            return None
+        qualified = self._qualified_resolution(state.identity, api_key)
+        if qualified is not None:
+            return state.identity if qualified[1].ambiguous else None
+        result = geographic_resolver.resolve(state.identity, None, api_key)
+        if result.ambiguous:
+            return state.identity
+        if result.status != "GROUNDED" and geographic_resolver.resolve_local_area(
+            state.identity, None, api_key,
+        ).ambiguous:
+            return state.identity
+        return None
+
+    def _qualified_resolution(self, identity: str, api_key: str | None):
+        city_identity, separator, local_identity = identity.partition("的")
+        if not separator:
+            city_identity = _city_name(identity)
+            if not city_identity:
+                return None
+            # Reuse the administrative city token, then prove it with the
+            # provider just as for the existing "city 的 place" expression.
+            local_identity = identity.split(city_identity, 1)[1]
+        if not local_identity:
+            return None
+        city = geographic_resolver.resolve(city_identity, None, api_key)
+        if city.status != "GROUNDED" or city.geographic_scope != "CITY" or not city.geographic_identity:
+            return None
+        result = geographic_resolver.resolve(local_identity, city.geographic_identity, api_key)
+        if result.status != "GROUNDED":
+            result = geographic_resolver.resolve_local_area(local_identity, city.geographic_identity, api_key)
+        return city.geographic_identity, result
+
+    def clarification_question(self, state: DecisionGeography | None, api_key: str | None) -> str | None:
+        """Continue the existing clarification with current provider identities."""
+        if state is None or state.status != "UNRESOLVED" or state.identity_source != "USER":
+            return None
+        qualified = self._qualified_resolution(state.identity, api_key)
+        if qualified is not None:
+            city, result = qualified
+            if result.ambiguous and result.candidates:
+                names = "、".join(f"{c.district}{c.name}" for c in result.candidates)
+                return f"“{state.identity}”在{city}有多个地点：{names}。你指的是哪一个？请确认具体区域或地点名称。"
+            return None
+        identity = self.ambiguous_identity(state, api_key)
+        return f"“{identity}”有多个同名地点。你指的是哪个城市？" if identity else None
+
+    def city_answer_signal(
+        self, conversation_id: str, message: str, api_key: str | None,
+    ) -> DecisionGeography | None:
+        """Bind an explicit bare city answer to the existing ambiguous place."""
+        state = self.get(conversation_id)
+        if state is None or state.status != "UNRESOLVED" or not state.identity:
+            return None
+        answer = message.strip().rstrip("。.!！")
+        qualified = self._qualified_resolution(state.identity, api_key)
+        if qualified is not None:
+            if not answer or len(answer) > 80:
+                return None
+            city, result = qualified
+            if not result.ambiguous:
+                return None
+            matches = [candidate for candidate in result.candidates if answer in (
+                candidate.name, candidate.district + candidate.name,
+                candidate.city + candidate.district + candidate.name,
+            ) or (len(answer) >= 2 and candidate.name.endswith(answer))]
+            if len(matches) == 1:
+                selected = matches[0]
+                return replace(state, identity=f"{city}的{selected.district}{selected.name}")
+            return None
+        if not answer or len(answer) > 20:
+            return None
+        city = geographic_resolver.resolve(answer, None, api_key)
+        if city.status != "GROUNDED" or city.geographic_scope != "CITY":
+            return None
+        # A workplace sentence or an incidental city mention is not a city answer.
+        if answer.removesuffix("市") != (_city_name(city.geographic_identity) or "").removesuffix("市"):
+            return None
+        if self.ambiguous_identity(state, api_key) is None:
+            return None
+        return replace(state, identity=f"{answer}的{state.identity}")
 
     def city_context(
         self,
@@ -97,23 +187,11 @@ class DecisionGeographyService:
         # than a literal address. Prove the explicit city before applying the
         # existing contextual Work lookup shape: local identity + city.
         explicit_city_context = False
-        city_identity, separator, local_identity = normalized_identity.partition("的")
-        if direct_result.status != "GROUNDED" and separator and local_identity:
-            city_result = geographic_resolver.resolve(city_identity, None, api_key)
-            if (
-                city_result.status == "GROUNDED"
-                and city_result.geographic_scope == "CITY"
-                and city_result.geographic_identity
-            ):
+        if direct_result.status != "GROUNDED":
+            qualified = self._qualified_resolution(normalized_identity, api_key)
+            if qualified is not None:
                 explicit_city_context = True
-                context_location = city_result.geographic_identity
-                direct_result = geographic_resolver.resolve(
-                    local_identity, context_location, api_key,
-                )
-                if direct_result.status != "GROUNDED":
-                    direct_result = geographic_resolver.resolve_local_area(
-                        local_identity, context_location, api_key,
-                    )
+                context_location, direct_result = qualified
         if (
             direct_result.status == GeographicStatus.GROUNDED.value
             or explicit_city_context
@@ -141,7 +219,12 @@ class DecisionGeographyService:
                     and active_geography.lat is not None
                     else None
                 )
-                context_source = active_location or current_geographic_reality
+                # Multiple global candidates need the user's city, not a city
+                # inferred from an existing World or workplace.
+                context_source = (
+                    None if direct_result.ambiguous
+                    else active_location or current_geographic_reality
+                )
             if (
                 global_local_result.status != GeographicStatus.GROUNDED.value
                 and context_source is not None
