@@ -7,6 +7,9 @@ const apiOrigin = (
 )?.replace(/\/$/, '');
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: process.env.NODE_ENV === 'development'
+    ? process.env.LIVEOS_DEV_ORIGINS?.split(',').map((host) => host.trim()).filter(Boolean)
+    : undefined,
   async rewrites() {
     return apiOrigin ? [{ source: '/api/:path*', destination: `${apiOrigin}/api/:path*` }] : [];
   },
