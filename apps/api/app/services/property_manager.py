@@ -66,6 +66,11 @@ class PropertyManager:
             materialized.append(current)
         return materialized
 
+    def complete_materialized_choice(
+        self, property_id: str, conversation_id: str, choice: Property,
+    ) -> Property | None:
+        return property_store.complete_materialized_choice(property_id, conversation_id, choice)
+
     def update_geographic_grounding(
         self,
         property_id: str,

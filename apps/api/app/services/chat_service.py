@@ -1,6 +1,8 @@
 import logging
+import math
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
+from dataclasses import replace
 from time import perf_counter
 
 from app.core.config import settings
@@ -36,7 +38,10 @@ from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
-from app.services.geographic_resolution import geographic_resolver
+from app.services.geographic_resolution import (
+    GeographicResolutionResult,
+    geographic_resolver,
+)
 from app.services.housing_candidate_discovery import housing_candidate_discovery
 from app.services.living_meaning_service import living_meaning_service
 from app.services.living_time_relationship import living_time_relationship_service
@@ -127,11 +132,12 @@ def _is_explicit_possible_home(
 def _ground_explicit_possible_home(
     conversation_id: str, property_id: str, *,
     title: str, geography: DecisionGeography, city_context: str | None,
-) -> None:
+    resolution: GeographicResolutionResult | None = None,
+) -> Property | None:
     """Reuse the locality lookup that established Decision Geography."""
     if not city_context:
         return
-    result = geographic_resolver.resolve_local_area(
+    result = resolution or geographic_resolver.resolve_local_area(
         title, city_context, settings.AMAP_WEB_SERVICE_KEY,
     )
     if (
@@ -141,13 +147,76 @@ def _ground_explicit_possible_home(
         and result.lng == geography.lng
         and result.lat == geography.lat
     ):
-        property_manager.update_geographic_grounding(
+        return property_manager.update_geographic_grounding(
             property_id, conversation_id,
             geographic_identity=result.geographic_identity,
             geographic_precision=result.geographic_precision,
             geographic_status=GeographicStatus.GROUNDED,
             lng=result.lng, lat=result.lat,
         )
+    return None
+
+
+def _admit_current_residence(
+    conversation_id: str, geography: DecisionGeography | None,
+    user_turn_id: int | None,
+) -> tuple[Property, GeographicResolutionResult] | None:
+    """Use this turn's residence signal, then independently revalidate its POI."""
+    if (
+        geography is None or not geography.intent_established
+        or geography.intent_type != "residence"
+        or geography.identity_source != "USER"
+        or user_turn_id is None or geography.source_user_turn_id != user_turn_id
+        or not geography.identity or not geography.geographic_identity
+        or geography.status != "GROUNDED" or geography.geographic_scope != "LOCAL"
+        or geography.geographic_precision != GeographicPrecision.PLACE
+        or geography.lng is None or geography.lat is None
+        or not math.isfinite(geography.lng) or not math.isfinite(geography.lat)
+        or not -180 <= geography.lng <= 180 or not -90 <= geography.lat <= 90
+    ):
+        return None
+    city = decision_geography_service.city_context(geography, settings.AMAP_WEB_SERVICE_KEY)
+    if not city:
+        return None
+    result = geographic_resolver.resolve_local_area(
+        geography.geographic_identity, city, settings.AMAP_WEB_SERVICE_KEY,
+    )
+    if (
+        result.status != "GROUNDED" or result.ambiguous or len(result.candidates) != 1
+        or result.geographic_precision != GeographicPrecision.PLACE
+        or result.geographic_identity != geography.geographic_identity
+        or result.lng != geography.lng or result.lat != geography.lat
+    ):
+        return None
+    candidate = result.candidates[0]
+    if (
+        not all((candidate.provider_id, candidate.provider, candidate.name,
+                 candidate.city, candidate.district, candidate.category))
+        or candidate.lng != result.lng or candidate.lat != result.lat
+    ):
+        return None
+    matching = [home for home in property_manager.list(conversation_id) if (
+        home.geographic_status == GeographicStatus.GROUNDED
+        and (home.geographic_identity, home.lng, home.lat) == (
+            result.geographic_identity, result.lng, result.lat,
+        )
+    )]
+    if len(matching) > 1:
+        return None
+    home = matching[0] if matching else property_manager.materialize_choices(
+        conversation_id, [Property(title=candidate.name)],
+    )[0]
+    if home.geographic_status == GeographicStatus.GROUNDED:
+        if (home.geographic_identity, home.lng, home.lat) != (
+            result.geographic_identity, result.lng, result.lat,
+        ):
+            return None
+        return home, result
+    admitted = _ground_explicit_possible_home(
+        conversation_id, home.id or "", title=geography.geographic_identity,
+        geography=geography, city_context=city, resolution=result,
+    )
+    return (admitted, result) if admitted is not None else None
 
 
 def _admit_canonical_rent_estimate(
@@ -279,6 +348,7 @@ class ChatService:
         source_user_turn_id: int | None = None,
         schedule_housing_discovery: Callable[[Callable[[], None]], object]
         | None = None,
+        admitted_residence: tuple[Property, GeographicResolutionResult] | None = None,
     ) -> tuple[DecisionChangeCause, ...]:
         """
         从当前会话历史中生成 Profile Analysis，
@@ -318,9 +388,23 @@ class ChatService:
                 analysis.decision_geography.identity,
                 analysis.decision_geography.identity_source,
             )
+            choices = analysis.choices
+            if admitted_residence is not None and current_decision_geography is not None:
+                home, evidence = admitted_residence
+                aliases = {evidence.candidates[0].name, evidence.geographic_identity,
+                           current_decision_geography.identity}
+                for choice in choices:
+                    if choice.title in aliases:
+                        property_manager.complete_materialized_choice(
+                            home.id or "", conversation_id, choice,
+                        )
+                choices = [
+                    replace(choice, title=home.title) if choice.title in aliases else choice
+                    for choice in choices
+                ]
             materialized_choices = property_manager.materialize_choices(
                 conversation_id,
-                analysis.choices,
+                choices,
             )
             # A confirmed place can refine an existing choice without restating
             # it in Profile Analysis. Match evidence, not the expression format.
@@ -456,7 +540,10 @@ class ChatService:
                         conversation_id,
                         property_.id or "",
                     )
-            if analysis.geographic_clarification.relevant:
+            if analysis.geographic_clarification.relevant and (
+                admitted_residence is None
+                or analysis.geographic_clarification.target_property_id != admitted_residence[0].id
+            ):
                 clarification = analysis.geographic_clarification
                 property_manager.update_geographic_grounding(
                     clarification.target_property_id,
@@ -870,6 +957,15 @@ class ChatService:
                     if current_user_turn_id is not None
                     else WORLD_STATE_READY
                 )
+            admitted_residence = None
+            try:
+                admitted_residence = _admit_current_residence(
+                    conversation_id, current_decision_geography, current_user_turn_id,
+                )
+            except Exception:
+                logger.exception("Early residence admission failed conversation_id=%s", conversation_id)
+            if admitted_residence is not None:
+                yield WORLD_CONSEQUENCE_READY
             while True:
                 try:
                     analysis = profile_future.result(timeout=DISCOVERY_KEEP_ALIVE_SECONDS)
@@ -894,6 +990,7 @@ class ChatService:
                 apply_decision_geography=False,
                 current_decision_geography=current_decision_geography,
                 schedule_housing_discovery=schedule_discovery,
+                **({"admitted_residence": admitted_residence} if admitted_residence else {}),
             )
             while True:
                 try:

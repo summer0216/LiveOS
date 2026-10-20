@@ -1487,6 +1487,32 @@ class PropertyStore:
             )
         return property_
 
+    def complete_materialized_choice(
+        self, property_id: str, conversation_id: str, choice: Property,
+    ) -> Property | None:
+        """Fill first-extraction facts after early geographic admission."""
+        owner_id = resolve_owner_id(self._database, conversation_id)
+        if owner_id is None:
+            return None
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE properties
+                SET district = COALESCE(district, %s),
+                    rent = COALESCE(rent, %s), area = COALESCE(area, %s),
+                    bedrooms = COALESCE(bedrooms, %s),
+                    bathrooms = COALESCE(bathrooms, %s),
+                    commute_minutes = COALESCE(commute_minutes, %s),
+                    pet_friendly = COALESCE(pet_friendly, %s), updated_at = %s
+                WHERE id = %s AND owner_id = %s AND conversation_id = %s
+                RETURNING *
+                """,
+                (choice.district, choice.rent, choice.area, choice.bedrooms,
+                 choice.bathrooms, choice.commute_minutes, choice.pet_friendly,
+                 now(), uuid_value(property_id), owner_id, uuid_value(conversation_id)),
+            ).fetchone()
+        return self._from(row) if row is not None else None
+
     def update_geographic_grounding(
         self,
         property_id: str,
