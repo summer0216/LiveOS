@@ -6,6 +6,7 @@ from math import asin, cos, radians, sin, sqrt
 from typing import ClassVar
 
 import httpx
+
 from app.models.property import GeographicStatus, Property
 from app.models.reality_evidence import (
     RealityAdmission,
@@ -41,7 +42,8 @@ class PlaceContextRealityService:
     endpoint = "https://restapi.amap.com/v3/place/around"
     category_types: ClassVar[dict[str, tuple[str, ...]]] = {
         "COMMERCIAL": ("060101",),  # Shopping centre, not an individual shop.
-        "TRANSIT": ("150500", "150700"),  # Station before bus stop.
+        # Parent queries can return children; admit only explicitly supported station types.
+        "TRANSIT": ("150500", "150700", "150705"),  # Metro, bus stop, tram station.
         "EDUCATION": ("141201", "141202", "141203"),
         "HEALTHCARE": ("090101", "090102"),
     }
@@ -49,6 +51,7 @@ class PlaceContextRealityService:
         "060101", "150500", "141201", "090101",
     })
     max_per_category = 2
+    acquisition_policy = "TRANSIT_BOUNDED_PROVIDER_PAGE_V1"
     co_location_radius_m = 1_000
 
     def __init__(
@@ -74,6 +77,7 @@ class PlaceContextRealityService:
             return PlaceContextResult("NOT_FOUND")
         if home.place_context and all(
             is_admitted_nearby_reality(item, home)
+            and item.get("acquisition_policy") == self.acquisition_policy
             for item in home.place_context
         ):
             return PlaceContextResult("EXISTING", home)
@@ -81,6 +85,13 @@ class PlaceContextRealityService:
         items: list[dict] = []
         for category, allowed_types in self.category_types.items():
             candidates = self._discover(home.lng, home.lat, allowed_types, api_key)
+            if category == "TRANSIT" and not candidates and any(
+                isinstance(item, dict) and item.get("category") == "TRANSIT"
+                and is_admitted_nearby_reality(item, home)
+                for item in home.place_context or []
+            ):
+                # A failed/empty refresh must not erase the existing transit evidence.
+                return PlaceContextResult("NO_RELIABLE_REALITY", home)
             seen: set[str] = set()
             # Type identifies the facility kind; distance orders facts, not value.
             for selected in sorted(candidates, key=lambda poi: (poi.distance_m, poi.external_id)):
@@ -117,7 +128,9 @@ class PlaceContextRealityService:
                 )
                 if admitted is not None:
                     items.append(admitted)
-                if len(seen) >= self.max_per_category:
+                # Transit evidence is bounded by the existing Provider page, not
+                # a shared display quota that lets nearby buses erase rail evidence.
+                if category != "TRANSIT" and len(seen) >= self.max_per_category:
                     break
 
         if not items:
@@ -125,6 +138,7 @@ class PlaceContextRealityService:
 
         anchors = [item for item in items if item["anchor_candidate"]]
         for item in items:
+            item["acquisition_policy"] = self.acquisition_policy
             item["co_located_with"] = [
                 {"external_id": anchor["external_id"], "distance_m": round(distance)}
                 for anchor in anchors

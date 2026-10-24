@@ -9,12 +9,17 @@ from dataclasses import dataclass
 from app.core.ai_client import AIClient, ai_client
 from app.core.config import settings
 from app.models.conversation import ConversationMessage
+from app.models.environment_eligibility import EnvironmentProjectionEligibility
 from app.models.possible_life import PossibleLife
 from app.models.possible_life_personal_meaning import PossibleLifePersonalMeaning
 from app.models.possible_life_reality_action import PossibleLifeRealityActionType
 from app.models.property import GeographicStatus, Property, PropertyRentSource
 from app.models.reality_need import RealityNeedResolutionMode
 from app.models.work_subject import WorkSubject
+from app.services.environment_eligibility import (
+    eligible_environment,
+    environment_attention_context,
+)
 from app.services.external_rent_reality_service import (
     USER_INITIATED_RENT_ACTION_LABEL,
     USER_INITIATED_RENT_ACTION_WHY,
@@ -79,6 +84,7 @@ class PropertyExpressionResolution:
     attention_subject: WorkSubject | None = None
     attention_possible_life: PossibleLifeAttentionTarget | None = None
     action_reality_return: ActionRealityReturnContext | None = None
+    environment_eligibility: tuple[EnvironmentProjectionEligibility, ...] = ()
 
 
 class UserRealityReturn:
@@ -132,6 +138,7 @@ class UserRealityReturn:
                 if conversation_id else []
             )
         }
+        environment_context = environment_attention_context(candidates)
         prompt = f"""
 Interpret the CURRENT user expression before any Property Reality admission.
 Classify its nature as PERSONAL_REQUIREMENT, PROPERTY_REALITY, REALITY_ACTION,
@@ -160,6 +167,7 @@ Current message: {json.dumps(user_text, ensure_ascii=False)}
 Focused residence id (context evidence only): {json.dumps(focused_property_id)}
 Grounded residences: {json.dumps([{"id": p.id, "title": p.title, "active_unknown": p.meaningful_unknown if p.meaningful_unknown_state_hash else None} for p in candidates], ensure_ascii=False)}
 Authoritative Work Subject: {json.dumps(self._subject_prompt_value(authoritative_subject), ensure_ascii=False)}
+Admitted environment candidates: {json.dumps(environment_context, ensure_ascii=False)}
 Authoritative Possible Lives with Personal Meaning: {json.dumps(self._possible_life_prompt_values(authoritative_possible_lives, possible_life_meanings, candidates), ensure_ascii=False)}
 
 Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or REALITY_ACTION or OTHER",
@@ -174,7 +182,25 @@ Return JSON only: {{"claim_nature": "PERSONAL_REQUIREMENT or PROPERTY_REALITY or
 "attention_subject_identity": "exact authoritative Work Subject identity" or null,
 "attention_subject_evidence": "exact contiguous USER quote naming that Work Subject" or null,
 "attention_possible_life_id": "exact authoritative Possible Life ID" or null,
-"attention_possible_life_evidence": "exact contiguous USER quote selecting that Possible Life" or null}}.
+"attention_possible_life_evidence": "exact contiguous USER quote selecting that Possible Life" or null,
+"environment_attention": {{"property_id":"grounded residence id",
+"category":"COMMERCIAL or TRANSIT or EDUCATION or HEALTHCARE",
+"type_codes":["provider type_code matching the user's expressed facility kind"],
+"quote":"exact contiguous CURRENT user quote expressing interest in this environment category",
+"environment_ids":["exact admitted external_id"]}} or null}}.
+Set environment_attention only for an explicit CURRENT user interest in the
+environment of the focused residence or a residence independently identified by
+the existing attention_property_id rules. Focus binds Place, never interest.
+Select only supplied admitted objects of that category clearly relevant to the
+quoted request, at most two. A simple home expression, unrelated topic, negated
+interest, or request for a different facility must return null. If a request
+names a specific facility, other facilities in the same category are irrelevant.
+Determine type_codes from the USER request before selecting objects. For a metro
+request use 150500 (metro station), not 150700 (bus stop), even when a bus stop's
+name contains the word metro. A shared TRANSIT category does not make them both
+relevant. Copy only provider type_codes supplied in admitted candidates.
+Do not use Place Understanding anchors, assistant text or candidate presence as
+Attention. Do not invent objects, evidence, distances, or change Focus.
 For PROPERTY_REALITY without reliable referent, return null property_id and
 binding fields. For Focus binding, use FOCUS and null binding_evidence.
 For REALITY_ACTION, use reality_type RENT, an exact current-message request
@@ -219,7 +245,7 @@ establish a layout requirement. Return null when no layout requirement is stated
         try:
             result = json.loads(self._intelligence.generate_json(
                 prompt, model=settings.DECISION_SIGNAL_MODEL or "deepseek-chat",
-                max_output_tokens=240,
+                max_output_tokens=384 if any(item["places"] for item in environment_context) else 240,
             ))
         except (RuntimeError, json.JSONDecodeError, TypeError, ValueError):
             return PropertyExpressionResolution()
@@ -227,6 +253,7 @@ establish a layout requirement. Return null when no layout requirement is stated
             "layout_requirement", "attention_property_id", "attention_evidence",
             "attention_subject_identity", "attention_subject_evidence",
             "attention_possible_life_id", "attention_possible_life_evidence",
+            "environment_attention",
         } != {
             "claim_nature", "reality_type", "claim_quote", "property_id",
             "binding_evidence", "binding_source",
@@ -235,6 +262,12 @@ establish a layout requirement. Return null when no layout requirement is stated
         attention_property_id = self._grounded_attention_target(
             result.get("attention_property_id"), result.get("attention_evidence"),
             prior_user_texts, user_text, candidates,
+        )
+        environment_eligibility = eligible_environment(
+            result.get("environment_attention"), conversation_id=conversation_id,
+            history=history, user_text=user_text, properties=candidates,
+            focused_property_id=focused_property_id,
+            attention_property_id=attention_property_id,
         )
         attention_subject = self._authoritative_subject_attention_target(
             result.get("attention_subject_identity"),
@@ -309,17 +342,20 @@ establish a layout requirement. Return null when no layout requirement is stated
             ):
                 return PropertyExpressionResolution(
                     layout_requirement=requirement,
+                    environment_eligibility=environment_eligibility,
                     attention_property_id=attention_property_id,
                     attention_subject=attention_subject,
                     attention_possible_life=attention_possible_life,
                 )
             return PropertyExpressionResolution(
+                environment_eligibility=environment_eligibility,
                 attention_subject=attention_subject,
                 attention_possible_life=attention_possible_life,
             )
         claim_nature = result["claim_nature"]
         if claim_nature not in {"PROPERTY_REALITY", "REALITY_ACTION"}:
             return PropertyExpressionResolution(
+                environment_eligibility=environment_eligibility,
                 attention_subject=attention_subject,
                 attention_possible_life=attention_possible_life,
             )
@@ -365,6 +401,7 @@ establish a layout requirement. Return null when no layout requirement is stated
             )
         return PropertyExpressionResolution(
             property_id, reality_type, attention_property_id=attention_property_id,
+            environment_eligibility=environment_eligibility,
             attention_subject=attention_subject,
             attention_possible_life=attention_possible_life,
             action_reality_return=self._action_reality_return_context(

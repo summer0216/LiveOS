@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClientId } from '@/lib/createClientId';
+import { isEnvironmentEligibilityResult, type EnvironmentEligibilityResult } from '../../web/lib/environmentEligibility';
 import { getConversationHistory, streamMessage } from '../infrastructure/conversationApi';
 import { appendAssistantChunk, restoreConversationMessages } from './conversationMessages';
 
@@ -11,6 +12,7 @@ export function useConversationSession(initialConversationId: string) {
   const [isRestoring, setIsRestoring] = useState(Boolean(initialConversationId));
   const [isResponding, setIsResponding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [environmentEligibility, setEnvironmentEligibility] = useState<EnvironmentEligibilityResult | null>(null);
   const activeRequest = useRef(0);
   const restoring = useRef(Boolean(initialConversationId));
 
@@ -21,6 +23,9 @@ export function useConversationSession(initialConversationId: string) {
     getConversationHistory(requestedId).then((history) => {
       if (!active || activeRequest.current !== 0) return;
       setMessages(restoreConversationMessages(history.messages));
+      const eligibility = history.environment_eligibility;
+      setEnvironmentEligibility(isEnvironmentEligibilityResult(eligibility)
+        && eligibility.conversation_id === requestedId ? eligibility : null);
     }).catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : '无法恢复对话。');
     }).finally(() => {
@@ -31,7 +36,10 @@ export function useConversationSession(initialConversationId: string) {
     return () => { active = false; };
   }, [initialConversationId]);
 
-  const submit = useCallback(async (expression: string, onWorldConsequenceReady?: () => void) => {
+  const submit = useCallback(async (
+    expression: string,
+    onWorldConsequenceReady?: (eligibility?: EnvironmentEligibilityResult) => void,
+  ) => {
     if (isResponding || restoring.current || !expression.trim()) return;
     const requestId = ++activeRequest.current;
     const activeConversationId = conversationId || createClientId();
@@ -42,6 +50,7 @@ export function useConversationSession(initialConversationId: string) {
       window.history.replaceState({}, '', url);
     }
     setError(null);
+    setEnvironmentEligibility(null);
     setIsResponding(true);
     setMessages((current) => [...current,
       { id: `${requestId}:user`, role: 'user', content: expression },
@@ -51,8 +60,12 @@ export function useConversationSession(initialConversationId: string) {
       await streamMessage({
         conversationId: activeConversationId,
         message: expression,
-        onWorldConsequenceReady: () => {
-          if (activeRequest.current === requestId) onWorldConsequenceReady?.();
+        onWorldConsequenceReady: (_property, _subject, _possibleLife, eligibility) => {
+          if (activeRequest.current === requestId
+            && (!eligibility || eligibility.conversation_id === activeConversationId)) {
+            if (eligibility) setEnvironmentEligibility(eligibility);
+            onWorldConsequenceReady?.(eligibility);
+          }
         },
         onChunk: (chunk) => {
           if (activeRequest.current !== requestId) return;
@@ -70,5 +83,5 @@ export function useConversationSession(initialConversationId: string) {
     }
   }, [conversationId, isResponding]);
 
-  return { conversationId, messages, isResponding, isRestoring, error, submit };
+  return { conversationId, messages, isResponding, isRestoring, error, submit, environmentEligibility };
 }

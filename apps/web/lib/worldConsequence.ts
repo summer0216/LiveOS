@@ -1,3 +1,5 @@
+import { isEnvironmentEligibilityResult, type EnvironmentEligibilityResult } from './environmentEligibility.ts';
+
 export interface WorkSubjectFocus {
   identity: string;
   geographic_identity: string;
@@ -12,6 +14,7 @@ export interface WorldConsequenceFocus {
   focusPropertyId?: string;
   focusSubject?: WorkSubjectFocus;
   focusPossibleLife?: PossibleLifeFocus;
+  environmentEligibility?: EnvironmentEligibilityResult;
 }
 
 export interface PossibleLifeFocus {
@@ -109,16 +112,22 @@ export function parseWorldConsequence(
     || focusSubject !== undefined;
   const possibleLifeTargetIsValid = !('focus_possible_life' in value)
     || focusPossibleLife !== undefined;
+  const environmentEligibility = 'environment_eligibility' in value
+    && isEnvironmentEligibilityResult(value.environment_eligibility)
+    ? value.environment_eligibility : undefined;
   if (
     !propertyTargetIsValid
     || !subjectTargetIsValid
     || !possibleLifeTargetIsValid
+    || ('environment_eligibility' in value && environmentEligibility === undefined)
     || (
       focusPropertyId === undefined
       && focusSubject === undefined
       && focusPossibleLife === undefined
+      && environmentEligibility === undefined
     )
   ) return null;
 
-  return { focusPropertyId, focusSubject, focusPossibleLife };
+  return { focusPropertyId, focusSubject, focusPossibleLife,
+    ...(environmentEligibility ? { environmentEligibility } : {}) };
 }

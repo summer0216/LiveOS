@@ -2,6 +2,7 @@ import { homeViewport, type GeographicCameraFraming } from '../../../web/lib/geo
 import type { Property } from '../../infrastructure/groundedRealityApi';
 
 type GroundingFields = Pick<Property,
+  | 'id'
   | 'conversation_id'
   | 'provenance'
   | 'decision_state'
@@ -14,6 +15,7 @@ type GroundingFields = Pick<Property,
 >;
 
 export interface GroundedPlace {
+  propertyId: string;
   conversationId: string;
   identity: string;
   name: string | null;
@@ -36,6 +38,7 @@ export function selectGroundedPlace(
   const viewport = homeViewport(property, 'SEE');
   if (!viewport) return null;
   return {
+    propertyId: property.id,
     conversationId,
     identity: property.geographic_identity!.trim(),
     name: property.title?.trim() || null,

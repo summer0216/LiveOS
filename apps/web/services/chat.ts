@@ -1,5 +1,6 @@
 import { apiFetch, apiRequest } from './api';
 import type { ChatRequest, ChatResponse } from '@/types/chat';
+import type { EnvironmentEligibilityResult } from '../lib/environmentEligibility';
 import {
   parseWorldConsequence,
   type PossibleLifeFocus,
@@ -25,6 +26,7 @@ export async function sendMessage(
 
 export interface ConversationHistory {
   conversation_id: string;
+  environment_eligibility?: EnvironmentEligibilityResult | null;
   messages: Array<{
     id: string;
     created_at: string;
@@ -55,6 +57,7 @@ interface StreamMessageOptions {
     focusPropertyId?: string,
     focusSubject?: WorkSubjectFocus,
     focusPossibleLife?: PossibleLifeFocus,
+    environmentEligibility?: EnvironmentEligibilityResult,
   ) => void;
   onPropertyGroundingResponse?: (message: string) => void;
   onDecisionRelevantFeedback?: () => void;
@@ -184,6 +187,7 @@ export async function streamMessage({
             consequence.focusPropertyId,
             consequence.focusSubject,
             consequence.focusPossibleLife,
+            consequence.environmentEligibility,
           );
           continue;
         }

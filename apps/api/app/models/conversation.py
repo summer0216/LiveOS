@@ -13,6 +13,7 @@ class ConversationMessage:
     id: int | None = None
     created_at: datetime | None = None
     feedback: MessageFeedback | None = None
+    environment_attention: dict | None = None
 
 
 @dataclass

@@ -2,7 +2,9 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
+
 from app.models.conversation import MessageFeedback
+from app.models.environment_eligibility import EnvironmentEligibilityResult
 
 
 class MessageFeedbackRequest(BaseModel):
@@ -24,3 +26,4 @@ class ConversationMessageResponse(BaseModel):
 class ConversationHistoryResponse(BaseModel):
     conversation_id: str
     messages: list[ConversationMessageResponse]
+    environment_eligibility: EnvironmentEligibilityResult | None = None

@@ -3,6 +3,11 @@ from app.stores.runtime import DEFAULT_ANONYMOUS_USER_ID, conversation_store
 
 
 class ConversationManager:
+    def record_environment_attention(
+        self, conversation_id: str, user_turn_id: int, attention: dict | None,
+    ) -> None:
+        conversation_store.record_environment_attention(conversation_id, user_turn_id, attention)
+
     def set_message_feedback(
         self, conversation_id: str, message_id: int, user_id: str,
         feedback: MessageFeedback | None,

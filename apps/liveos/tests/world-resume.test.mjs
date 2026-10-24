@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
+import { selectEnvironmentProjection } from '../features/living-world/selectEnvironmentProjection.ts';
 import { selectGroundedPlace } from '../features/living-world/groundedPlace.ts';
 
 const require = createRequire(import.meta.url);
@@ -92,6 +93,7 @@ test('saved surface waits for both history and reality, then renders world direc
     '../../components/brand/Wordmark': { default: 'wordmark' },
     '../../../../docs/03_Design/UI_Library/ Screens/01_First_Open/assets/first-open-mountain-background.png': {},
     '../../runtime/useConversationSession': { useConversationSession: () => session },
+    '../living-world/selectEnvironmentProjection': { selectEnvironmentProjection },
     '../living-world/useGroundedPlace': { useGroundedPlace: () => reality },
     '../living-world/WorldFocusSurface': { default: 'world' },
     './ConversationTranscript': { default: 'transcript' },

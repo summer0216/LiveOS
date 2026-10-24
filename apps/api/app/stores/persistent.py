@@ -126,7 +126,7 @@ class ConversationStore:
                 return None
             messages = connection.execute(
                 """
-                SELECT m.id, m.role, m.content, m.created_at, f.feedback
+                SELECT m.id, m.role, m.content, m.created_at, f.feedback, m.environment_attention
                 FROM conversation_messages m
                 JOIN conversations c ON c.id = m.conversation_id
                 LEFT JOIN conversation_message_feedback f
@@ -142,11 +142,25 @@ class ConversationStore:
                 ConversationMessage(
                     role=row["role"], content=row["content"],
                     id=row["id"], created_at=row["created_at"],
-                    feedback=row["feedback"],
+                    feedback=row["feedback"], environment_attention=row["environment_attention"],
                 )
                 for row in messages
             ],
         )
+
+    def record_environment_attention(
+        self, conversation_id: str, user_turn_id: int, attention: dict | None,
+    ) -> None:
+        """Attach validated attention to its existing user turn, never to another session."""
+        with self._database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE conversation_messages SET environment_attention = %s
+                WHERE conversation_id = %s AND id = %s AND role = 'user'
+                """,
+                (Jsonb(attention) if attention is not None else None,
+                 uuid_value(conversation_id), user_turn_id),
+            )
 
     def set_message_feedback(
         self, conversation_id: str, message_id: int, user_id: str,

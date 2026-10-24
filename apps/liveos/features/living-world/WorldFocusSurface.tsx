@@ -2,6 +2,7 @@
 
 import { useRef, type ReactNode } from 'react';
 import type { GroundedPlace } from './groundedPlace';
+import type { ProjectedEnvironment } from './selectEnvironmentProjection';
 import WorldEmergence from './WorldEmergence';
 import WorldConversation from './WorldConversation';
 import { useVisibleViewport } from './useVisibleViewport';
@@ -9,6 +10,7 @@ import styles from './world-focus.module.css';
 
 interface WorldFocusSurfaceProps {
   place: GroundedPlace;
+  environment?: readonly ProjectedEnvironment[];
   conversation: ReactNode;
   entry: ReactNode;
   animateAppearance: boolean;
@@ -19,6 +21,7 @@ interface WorldFocusSurfaceProps {
 
 export default function WorldFocusSurface({
   place,
+  environment,
   conversation,
   entry,
   animateAppearance,
@@ -30,7 +33,7 @@ export default function WorldFocusSurface({
   useVisibleViewport(surface);
   return (
     <section ref={surface} className={styles.surface} aria-label="生活世界" data-conversation-expanded={conversationExpanded}>
-      <WorldEmergence place={place} animateAppearance={animateAppearance} />
+      <WorldEmergence place={place} environment={environment} animateAppearance={animateAppearance} />
       <WorldConversation
         context={place.name}
         isResponding={isResponding}

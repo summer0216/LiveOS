@@ -51,6 +51,7 @@ SCHEMA_STATEMENTS = (
         role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
         content TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL,
+        environment_attention JSONB,
         UNIQUE (conversation_id, sequence)
     )
     """,
@@ -432,6 +433,7 @@ SCHEMA_STATEMENTS = (
 )
 
 OWNERSHIP_BACKFILL_STATEMENTS = (
+    "ALTER TABLE conversation_messages ADD COLUMN IF NOT EXISTS environment_attention JSONB",
     "ALTER TABLE decision_geographies ADD COLUMN IF NOT EXISTS source_user_turn_id BIGINT",
     "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ",
     "ALTER TABLE possible_life_meaningful_unknowns ADD COLUMN IF NOT EXISTS resolved_property_id UUID",

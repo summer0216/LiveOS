@@ -18,6 +18,7 @@ from app.models.decision_change import (
     verification_outcome_cause,
 )
 from app.models.decision_geography import DecisionGeography
+from app.models.environment_eligibility import EnvironmentEligibilityResult
 from app.models.profile_analysis import ProfileAnalysis
 from app.models.profile_patch import LivingProfilePatch
 from app.models.property import (
@@ -38,6 +39,7 @@ from app.services.decision_memory_service import decision_memory_service
 from app.services.decision_record_service import decision_record_service
 from app.services.decision_signal_intelligence import decision_signal_intelligence
 from app.services.decision_unknown_service import decision_unknown_service
+from app.services.environment_eligibility import environment_attention_snapshot
 from app.services.geographic_resolution import (
     GeographicResolutionResult,
     geographic_resolver,
@@ -273,10 +275,12 @@ class WorldConsequenceReady:
         self, focus_property_id: str | None = None,
         focus_subject: WorkSubject | None = None,
         focus_possible_life: PossibleLifeAttentionTarget | None = None,
+        environment_eligibility: EnvironmentEligibilityResult | None = None,
     ) -> None:
         self.focus_property_id = focus_property_id
         self.focus_subject = focus_subject
         self.focus_possible_life = focus_possible_life
+        self.environment_eligibility = environment_eligibility
 
 
 WORLD_CONSEQUENCE_READY = WorldConsequenceReady()
@@ -1107,20 +1111,26 @@ class ChatService:
                 yield PropertyGroundingResponse("你说的住所事实指哪一处？请说出住所名称和具体事实。")
 
             # The durable Work update is observable before residential routing finishes.
+            environment_result = (
+                EnvironmentEligibilityResult(
+                    conversation_id, current_user_turn_id, resolution.environment_eligibility,
+                ) if current_user_turn_id is not None else None
+            )
+            if environment_result is not None:
+                conversation_manager.record_environment_attention(
+                    conversation_id, current_user_turn_id,
+                    environment_attention_snapshot(environment_result),
+                )
+            focus = (
+                resolution.attention_property_id,
+                resolution.attention_subject,
+                resolution.attention_possible_life,
+            ) if resolution.layout_requirement is None else (None, None, None)
             yield (
                 WorldConsequenceReady(
-                    resolution.attention_property_id,
-                    resolution.attention_subject,
-                    resolution.attention_possible_life,
+                    *focus, environment_eligibility=environment_result,
                 )
-                if (
-                    resolution.layout_requirement is None
-                    and (
-                        resolution.attention_property_id
-                        or resolution.attention_subject
-                        or resolution.attention_possible_life
-                    )
-                )
+                if environment_result is not None or any(focus)
                 else WORLD_CONSEQUENCE_READY
             )
 

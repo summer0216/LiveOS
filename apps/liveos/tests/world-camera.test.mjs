@@ -38,16 +38,17 @@ function harness() {
   vm.runInThisContext(`(function(require,module,exports){${code}\n})`)((name) => {
     if (name === 'react') return hooks;
     if (name.endsWith('.css')) return { default: new Proxy({}, { get: (_, key) => key }) };
+    if (name === './EnvironmentProjection') return { default: () => null };
     if (name === '@/features/living-map/AMapGround') return { default: () => null };
     return require(name);
   }, compiled, compiled.exports);
-  return (place, animateAppearance) => {
+  return (place, animateAppearance, environment) => {
     cursor = 0;
     effects = [];
-    const root = compiled.exports.default({ place, animateAppearance });
+    const root = compiled.exports.default({ place, animateAppearance, environment });
     effects.forEach((fn) => fn());
     const [map, anchor, controls] = root.props.children;
-    return { map: map.props, anchor: anchor.props, controls: controls.props.children };
+    return { map: map.props, anchor: anchor.props, controls: controls.props.children, environment: root.props.children[3].props };
   };
 }
 const place = { identity: '已准入地点', name: '地点名称', center: { lng: 104, lat: 30 }, framing: { level: 'PLACE', attention: 'SEE' } };
@@ -88,4 +89,26 @@ test('ordinary rerenders retain AMap callbacks and do not request a camera move;
   assert.deepEqual(calls[0], [place.center, 16, null, anchor]);
   next.controls[1].props.onClick();
   assert.deepEqual(calls[1], [place.center, place.framing]);
+});
+
+test('environment joins the existing map projection without remounting or moving its camera', () => {
+  const render = harness();
+  const first = render(place, false);
+  const moves = [];
+  first.map.onCameraReady((...args) => moves.push(args));
+  first.map.onGroundReadyChange(true);
+  const project = ({ lng, lat }) => ({ x: lng * 2, y: lat * 3 });
+  first.map.onProjectionReady(project);
+  const next = render(place, false, [{ id: 'tram', sourceUserTurnId: 12 }]);
+  const received = [];
+  next.environment.onProjectionListener((value) => received.push(value));
+  assert.equal(received[0], project);
+  const pan = () => ({ x: 80, y: 100 });
+  next.map.onProjectionReady(pan);
+  assert.equal(received[1], pan);
+  assert.equal(first.map.onProjectionReady, next.map.onProjectionReady);
+  assert.equal(moves.length, 0);
+  next.environment.onProjectionListener(null);
+  next.map.onProjectionReady(project);
+  assert.equal(received.length, 2);
 });

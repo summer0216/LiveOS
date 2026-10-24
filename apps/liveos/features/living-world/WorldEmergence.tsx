@@ -4,15 +4,20 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { LocateFixed, Minus, Plus } from 'lucide-react';
 import AMapGround from '@/features/living-map/AMapGround';
 import type { GeographicCameraReorient, GeographicProjection } from '@/lib/runtimePresentationContract';
+import EnvironmentProjection, { type ProjectionListener } from './EnvironmentProjection';
+import type { ProjectedEnvironment } from './selectEnvironmentProjection';
 import type { GroundedPlace } from './groundedPlace';
 import styles from './world-emergence.module.css';
 
-export default function WorldEmergence({ place, animateAppearance = false }: { place: GroundedPlace; animateAppearance?: boolean }) {
+const EMPTY_ENVIRONMENT: readonly ProjectedEnvironment[] = [];
+
+export default function WorldEmergence({ place, animateAppearance = false, environment = EMPTY_ENVIRONMENT }: { place: GroundedPlace; animateAppearance?: boolean; environment?: readonly ProjectedEnvironment[] }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const currentPlace = useRef(place);
   const animate = useRef(animateAppearance);
   const camera = useRef<GeographicCameraReorient | null>(null);
   const projection = useRef<GeographicProjection | null>(null);
+  const environmentProjection = useRef<ProjectionListener | null>(null);
   const groundReady = useRef(false);
   const [ready, setReady] = useState(false);
   const zoom = useRef<number | null>(null);
@@ -22,7 +27,9 @@ export default function WorldEmergence({ place, animateAppearance = false }: { p
   }, [place, animateAppearance]);
   const updateAnchor = useCallback((project: GeographicProjection) => {
     projection.current = project;
-    if (!anchor.current || !groundReady.current) return;
+    if (!groundReady.current) return;
+    environmentProjection.current?.(project);
+    if (!anchor.current) return;
     const point = project(currentPlace.current.center);
     anchor.current.style.left = `${point.x}px`;
     anchor.current.style.top = `${point.y}px`;
@@ -31,6 +38,10 @@ export default function WorldEmergence({ place, animateAppearance = false }: { p
       anchor.current.dataset.reveal = String(animate.current);
       anchor.current.dataset.positioned = 'true';
     }
+  }, []);
+  const receiveEnvironmentProjection = useCallback((listener: ProjectionListener | null) => {
+    environmentProjection.current = listener;
+    if (listener && groundReady.current && projection.current) listener(projection.current);
   }, []);
   const receiveCamera = useCallback((reorient: GeographicCameraReorient) => { camera.current = reorient; }, []);
   const receiveZoom = useCallback((value: number) => { zoom.current = value; }, []);
@@ -77,6 +88,7 @@ export default function WorldEmergence({ place, animateAppearance = false }: { p
         </div>
         <button type="button" aria-label="返回当前地点" disabled={!ready} onClick={() => camera.current?.(place.center, place.framing)}><LocateFixed size={20} /></button>
       </div>
+      <EnvironmentProjection key={environment[0]?.sourceUserTurnId ?? "none"} items={environment} ready={ready} onProjectionListener={receiveEnvironmentProjection} />
     </section>
   );
 }

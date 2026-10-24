@@ -102,6 +102,8 @@ def _stream_events(
                     payload["focus_possible_life"] = asdict(
                         chunk.focus_possible_life
                     )
+                if chunk.environment_eligibility is not None:
+                    payload["environment_eligibility"] = asdict(chunk.environment_eligibility)
                 if not payload:
                     payload = True
                 yield (

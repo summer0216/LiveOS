@@ -7,15 +7,17 @@ import firstOpenBackground from '../../../../docs/03_Design/UI_Library/ Screens/
 import { useConversationSession } from '../../runtime/useConversationSession';
 import { useGroundedPlace } from '../living-world/useGroundedPlace';
 import WorldFocusSurface from '../living-world/WorldFocusSurface';
+import { selectEnvironmentProjection } from '../living-world/selectEnvironmentProjection';
 import ConversationTranscript from './ConversationTranscript';
 import ExpressionComposer from './ExpressionComposer';
 import styles from './first-conversation.module.css';
 
 export default function FirstConversationExperience({ initialConversationId }: { initialConversationId: string }) {
-  const { conversationId, messages, isResponding, isRestoring, error, submit } = useConversationSession(initialConversationId);
+  const { conversationId, messages, isResponding, isRestoring, error, submit, environmentEligibility } = useConversationSession(initialConversationId);
   const [realityRefresh, setRealityRefresh] = useState(0);
   const [expandedConversationId, setExpandedConversationId] = useState<string | null>(null);
-  const { place, isRestoring: isRestoringPlace, error: realityError } = useGroundedPlace(conversationId, realityRefresh);
+  const { place, properties, isRestoring: isRestoringPlace, error: realityError } = useGroundedPlace(conversationId, realityRefresh);
+  const environment = selectEnvironmentProjection(place, properties, environmentEligibility);
   const isResuming = Boolean(initialConversationId) && (isRestoring || isRestoringPlace);
   const refreshReality = () => setRealityRefresh((current) => current + 1);
   const submitAndRefreshReality = async (expression: string) => {
@@ -42,6 +44,7 @@ export default function FirstConversationExperience({ initialConversationId }: {
       {place ? (
         <WorldFocusSurface
           place={place}
+          environment={environment}
           conversation={<ConversationTranscript messages={messages} isResponding={isResponding} conversationId={conversationId} />}
           entry={entry}
           animateAppearance={realityRefresh > 0}

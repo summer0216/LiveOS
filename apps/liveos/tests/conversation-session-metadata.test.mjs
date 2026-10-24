@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
+import { isEnvironmentEligibilityResult } from '../../web/lib/environmentEligibility.ts';
 import { appendAssistantChunk, restoreConversationMessages } from '../runtime/conversationMessages.ts';
 
 const require = createRequire(import.meta.url);
@@ -37,6 +38,7 @@ function session({ initialId = '', history, stream }) {
     URL, Error, window: { location: { href: 'http://localhost:3002/' }, history: { replaceState() {} } },
   })((name) => {
     if (name === 'react') return react;
+    if (name === '../../web/lib/environmentEligibility') return { isEnvironmentEligibilityResult };
     if (name === '@/lib/createClientId') return { createClientId: () => 'conversation-1' };
     if (name === '../infrastructure/conversationApi') return { getConversationHistory: history, streamMessage: stream };
     if (name === './conversationMessages') return { appendAssistantChunk, restoreConversationMessages };
@@ -108,4 +110,49 @@ test('world consequences refresh Reality before EOF without interrupting chunks 
   assert.deepEqual(client.read().messages, persisted);
   assert.equal(client.read().isResponding, false);
   assert.equal(historyCalls, 1);
+});
+
+test('session forwards turn-bound eligibility and ignores another conversation', async () => {
+  const empty = { conversation_id: 'conversation-1', source_user_turn_id: 42, items: [] };
+  const received = [];
+  const client = session({
+    history: async () => ({ messages: persisted }),
+    stream: async ({ onWorldConsequenceReady, onChunk }) => {
+      onWorldConsequenceReady(undefined, undefined, undefined, empty);
+      onWorldConsequenceReady(undefined, undefined, undefined, { ...empty, conversation_id: 'other' });
+      onChunk('正常回复');
+    },
+  });
+  await client.read().submit('这里附近有地铁吗？', (value) => received.push(value));
+  assert.deepEqual(received, [empty]);
+  assert.equal(client.read().environmentEligibility, empty);
+  assert.deepEqual(client.read().messages, persisted);
+});
+
+test('new expression clears prior eligibility while awaiting its own authoritative result', async () => {
+  let client, count = 0;
+  const eligible = { conversation_id: 'conversation-1', source_user_turn_id: 42, items: [] };
+  client = session({ history: async () => ({ messages: persisted }),
+    stream: async ({ onWorldConsequenceReady }) => {
+      assert.equal(client.read().environmentEligibility, null);
+      if (++count === 1) onWorldConsequenceReady(undefined, undefined, undefined, eligible);
+    },
+  });
+  await client.read().submit('first');
+  assert.equal(client.read().environmentEligibility, eligible);
+  await client.read().submit('next');
+  assert.equal(client.read().environmentEligibility, null);
+});
+
+
+test('resume restores valid history eligibility and rejects another conversation or malformed qualification', async () => {
+  const eligibility = { conversation_id: 'saved', source_user_turn_id: 42, items: [] };
+  for (const payload of [eligibility, { ...eligibility, conversation_id: 'other' }, { items: [] }, null]) {
+    const client = session({ initialId: 'saved', history: async () => ({ messages: persisted, environment_eligibility: payload }) });
+    client.read(); client.mount();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(client.read().environmentEligibility, payload === eligibility ? eligibility : null);
+    assert.deepEqual(client.read().messages, persisted);
+    assert.equal(client.read().isRestoring, false);
+  }
 });

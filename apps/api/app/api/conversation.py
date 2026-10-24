@@ -8,6 +8,8 @@ from app.schemas.conversation import (
     MessageFeedbackResponse,
 )
 from app.services.conversation_manager import conversation_manager
+from app.services.environment_eligibility import resume_environment_eligibility
+from app.services.property_manager import property_manager
 
 router = APIRouter(
     prefix="/conversations",
@@ -47,6 +49,9 @@ async def get_conversation_history(
     return ConversationHistoryResponse(
         conversation_id=conversation.conversation_id,
         messages=messages,
+        environment_eligibility=resume_environment_eligibility(
+            conversation_id, conversation.get_messages(), property_manager.list(conversation_id),
+        ),
     )
 
 
